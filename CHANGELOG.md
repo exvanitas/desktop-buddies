@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Smoother buddies
+- **Corners.** Over a window's corner she's drawn turning round it, not jumping across. Screen corners, catching a wall or ceiling, and leaving one turn over a few frames too.
+- **Picking up.** She slides from where you grabbed her to the hold, instead of jumping to it.
+- **Dropping.** Let go below the floor, she rises onto it.
+- **Rolls** end upright.
+- **Personality poses** (Excited, Laugh, Surprised, Face away, Tap the screen, Stare) now play on their own now and then, if she has the art.
+- **One-sided art.** A pose with an arm out to one side no longer shifts her body sideways.
+- **Hand-ons.** For a buddy without her own art for a moment, one animation now leads into the next over a few frames instead of snapping.
+- **Hops** onto windows no longer stall.
+- **Frame pacing.** On the desktop, buddies are drawn on the display's beat, so throws, falls and hops no longer hitch.
+
+### Checks
+- A new Windows check drives the local API and the MCP server end to end, through the real consent button.
+- The Windows checks also measure frame pacing on GitHub's runner.
+
+### Known
+- Rounding a window corner close to the screen edge, she can overlap that corner for a few frames.
+
 ## 0.1.0 (2026-11-10)
 
 The first public version of Desktop Buddies: little characters that live on your Windows desktop.
