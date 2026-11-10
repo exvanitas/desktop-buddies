@@ -109,7 +109,7 @@ test('a task the view can\'t do says what it saw, and fails', async () => {
 });
 
 const input = { down() {}, move() {}, up() {}, enter() {}, leave() {}, pointer() {} } as unknown as Input;
-const pet = (bubble: Partial<Frame['pets'][number]['bubble']>, src: string | null = 'library/o/s.webp', off = false): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src, origin: null, body: null, grab: false, off, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: null, bubble: { text: '', hidden: true, pop: 0, below: false, tf: null, at: null, ...bubble }, tag: { text: '', hidden: true, tf: null } }] });
+const pet = (bubble: Partial<Frame['pets'][number]['bubble']>, src: string | null = 'library/o/s.webp', off = false): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src, origin: null, body: null, grab: false, stage: '', parts: null, off, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: null, bubble: { text: '', hidden: true, pop: 0, below: false, tf: null, at: null, ...bubble }, tag: { text: '', hidden: true, tf: null } }] });
 
 /* The real view on a page, watched through a look the test answers: what the browser itself judges
    is checked in a real one, tests/browser/probe-overlay.mjs. Each element is seen unless the test

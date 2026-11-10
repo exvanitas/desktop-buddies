@@ -8,7 +8,7 @@ import { hex, platformLook, watchOverlay } from '../../shell-check/api-probe-cor
 const input = { down() {}, move() {}, up() {}, enter() {}, leave() {}, pointer() {} } as unknown as Input;
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 type Bubble = Frame['pets'][number]['bubble'];
-const frame = (bubble: Partial<Bubble>, src: string, off = false): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src, origin: null, body: null, grab: false, off, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: 'translate(200px,200px)', bubble: { text: '', hidden: true, pop: 0, below: false, tf: 'translate(180px,150px)', at: null, ...bubble }, tag: { text: '', hidden: true, tf: null } }] });
+const frame = (bubble: Partial<Bubble>, src: string, off = false): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src, origin: null, body: null, grab: false, stage: '', parts: null, off, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: 'translate(200px,200px)', bubble: { text: '', hidden: true, pop: 0, below: false, tf: 'translate(180px,150px)', at: null, ...bubble }, tag: { text: '', hidden: true, tf: null } }] });
 export const LINE = 'He said "hi" \\ café \u{1F44B} a | b end\\';
 const GOOD = '/img/s.webp', WAVE = '/img/w-good.webp', BROKEN = '/img/w-broken.webp', LATE = '/img/w-late.webp';
 const said = { bubble: { text: LINE, from: 'E2E Check', hidden: false, pop: 1 } };
