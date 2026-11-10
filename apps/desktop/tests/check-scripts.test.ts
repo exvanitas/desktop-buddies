@@ -238,6 +238,10 @@ test('driver.ps1: with a folder, the whole path goes in the name box and Save is
   assert.ok(!/SaveName|Dialog-Folder|navigation/.test(ps.slice(ps.indexOf("'dialog' {"), ps.indexOf("'find' {"))), 'no window-message typing, no folder reading');
   const hub = fs.readFileSync(new URL('hub.ts', DIR), 'utf8');
   assert.ok(!/navigation\?:/.test(hub), 'the hub goes by the file, not a reading of the dialog');
+  /* Skipped only where the dialog took no name; wherever a name goes in, every outcome counts. */
+  const over = hub.slice(hub.indexOf("check('api2.save_as_owner'"), hub.indexOf("check('open_data_folder'"));
+  assert.match(over, /if \(!r\.typed\) \{[\s\S]*?skip\(`the dialog took no typed name here/);
+  assert.ok(over.indexOf('if (!r.typed)') < over.indexOf("same(f.content, 'owned'"), 'the outcome checks come after');
 });
 
 test('pacing.ps1: its own result line is never read as an error', () => {
