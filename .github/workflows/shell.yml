@@ -1,0 +1,117 @@
+name: shell
+
+# Proves the exe on a Windows runner before anyone downloads it. Builds here face no Smart App
+# Control verdict, so a failing one costs nothing but minutes. Only native changes start this:
+# to test a new app folder or check on the existing exe, run it by hand with `reuse`.
+on:
+  workflow_dispatch:
+    inputs:
+      reuse:
+        description: Skip the build, and use the exe from the latest build on this branch
+        type: boolean
+        default: false
+      soak:
+        description: Seconds the contract check leaves the hub hidden, to see if it gets throttled
+        type: string
+        default: '0'
+  push:
+    paths:
+      - apps/desktop/src-tauri/**
+      - apps/desktop/shell-core/**
+      - .github/workflows/shell.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      SOAK: ${{ inputs.soak || '0' }}
+      REUSE: ${{ inputs.reuse || false }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        if: env.REUSE != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+            apps/desktop/shell-core/target
+          key: shell-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            shell-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
+            shell-${{ runner.os }}-
+
+      - name: Rust toolchain
+        if: env.REUSE != 'true'
+        run: rustup toolchain install stable --profile minimal
+
+      - name: cargo test
+        if: env.REUSE != 'true'
+        run: cargo test --locked --manifest-path apps/desktop/shell-core/Cargo.toml
+
+      - name: Release build
+        if: env.REUSE != 'true'
+        working-directory: apps/desktop/src-tauri
+        run: cargo build --release --locked
+
+      - name: Exe from this build
+        if: env.REUSE != 'true'
+        run: |
+          New-Item -ItemType Directory -Force exe | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/desktop-buddies.exe exe/
+
+      - name: Exe from the latest build
+        if: env.REUSE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh run list --workflow shell.yml --branch $env:GITHUB_REF_NAME --status success --limit 20 --json databaseId,event --jq '[.[] | select(.event == "push")][0].databaseId'
+          if (-not $run) { throw 'no earlier build on this branch' }
+          "using the exe from run $run"
+          gh run download $run --name desktop-buddies-windows --dir exe
+
+      - name: About the exe
+        run: |
+          $f = Get-Item exe/desktop-buddies.exe
+          $line = "$($f.Name) $($f.Length) bytes sha256 $((Get-FileHash $f -Algorithm SHA256).Hash)"
+          $line
+          "$line`n" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: env.REUSE != 'true'
+        with:
+          name: desktop-buddies-windows
+          path: exe/desktop-buddies.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @buddies/desktop build
+
+      - name: Contract check
+        shell: pwsh
+        run: apps/desktop/shell-check/driver.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/shell-check -Out results -Soak $env:SOAK
+
+      - name: Smoke run
+        if: success() || failure()
+        shell: pwsh
+        run: apps/desktop/shell-check/smoke.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shell-results
+          path: results
+          retention-days: 14
+          if-no-files-found: warn

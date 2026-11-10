@@ -1,0 +1,7 @@
+/* The dialog Close shows. See maker-closing.ts. */
+.closing { max-width: min(560px, calc(100vw - 48px)); margin: auto; padding: 14px; border: 0; border-radius: 16px; background: var(--sheet-2); color: var(--cream); box-shadow: 0 14px 30px -8px var(--float), 0 0 0 1px var(--edge); outline: none; animation: closing-in .12s .3s both; }
+.closing::backdrop { background: rgb(0 0 0 / .18); animation: closing-in .12s .3s both; }
+.closing .misprint { flex-wrap: wrap; }
+.closing .misprint p { flex-basis: 100%; }
+.closing-word { margin: 0; font-size: 13px; }
+@keyframes closing-in { from { opacity: 0; } }

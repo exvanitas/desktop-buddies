@@ -1,0 +1,34 @@
+# cargo-about's config for THIRD-PARTY-NOTICES.txt, the licences of the crates in desktop-buddies.exe.
+# Only the licences those crates use today are accepted, so a new one fails the release build and
+# gets a look before it ships. Where a crate offers a choice, the first accepted one here is used.
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "MPL-2.0",      # cssparser, selectors and friends, used unmodified from crates.io
+  "Unicode-3.0",  # the ICU crates under url, and unicode-ident
+  "Zlib",         # foldhash
+]
+
+# The exe is built for this target only; build and dev dependencies aren't in it.
+targets = ["x86_64-pc-windows-msvc"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# This project's own crates have no licence field, so they point at LICENSE at the root. The checksum
+# covers the MIT text, from "MIT License" to "SOFTWARE.": if it changes, update it here.
+[desktop-buddies.clarify]
+license = "MIT"
+[[desktop-buddies.clarify.files]]
+path = "../../../LICENSE"
+start = "MIT License"
+end = "SOFTWARE."
+checksum = "2e57357e00609e9a76becbbacbd7abf5318bd26b6440dd715acdc1f5eb01299a"
+
+[shell-core.clarify]
+license = "MIT"
+[[shell-core.clarify.files]]
+path = "../../../LICENSE"
+start = "MIT License"
+end = "SOFTWARE."
+checksum = "2e57357e00609e9a76becbbacbd7abf5318bd26b6440dd715acdc1f5eb01299a"

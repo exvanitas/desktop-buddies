@@ -1,0 +1,10 @@
+export { BOOK, canDo } from './behaviours';
+export { GOODBYE_MS, LINES } from './data';
+export { lively, type Pace } from './pace';
+export { createPet, type Pet } from './create-pet';
+export { LIFT_FROM } from './look';
+export { BUBBLE, bubbleSize } from './voice';
+export type { PetState } from './state';
+export type { Arg, Behaviour, Book, Clip, Place, Rule, Step } from './runner';
+export { createSim, type Sim, type SimOptions } from './sim';
+export type * from './world';

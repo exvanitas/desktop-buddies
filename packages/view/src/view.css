@@ -1,0 +1,42 @@
+:root {
+  --ink: #3b3340;
+  --muted: #8a8094;
+  --line: #ece6f0;
+  --card: rgba(255, 255, 255, .94);
+  --chip: #f6f2f9;
+  --chip-on: #3b3340;
+  --accent: #ff7aa2;
+  --accent-soft: #ffe3ec;
+  --radius: 14px;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #cfd6ef; }
+button, input, textarea { font: inherit; color: inherit; }
+
+/* ---------- buddies ---------- */
+.db-pet { position: absolute; z-index: 1; left: 0; top: 0; pointer-events: auto; cursor: grab; touch-action: none; will-change: transform; }
+.db-pet.grab { cursor: grabbing; }
+.db-body { width: 100%; height: 100%; }
+.db-body img { width: 100%; height: 100%; display: block; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(60, 40, 70, .18)); }
+/* As wide as its line up to 240 px, then wrapped at spaces, a word broken only when it alone is too
+   long. Her lines and an app's alike. The engine places it by the same numbers: BUBBLE in voice.ts. */
+.db-bubble { position: absolute; left: 0; top: 0; width: max-content; max-width: 240px; padding: 7px 12px; background: #fff; border-radius: 14px; font-size: 13px; font-weight: 700; line-height: 1.3; text-align: center; box-shadow: 0 3px 10px rgba(60, 40, 80, .16); pointer-events: none; overflow-wrap: anywhere; z-index: 5; }
+.db-bubble::after { content: ''; position: absolute; left: calc(50% + var(--tail, 0px)); bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #fff; }
+/* her bubble is shown by the viewport her middle is in, not by one that only shows part of her */
+.db-bubble.away { visibility: hidden; }
+.db-bubble.below::after { bottom: auto; top: -6px; border: 6px solid transparent; border-top: 0; border-bottom-color: #fff; }
+/* a line another app asked for has a badge naming the app */
+.db-from { display: block; width: fit-content; margin: 0 auto 3px; padding: 1px 7px; border-radius: 99px; background: #ece6f5; color: #5b4f6e; font-size: 10px; font-weight: 700; line-height: 1.4; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.db-bubble.pop { animation: pop .25s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { from { opacity: 0; scale: .6; } }
+.db-tag { position: absolute; left: 0; top: 0; padding: 1px 8px; border-radius: 99px; background: rgba(59, 51, 64, .62); color: #fff; font-size: 11px; font-weight: 700; pointer-events: none; white-space: nowrap; }
+.db-fx { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 4; line-height: 1; }
+.db-fx svg { width: 100%; height: 100%; display: block; fill: currentColor; }
+.db-fx-text { font-weight: 800; color: #7b6bb0; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.db-fx-anger { color: #ff4f5e; }
+.db-fx-anger svg { fill: none; }
+.db-fx-tear svg { fill: none; }
+.db-fx-puddle { z-index: 0; border-radius: 50%; background: radial-gradient(ellipse at 50% 45%, rgba(170, 222, 255, .75), rgba(120, 196, 245, .55) 60%, rgba(120, 196, 245, 0) 72%); }
+.db-fx-crumb { background: #c78a4a; border-radius: 30%; }

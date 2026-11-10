@@ -1,0 +1,10 @@
+{
+  "name": "@buddies/validate-buddy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "bin": { "validate-buddy": "./bin/validate-buddy.mjs" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@buddies/buddy-file": "workspace:*", "esbuild": "0.28.2" }
+}

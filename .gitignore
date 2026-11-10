@@ -1,0 +1,17 @@
+# exported buddies and pages made while testing
+*.buddy.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# builds and dependencies
+node_modules/
+target/
+dist/
+
+# tauri generated schemas
+apps/desktop/src-tauri/gen/

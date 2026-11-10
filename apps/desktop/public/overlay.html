@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost">
+<title>buddies overlay</title>
+<link rel="stylesheet" href="style.css">
+<style>
+html, body { background: transparent !important; overflow: hidden; }
+#root { position: fixed; inset: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="overlay.js"></script>
+</body>
+</html>

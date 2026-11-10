@@ -1,0 +1,13 @@
+Desktop Buddies
+
+Credits
+
+Yarrow created Desktop Buddies, and wrote its original engine and web maker.
+
+Yarrow agreed to release Desktop Buddies, including her original engine and web maker, under the MIT licence (2026-11-10).
+
+The original engine, vendored in apps/maker/tests/golden/original/ so the golden traces can be checked against it, is Yarrow's.
+
+The bundled fonts (DynaPuff, Lexend and Nunito) are under the SIL Open Font License 1.1. Each licence text is beside its font, in packages/peel/fonts/ and apps/maker/src/fonts/, and in a release zip, in app/fonts/.
+
+The Rust crates built into desktop-buddies.exe keep their own licences, listed with their texts in THIRD-PARTY-NOTICES.txt in each release zip.

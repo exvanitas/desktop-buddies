@@ -1,0 +1,209 @@
+name: release
+
+# Builds a release from a version tag on GitHub-hosted runners, and drafts a GitHub release with the
+# zip and its SHA256SUMS.txt. The maintainer reviews the draft and publishes it by hand. Signing
+# through SignPath goes in once its project is set up: the step is below, commented out, and
+# docs/releases.md has the rest. Nothing here needs a secret until then.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to build, like v0.1.0, when no release exists for it yet
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  RUST: 1.95.0
+  CARGO_ABOUT: 0.9.3
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+
+jobs:
+  # The checks, on Linux as in ci.yml, since the suite isn't Windows-portable yet. This job also fixes
+  # the commit that's built: the pushed tag's, or on a manual run, the tag's commit when it starts.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' isn't a release tag like v1.2.3"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || format('refs/tags/{0}', env.TAG) }}
+          persist-credentials: false
+
+      - name: Commit
+        id: commit
+        run: |
+          sha=$(git rev-parse HEAD)
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "::error::checked out $sha, not the pushed $GITHUB_SHA"; exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "$TAG at $sha" >> "$GITHUB_STEP_SUMMARY"
+
+      # The tag, package.json, the CHANGELOG's top section and the zip's README must agree.
+      - name: Version
+        run: python3 -I tools/release/version.py "$TAG"
+
+      # No caches anywhere in a release: every byte comes from the commit and pinned versions.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0, pnpm from packageManager
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read  # for the signing step, which reads the job and its artifact with this token
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+    env:
+      SHA: ${{ needs.test.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.test.outputs.sha }}
+          persist-credentials: false
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "::error::checked out $(git rev-parse HEAD), not $SHA"; exit 1; }
+          version=$(python -I tools/release/version.py "$TAG" --notes out/notes.md)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0, pnpm from packageManager
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @buddies/desktop build
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST --profile minimal
+          rustup default $env:RUST
+
+      - name: cargo test
+        run: cargo test --locked --manifest-path apps/desktop/shell-core/Cargo.toml
+
+      - name: Release build
+        working-directory: apps/desktop/src-tauri
+        run: cargo build --release --locked
+
+      # Fails on any licence not accepted in about.toml.
+      - name: Third-party notices
+        run: |
+          cargo install cargo-about --version $env:CARGO_ABOUT --locked --features cli
+          cargo about generate --locked --fail -c tools/release/about.toml -m apps/desktop/src-tauri/Cargo.toml -o THIRD-PARTY-NOTICES.txt tools/release/about.hbs
+
+      - name: Exe from this build
+        shell: bash
+        run: |
+          mkdir exe
+          cp apps/desktop/src-tauri/target/release/desktop-buddies.exe exe/
+          sha256sum exe/desktop-buddies.exe | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: unsigned
+        with:
+          name: desktop-buddies-unsigned
+          path: exe/desktop-buddies.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      # Signing. To turn it on, uncomment this step, fill in the two slugs and the organization id,
+      # and pack from signed/ in the next step. docs/releases.md says where each value comes from.
+      # - name: Sign
+      #   uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}  # a repository secret: the API token of a SignPath CI user that may submit
+      #     organization-id: 00000000-0000-0000-0000-000000000000  # the SignPath organization's id, a GUID from its settings
+      #     project-slug: desktop-buddies  # the SignPath project's slug, which names this repo as its source
+      #     signing-policy-slug: release-signing  # the policy that signs with the SignPath Foundation certificate
+      #     github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}  # the unsigned exe, uploaded above
+      #     wait-for-completion: true
+      #     wait-for-completion-timeout-in-seconds: 3600  # an approver approves each request by hand
+      #     output-artifact-directory: signed  # where the signed exe lands
+
+      - name: Pack
+        shell: bash
+        env:
+          EXE: exe/desktop-buddies.exe  # signed/desktop-buddies.exe once signing is on
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python -I apps/desktop/scripts/preview.py --release "$VERSION" --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out-dir out
+          cat out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+
+  # The only job that can write. It makes a new draft, and never touches a release that exists,
+  # draft or published: to build a tag again, delete its draft first.
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: out
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          set -euo pipefail
+          zip="out/desktop-buddies-$VERSION-windows-x64.zip"
+          (cd out && sha256sum -c SHA256SUMS.txt)
+
+          # The tag must still point at the commit that was built. An annotated tag is peeled.
+          found=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha')
+          read -r type sha <<< "$found"
+          while [ "$type" = tag ]; do
+            found=$(gh api "repos/$GH_REPO/git/tags/$sha" --jq '.object.type + " " + .object.sha')
+            read -r type sha <<< "$found"
+          done
+          if [ "$type" != commit ] || [ "$sha" != "$SHA" ]; then
+            echo "::error::$TAG now points at $type $sha, not $SHA, which was built. Nothing was drafted"; exit 1
+          fi
+
+          tags=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[].tag_name')
+          if grep -Fxq -- "$TAG" <<< "$tags"; then
+            echo "::error::A release for $TAG exists already, and this workflow never changes one. Delete the draft first, then run it again"; exit 1
+          fi
+          gh release create "$TAG" --draft --verify-tag --title "Desktop Buddies $VERSION" --notes-file out/notes.md "$zip" out/SHA256SUMS.txt

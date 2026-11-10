@@ -1,0 +1,23 @@
+Third-party notices for desktop-buddies.exe
+
+The exe is built from this project's Rust code and the crates below, all from crates.io and used
+unmodified. Each crate's source, the MPL-2.0 ones included, is on crates.io under its name and
+version. This project's own crates, desktop-buddies and shell-core, are under the MIT licence in
+LICENSE.
+
+Licences used
+{{#each overview}}
+- {{{name}}} ({{{id}}}), crates using it: {{count}}
+{{/each}}
+{{#each licenses}}
+
+================================================================================
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

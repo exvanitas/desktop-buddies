@@ -1,0 +1,17 @@
+{
+  "name": "@buddies/peel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./dom": "./src/dom.ts",
+    "./popover": "./src/popover.ts",
+    "./menu": "./src/menu.ts",
+    "./window": "./src/window.ts",
+    "./theme": "./src/theme.ts",
+    "./misprint": "./src/misprint.ts",
+    "./peel.css": "./peel.css"
+  },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "devDependencies": { "vite": "7.3.7" }
+}

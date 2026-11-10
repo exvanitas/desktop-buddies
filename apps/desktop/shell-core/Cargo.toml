@@ -1,0 +1,11 @@
+[package]
+name = "shell-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "What the native shell decides, with no Tauri and no OS calls in it, so its tests run anywhere."
+
+[dependencies]
+percent-encoding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,0 +1,91 @@
+/* The Manager's own sheet. packages/peel/peel.css comes before it in the built manager.css. In the
+   library, a buddy is a sticker: calling one peels it off and leaves the spot it was cut from. */
+.title { font-size: 15px; font-weight: 500; color: var(--dim); white-space: nowrap; }
+.search { flex: 0 1 240px; height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border-radius: 9px; background: var(--sheet); color: var(--dim); }
+.search svg { flex: none; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
+.search input { border: 0; outline: 0; background: none; width: 100%; color: var(--cream); user-select: text; appearance: none; }
+.search input::placeholder { color: var(--dim); opacity: 1; }
+.search input::-webkit-search-cancel-button { display: none; }
+.search:focus-within { outline: 2px solid var(--sun); outline-offset: 2px; }
+
+.sheet { flex: 1; min-height: 0; overflow-y: auto; margin: 0 10px; background: var(--sheet); border-radius: 18px; padding: 12px 12px 14px; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+.wrap { min-height: 100%; display: flex; flex-direction: column; gap: 14px; }
+.list { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-evenly; gap: 14px 10px; }
+
+.st { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 112px; max-width: 176px; }
+.st .art { position: relative; display: block; border: 0; padding: 0; margin-bottom: 9px; background: none; border-radius: 8px; }
+.st .art img { position: relative; display: block; transition: transform .14s; }
+.st .art:hover:not(:disabled) img.cut:not(.fly) { transform: translateY(-3px) rotate(-1.5deg); }
+.st.broken .art img { background: var(--sheet-2); border-radius: 14px; }
+/* the edge is drawn here and nowhere else */
+.cut { filter: var(--cut); }
+.fly { position: absolute !important; left: 0; top: 0; z-index: 1; pointer-events: none; }
+.cutline { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.cut-pad { fill: var(--pad); stroke: none; }
+.cut-dots { fill: none; stroke: var(--dot); stroke-linecap: round; stroke-dasharray: 0 1; }
+.st.out .art .ghost { opacity: var(--ghost); filter: var(--ghost-fx); }
+.st b { max-width: 100%; font: 500 13.5px/1.15 DynaPuff, Lexend, var(--world); text-align: center; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.st .s { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.st.out .s { color: var(--out-ink); font-weight: 500; }
+.st .acts { display: flex; align-items: center; gap: 3px; margin-top: 4px; }
+.dots { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--dim); font-size: 13px; display: grid; place-items: center; }
+.dots:hover:not(:disabled) { background: var(--sheet-2); }
+.dots:disabled { opacity: .55; }
+
+.more { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12.5px; color: var(--dim); }
+
+.dropit { flex: 1 1 130px; max-width: 200px; min-height: 76px; border: 2px dashed var(--edge); border-radius: 13px; display: grid; place-items: center; text-align: center; padding: 6px 10px; font-size: 12.5px; color: var(--dim); line-height: 1.2; }
+.only .list { flex: 1; align-items: center; justify-content: center; gap: 28px; }
+.only .dropit { max-width: 190px; min-height: 120px; }
+.only .st { max-width: 260px; }
+.only .st b { font-size: 18px; }
+.only .st .s { font-size: 13px; }
+.only .st .art { margin-bottom: 16px; }
+
+.wrap:has(.welcome:not([hidden])) { justify-content: center; align-items: center; }
+.welcome { width: min(100%, 400px); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; border: 2px dashed var(--edge); border-radius: 18px; padding: 34px 24px 30px; }
+.welcome h2 { font-size: 22px; font-weight: 500; }
+.welcome p { color: var(--dim); max-width: 34ch; line-height: 1.35; }
+.welcome .row { margin-top: 8px; }
+.none { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 24px 0; color: var(--dim); }
+.none span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waiting { flex: 1; display: grid; place-items: center; text-align: center; color: var(--dim); font: 500 15px/1.2 DynaPuff, Lexend, var(--world); animation: settle .2s .25s both; }
+.wrap:has(.list:not([hidden])) .waiting { flex: none; }
+@keyframes settle { from { opacity: 0; } }
+
+/* while a drag with files is over the window */
+.veil { position: absolute; inset: 44px 10px; z-index: 3; display: grid; place-items: center; border: 3px dashed var(--sun); border-radius: 18px; background: color-mix(in srgb, var(--sheet) 82%, transparent); pointer-events: none; }
+.veil span { padding: 9px 18px; border-radius: 13px; background: var(--sun); color: var(--ink); font: 500 18px/1.2 DynaPuff, Lexend, var(--world); }
+
+.toolbar { flex: none; height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 12px; }
+
+.panel { width: 240px; padding: 11px 12px 12px; display: grid; gap: 10px; }
+.panel h2 { font-size: 15px; font-weight: 500; }
+.walk { display: grid; gap: 4px; }
+.apps-head { margin-top: 4px; font-size: 12.5px; color: var(--dim); }
+.apps, .api-apps { max-height: 126px; overflow-y: auto; }
+.asking { display: grid; gap: 8px; }
+.ask { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 2px dashed var(--sun); border-radius: 13px; }
+.ask p { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.25; color: var(--dim); overflow-wrap: anywhere; }
+.ask b { display: block; font: 600 14px/1.15 DynaPuff, Lexend, var(--world); color: var(--cream); margin-bottom: 1px; }
+.ask .btn { flex: none; }
+/* a file that would replace someone: the same card, with a way to close it */
+.ask p span { display: block; }
+.ask small { color: var(--faint); font-size: 12px; }
+.ask .x { width: 25px; padding: 0; margin-left: -4px; background: none; color: var(--dim); font-size: 17px; font-weight: 400; }
+.ask .x:hover:not(:disabled) { background: var(--sheet-2); color: var(--cream); }
+/* what just happened, said once, gone by itself */
+.note { align-self: flex-start; max-width: 100%; padding: 6px 12px; border-radius: 11px; background: var(--sheet-2); color: var(--cream); font-size: 12.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.api-setting { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--edge); }
+.api-setting > .setting > span { line-height: 1.25; }
+.api-head { margin-top: 4px; font-size: 12.5px; color: var(--dim); }
+.api-setting small { color: var(--dim); }
+.apps .setting span, .api-apps .setting > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 620px) { .search { flex-basis: 130px; } .misprint:has(.go), .ask { flex-wrap: wrap; } .misprint:has(.go) p, .ask p { flex-basis: 100%; } .toolbar { gap: 8px; } }
+@media (prefers-reduced-motion: reduce) { .st .art:hover:not(:disabled) img.cut:not(.fly) { transform: none; } }
+
+/* Fingers need more room than a mouse. */
+@media (pointer: coarse) {
+  .dots { width: 40px; height: 40px; }
+}

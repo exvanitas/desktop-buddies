@@ -1,0 +1,22 @@
+{
+  "name": "@buddies/maker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@buddies/art": "workspace:*",
+    "@buddies/buddy-file": "workspace:*",
+    "@buddies/engine": "workspace:*",
+    "@buddies/maker-core": "workspace:*",
+    "@buddies/terrain": "workspace:*",
+    "@buddies/view": "workspace:*"
+  },
+  "devDependencies": {
+    "@buddies/test-support": "workspace:*",
+    "happy-dom": "^21.0.4"
+  }
+}

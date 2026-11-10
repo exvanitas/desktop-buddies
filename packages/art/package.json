@@ -1,0 +1,9 @@
+{
+  "name": "@buddies/art",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/images.ts", "./outline": "./src/outline.ts", "./outline-canvas": "./src/outline-canvas.ts" },
+  "scripts": { "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json" },
+  "dependencies": { "@buddies/buddy-file": "workspace:*" }
+}

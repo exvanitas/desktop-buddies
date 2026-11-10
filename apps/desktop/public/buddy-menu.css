@@ -1,0 +1,7 @@
+/* The right-click menu's own sheet. packages/peel/peel.css comes before it in the built
+   buddy-menu.css. The window is clear around the menu, which is drawn as Peel's popover is. The
+   padding is MARGIN in buddy-menu-view.ts, and holds the shadow. A list too long for the work area
+   scrolls inside the room the page gives it. */
+html, body { background: transparent; }
+.menu-win { display: inline-block; padding: 10px; }
+.menu-win > * { background: var(--sheet-2); border-radius: 12px; box-shadow: 0 4px 10px -4px var(--float), 0 0 0 1px var(--edge); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
