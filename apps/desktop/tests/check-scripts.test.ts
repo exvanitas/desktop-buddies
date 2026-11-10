@@ -222,33 +222,22 @@ test('taskbar-check.ps1: an overlay covers the monitor whole, or but for a 1 px 
   assert.strictEqual(covers([0, 0, 3441, 1440], 3440, 1440), null);
 });
 
-test('driver.ps1: a save dialog read showing another folder is cancelled; one that can\'t be read saves, unverified', () => {
+test('driver.ps1: with a folder, the whole path goes in the name box and Save is pressed, both through UI Automation', () => {
   const ps = read('driver.ps1');
-  assert.match(ps, /\[void\]\(Wait-Until \{ Same-Folder \(Dialog-Folder \$h\) \$folder \} 5\)/);
-  assert.match(ps, /\$navigation = if \(-not \$went\) \{ 'unverified' \} elseif \(Same-Folder \$went \$folder\) \{ 'seen' \} else \{ 'other' \}/);
-  assert.match(ps, /if \(\$navigation -ne 'other'\) \{ \$typed = \[W\]::Alive\(\$h\) -and \[W\]::SaveName\(\$h, \$a\.file\) \}/);
-  assert.match(ps, /if \(\$navigation -eq 'unverified'\) \{ Write-Host "dialog: navigation unverified/);
-  assert.match(ps, /\$cancelled = \$a\.action -eq 'cancel' -or \(\$a\.where -and -not \$typed\)\n\s*if \(\$cancelled\) \{ \[W\]::Press\(\$h, 2\) \} else \{ \[W\]::Press\(\$h, 1\) \}/);
-  assert.match(ps, /if \(\$a\.confirm -and -not \$cancelled\) \{/);
-  assert.match(ps, /navigation = \$navigation;/);
+  assert.match(ps, /\$typed = Fill-Name \$h \(Join-Path \(Folder \$a\.where\) \$a\.file\)/);
+  assert.match(ps, /\$cancelled = \$a\.action -eq 'cancel' -or \(\$a\.where -and -not \$typed\)/);
+  assert.match(ps, /elseif \(\$a\.where\) \{ if \(-not \(Press-Save \$h\)\) \{ \[W\]::Press\(\$h, 1\) \} \}/);
+  const fill = ps.slice(ps.indexOf('function Fill-Name('), ps.indexOf('function Press-Save('));
+  assert.match(fill, /AutomationIdProperty, '1001'/);
+  assert.match(fill, /\[System\.Windows\.Automation\.ValuePattern\]::Pattern/);
+  assert.match(fill, /\$value\.SetValue\(\$full\)/);
+  assert.match(fill, /return \$value\.Current\.Value -eq \$full/);
+  const save = ps.slice(ps.indexOf('function Press-Save('), ps.indexOf('function Wait-Until('));
+  assert.match(save, /AutomationIdProperty, '1'/);
+  assert.ok(save.indexOf('$button.SetFocus()') < save.indexOf('$invoke.Invoke()'), 'focus moves to Save before the click, so the name box commits');
+  assert.ok(!/SaveName|Dialog-Folder|navigation/.test(ps.slice(ps.indexOf("'dialog' {"), ps.indexOf("'find' {"))), 'no window-message typing, no folder reading');
   const hub = fs.readFileSync(new URL('hub.ts', DIR), 'utf8');
-  assert.match(hub, /if \(r\.navigation === 'other'\) \{[\s\S]*?ok\(false, `navigation failed:/);
-  assert.ok(!/navigated/.test(hub), 'the hub goes by what was read, not by a wait');
-});
-
-test('driver.ps1: the dialog\'s folder is read by the address bar\'s window class, never its words', () => {
-  const ps = read('driver.ps1');
-  const fn = ps.slice(ps.indexOf('function Dialog-Folder('), ps.indexOf('function Same-Folder('));
-  assert.match(fn, /PropertyCondition\(\$uia::ClassNameProperty, 'Address Band Root'\)/);
-  assert.match(fn, /\[System\.Windows\.Automation\.ValuePattern\]::Pattern/);
-  assert.ok(!/Address:/.test(fn), 'no English label');
-  /* the two patterns it reads with, as JavaScript reads them */
-  const rooted = new RegExp(ps.match(/\$s\.Trim\(\) -match '([^']+)'/)![1]!, 'i');
-  for (const p of ['C:\\Files\\a\\files', 'd:\\x', '\\\\server\\share']) assert.ok(rooted.test(p), p);
-  for (const p of ['Desktop', 'This PC', '', 'files', 'C:files']) assert.ok(!rooted.test(p), p);
-  const label = new RegExp(fn.match(/\$bar\.Current\.Name -match '([^']+)'/)![1]!);
-  for (const [name, path] of [['Address: C:\\Files\\a', 'C:\\Files\\a'], ['Adresse : C:\\a\\b', 'C:\\a\\b'], ['Dirección: D:\\x', 'D:\\x']]) assert.strictEqual(name!.match(label)?.[1], path, name);
-  assert.ok(!label.test('C:\\Files\\a'), 'a bare path has no label');
+  assert.ok(!/navigation\?:/.test(hub), 'the hub goes by the file, not a reading of the dialog');
 });
 
 test('pacing.ps1: its own result line is never read as an error', () => {

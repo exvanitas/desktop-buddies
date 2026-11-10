@@ -122,29 +122,21 @@ function Do-Step($action, $a) {
       if (-not $h) { return @{ found = $false } }
       Start-Sleep -Milliseconds 400
       $owner = [W]::Owner($h)
-      # With 'where', the dialog is taken to that folder first: the folder in the name box and Save,
-      # which a save dialog answers by going there. Then the name alone, so wherever the dialog
-      # started, the file can only land in that folder. A full path typed in one go once didn't take.
-      # Where it went is read from its address bar: seen there, another folder read there (then it's
-      # cancelled), or unverified when nothing could be read, which saves anyway, as the hub's check
-      # of the file itself is what decides.
-      $typed = $false; $went = ''; $boxes = ''; $navigation = ''
+      # With 'where', the file's whole path goes in the name box through UI Automation, and Save is
+      # pressed through it too. The name box only hands its text to the dialog when it loses focus,
+      # which text set by window messages and a posted OK never cause: on the runner those saved the
+      # default name in the default folder, three times.
+      $typed = $false; $boxes = ''
       if ($a.where) {
-        $folder = Folder $a.where
-        if ([W]::SaveName($h, $folder)) {
-          [W]::Press($h, 1)
-          [void](Wait-Until { Same-Folder (Dialog-Folder $h) $folder } 5)
-          $went = Dialog-Folder $h
-          $navigation = if (-not $went) { 'unverified' } elseif (Same-Folder $went $folder) { 'seen' } else { 'other' }
-          if ($navigation -ne 'other') { $typed = [W]::Alive($h) -and [W]::SaveName($h, $a.file) }
-        }
+        $typed = Fill-Name $h (Join-Path (Folder $a.where) $a.file)
         if (-not $typed) { $boxes = [W]::Edits($h) }
-        if ($navigation -eq 'unverified') { Write-Host "dialog: navigation unverified, nothing could be read from its address bar" }
       }
-      # A dialog that never reached the folder, or took no name, is cancelled: a Save there would leave
-      # a stray file and a misleading failure.
+      # A dialog that took no name is cancelled: a Save there would leave a stray file and a
+      # misleading failure.
       $cancelled = $a.action -eq 'cancel' -or ($a.where -and -not $typed)
-      if ($cancelled) { [W]::Press($h, 2) } else { [W]::Press($h, 1) }
+      if ($cancelled) { [W]::Press($h, 2) }
+      elseif ($a.where) { if (-not (Press-Save $h)) { [W]::Press($h, 1) } }
+      else { [W]::Press($h, 1) }
       # Saving over a file asks first, in a prompt of its own: Yes, pressed through UI Automation. The
       # prompt is a task dialog, which ignores a posted button command.
       $confirmed = $false
@@ -156,7 +148,7 @@ function Do-Step($action, $a) {
         }
         if (-not $confirmed) { $seen = Seen-Buttons ([int]$script:proc.Id) }
       }
-      return @{ found = $true; owner = $owner; navigation = $navigation; typed = $typed; went = $went; boxes = $boxes; cancelled = [bool]$cancelled; confirmed = $confirmed; seen = $seen }
+      return @{ found = $true; owner = $owner; typed = $typed; boxes = $boxes; cancelled = [bool]$cancelled; confirmed = $confirmed; seen = $seen }
     }
     # Where a file of this name is, in the folders a save dialog lands in, and what each holds, so a
     # save that missed says where it went. Copies outside this run's folder are its strays, and go.
@@ -218,36 +210,37 @@ function Press-Yes([int]$owner) {
   return $false
 }
 
-# A full path, without its last backslash, or '' for anything else.
-function Rooted($s) {
-  if ($s -and $s.Trim() -match '^([A-Za-z]:\\|\\\\)') { return $s.Trim().TrimEnd('\') }
-  return ''
-}
-# The folder a save dialog shows, read by structure through UI Automation: the address bar is the
-# window class "Address Band Root", which no language renames. Its edit box's value first, then any
-# toolbar in it whose name holds a full path after a label. '' when nothing could be read.
-function Dialog-Folder($h) {
+# A save dialog's name box, found by structure through UI Automation (the Edit with id 1001), with the
+# file's whole path set as its value. True when the box holds exactly that path.
+function Fill-Name($h, [string]$full) {
   $uia = [System.Windows.Automation.AutomationElement]
-  try { $top = $uia::FromHandle([IntPtr][long]$h) } catch { return '' }
-  $tree = [System.Windows.Automation.TreeScope]::Descendants
-  $band = $top.FindFirst($tree, (New-Object System.Windows.Automation.PropertyCondition($uia::ClassNameProperty, 'Address Band Root')))
-  if (-not $band) { return '' }
-  $isEdit = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
-  foreach ($box in $band.FindAll($tree, $isEdit)) {
-    $value = $null
-    if ($box.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) { $read = Rooted $value.Current.Value; if ($read) { return $read } }
-  }
-  $isBar = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolBar)
-  foreach ($bar in $band.FindAll($tree, $isBar)) {
-    if ($bar.Current.Name -match '^[^:\\]*: (.+)$') { $read = Rooted $Matches[1]; if ($read) { return $read } }
-  }
-  return ''
+  try { $top = $uia::FromHandle([IntPtr][long]$h) } catch { return $false }
+  $isBox = New-Object System.Windows.Automation.AndCondition(
+    (New-Object System.Windows.Automation.PropertyCondition($uia::AutomationIdProperty, '1001')),
+    (New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+  $box = $top.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $isBox)
+  if (-not $box) { return $false }
+  $value = $null
+  if (-not $box.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) { return $false }
+  try { $box.SetFocus() } catch {}
+  $value.SetValue($full)
+  return $value.Current.Value -eq $full
 }
-# Whether a folder read from a dialog is ours: compared without case or a last backslash, by its
-# last parts, as the temp folder may be named in its short form here and in its long one there.
-function Same-Folder($shown, $folder) {
-  if (-not $shown) { return $false }
-  return $shown.TrimEnd('\').ToLower().EndsWith(((Split-Path $tmp -Leaf) + $folder.Substring($tmp.Length)).TrimEnd('\').ToLower())
+# Save, pressed through UI Automation: focus on the button first, so the name box commits its text,
+# then the button's own click. False if there's no Save button to press.
+function Press-Save($h) {
+  $uia = [System.Windows.Automation.AutomationElement]
+  try { $top = $uia::FromHandle([IntPtr][long]$h) } catch { return $false }
+  $isSave = New-Object System.Windows.Automation.AndCondition(
+    (New-Object System.Windows.Automation.PropertyCondition($uia::AutomationIdProperty, '1')),
+    (New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))
+  $button = $top.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $isSave)
+  if (-not $button) { return $false }
+  $invoke = $null
+  if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) { return $false }
+  try { $button.SetFocus() } catch {}
+  $invoke.Invoke()
+  return $true
 }
 function Wait-Until([scriptblock]$test, $seconds) {
   $t = [Diagnostics.Stopwatch]::StartNew()

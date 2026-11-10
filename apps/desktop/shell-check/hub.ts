@@ -744,18 +744,11 @@ async function dialogs() {
     await up('asker');
     await step('plant', { where: 'files', name: 'check-owned.txt', content: 'old' });
     const p = shell.saveAs({ name: 'check-owned.txt', owner: 'asker', content: 'owned' });
-    const r = await step<{ found: boolean; owner: number; navigation?: '' | 'seen' | 'other' | 'unverified'; typed: boolean; went?: string; boxes?: string; confirmed: boolean; seen?: string }>('dialog', { action: 'ok', where: 'files', file: 'check-owned.txt', confirm: true });
+    const r = await step<{ found: boolean; owner: number; typed: boolean; boxes?: string; confirmed: boolean; seen?: string }>('dialog', { action: 'ok', where: 'files', file: 'check-owned.txt', confirm: true });
     if (!r.found) skip('no dialog could be seen on the runner');
-    /* The outcome is what counts: where the dialog went, and whether a replace prompt came up and
-       was answered, are only told. An unread address bar is navigation unverified, and the file decides. */
-    const told = `navigation ${r.navigation || 'not tried'}${r.went ? `, the dialog showed ${r.went}` : ''}; replace prompt answered: ${r.confirmed}${r.seen ? `; no Yes found, saw: ${r.seen}` : ''}`;
-    /* A dialog read showing another folder was cancelled, so nothing was saved anywhere. */
-    if (r.navigation === 'other') {
-      await Promise.race([p, sleep(5000)]);
-      await shell.windowClose('asker');
-      ok(false, `navigation failed: the dialog showed another folder, so it was cancelled (${told}${r.boxes ? `; its name boxes: ${r.boxes}` : ''})`);
-    }
-    ok(r.typed, `the folder, then the name, typed into the dialog (${told}${r.boxes ? `; its name boxes: ${r.boxes}` : ''})`);
+    /* The outcome is what counts: whether a replace prompt came up and was answered is only told. */
+    const told = `replace prompt answered: ${r.confirmed}${r.seen ? `; no Yes found, saw: ${r.seen}` : ''}`;
+    ok(r.typed, `the file's whole path set in the dialog's name box (${told}${r.boxes ? `; its name boxes: ${r.boxes}` : ''})`);
     same(await Promise.race([p, sleep(15000).then(() => 'no answer in 15 s')]), true, `the answer (${told})`);
     same(r.owner, (await facts('check-asker')).hwnd, 'the dialog\'s owner');
     /* Where every file of that name is, so a save that missed says where it landed. */
