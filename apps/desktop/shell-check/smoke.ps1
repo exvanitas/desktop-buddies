@@ -268,7 +268,7 @@ Expect 'manager.closing' (Wait-For 'the mid-command close' { (Log-Text) -match '
 Expect 'manager.closed' (Wait-For 'the window to go' { (Manager-Window) -eq 0 } 10) 'really closed, by the page, with a command in hand'
 Start-Sleep -Seconds 3
 Measure-Now 'closed-again'
-Expect 'manager.finished_without_it' (Wait-For 'the import' { (Log-Text) -match 'imported late\.buddy as probe-late' } 10)
+Expect 'manager.finished_without_it' (Wait-For 'the import' { (Log-Text) -match 'imported as probe-late' } 10)
 
 Launch-Again
 Expect 'manager.reopens' (Wait-For 'a new page' { (Page-Ups) -eq 2 -and (Manager-Window) -ne 0 } 15)
@@ -370,7 +370,7 @@ Expect 'bring.overlay_closed' ($after -match 'overlay 0 closed')
 Expect 'bring.overlay_back' ($after -match 'overlay 0 up' -and $after -match '\[0\] page up' -and $after -match 'joined overlay 0')
 Expect 'bring.same_buddy' ($after -match '(?m)brought c[a-z0-9]+\s*$' -and $after -notmatch "isn't here")
 # The two imports the probe gets refused on purpose are the only failures allowed here.
-$bad = @($mtext -split "`n" | Where-Object { $_ -match '\b(error|rejected|hub error|failed)\b' -and $_ -notmatch 'PROBE ' -and $_ -notmatch 'import failed: (broken\.buddy|Empty \(folder\)):' })
+$bad = @($mtext -split "`n" | Where-Object { $_ -match '\b(error|rejected|hub error|failed)\b' -and $_ -notmatch 'PROBE ' -and $_ -notmatch 'import failed: (not a buddy file|a page couldn''t read a file)' })
 Expect 'manager.no_errors' ($bad.Count -eq 0) (($bad | Select-Object -First 5) -join ' | ')
 Expect 'manager.no_csp' ($mtext -notmatch 'manager error csp') 'nothing the page needed was refused'
 

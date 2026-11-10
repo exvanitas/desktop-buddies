@@ -15,6 +15,7 @@ $App = (Resolve-Path $App).Path
 New-Item -ItemType Directory -Force $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 . (Join-Path $here 'win32.ps1')
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("shell-check-" + [guid]::NewGuid().ToString('n').Substring(0, 8))
 $data = Join-Path $tmp 'data'
@@ -124,13 +125,13 @@ function Do-Step($action, $a) {
       # With 'where', the full path goes in the name box, so the file lands in a known folder.
       $typed = if ($a.where) { [W]::SaveName($h, (Join-Path (Folder $a.where) $a.file)) } else { $false }
       if ($a.action -eq 'cancel') { [W]::Press($h, 2) } else { [W]::Press($h, 1) }
-      # Saving over a file asks first, in a dialog of its own: Yes.
+      # Saving over a file asks first, in a prompt of its own: Yes, pressed through UI Automation. The
+      # prompt is a task dialog, which ignores a posted button command.
       $confirmed = $false
       if ($a.confirm) {
-        for ($i = 0; $i -lt 40 -and -not $confirmed; $i++) {
+        for ($i = 0; $i -lt 50 -and -not $confirmed; $i++) {
           Start-Sleep -Milliseconds 100
-          $c = [W]::Dialog([uint32]$script:proc.Id)
-          if ($c -and $c -ne $h) { [W]::Press($c, 6); $confirmed = $true }
+          $confirmed = Press-Yes ([int]$script:proc.Id)
         }
       }
       return @{ found = $true; owner = $owner; typed = $typed; confirmed = $confirmed }
@@ -165,6 +166,24 @@ function Do-Step($action, $a) {
 }
 
 # 'files' is the driver's own folder of test files. Anything else is a folder in the data folder.
+# The Yes button on a prompt of the app's process, found by UI Automation and invoked. A task dialog's
+# Yes is CommandButton_6, a message box's is 6. True once pressed.
+function Press-Yes([int]$owner) {
+  $uia = [System.Windows.Automation.AutomationElement]
+  $ofApp = New-Object System.Windows.Automation.PropertyCondition($uia::ProcessIdProperty, $owner)
+  $isButton = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+  foreach ($top in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $ofApp)) {
+    foreach ($button in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, $isButton)) {
+      $aid = $button.Current.AutomationId
+      if ($aid -eq 'CommandButton_6' -or $aid -eq '6') {
+        $invoke = $null
+        if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) { $invoke.Invoke(); return $true }
+      }
+    }
+  }
+  return $false
+}
+
 function Folder($where) {
   if ($where -eq 'files') { return $files }
   return Join-Path $data $where
