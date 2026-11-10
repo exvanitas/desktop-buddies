@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { test } from 'vitest';
 
-const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1'] as const;
+const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1'] as const;
 const DIR = new URL('../shell-check/', import.meta.url);
 const ALL = fs.readdirSync(DIR).filter(f => f.endsWith('.ps1')).sort();
 const read = (name: string) => fs.readFileSync(new URL(name, DIR), 'utf8');
@@ -84,14 +84,14 @@ for (const name of ALL) {
   });
 }
 
-for (const name of ['smoke.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
+for (const name of ['smoke.ps1', 'api-e2e.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
   test(`${name}: an error anywhere says FAIL run.error with its line and keeps the results`, () => {
     const ps = read(name);
     assert.match(ps, /function Error-Line\(\$e\) \{[\s\S]*?" at line \$\(\$i\.ScriptLineNumber\)/);
     const trap = ps.match(/^trap \{\n([\s\S]*?)\n\}/m);
     assert.ok(trap, 'a trap at the top');
     assert.match(trap[1]!, /\$msg = "FAIL run\.error \$\(Error-Line \$_\)"/);
-    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion)\.txt'\)/);
+    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e)\.txt'\)/);
     assert.match(trap[1]!, /\n  break$/);
     /* defined before anything that can throw */
     assert.ok(ps.indexOf('function Error-Line') < ps.indexOf('. (Join-Path'), 'Error-Line comes first');
@@ -220,4 +220,33 @@ test('taskbar-check.ps1: an overlay covers the monitor whole, or but for a 1 px 
   assert.strictEqual(covers([0, 0, 3439, 1439], 3440, 1440), null);
   assert.strictEqual(covers([0, 0, 3440, 1438], 3440, 1440), null);
   assert.strictEqual(covers([0, 0, 3441, 1440], 3440, 1440), null);
+});
+
+test('driver.ps1: a save dialog read showing another folder is cancelled; one that can\'t be read saves, unverified', () => {
+  const ps = read('driver.ps1');
+  assert.match(ps, /\[void\]\(Wait-Until \{ Same-Folder \(Dialog-Folder \$h\) \$folder \} 5\)/);
+  assert.match(ps, /\$navigation = if \(-not \$went\) \{ 'unverified' \} elseif \(Same-Folder \$went \$folder\) \{ 'seen' \} else \{ 'other' \}/);
+  assert.match(ps, /if \(\$navigation -ne 'other'\) \{ \$typed = \[W\]::Alive\(\$h\) -and \[W\]::SaveName\(\$h, \$a\.file\) \}/);
+  assert.match(ps, /if \(\$navigation -eq 'unverified'\) \{ Write-Host "dialog: navigation unverified/);
+  assert.match(ps, /\$cancelled = \$a\.action -eq 'cancel' -or \(\$a\.where -and -not \$typed\)\n\s*if \(\$cancelled\) \{ \[W\]::Press\(\$h, 2\) \} else \{ \[W\]::Press\(\$h, 1\) \}/);
+  assert.match(ps, /if \(\$a\.confirm -and -not \$cancelled\) \{/);
+  assert.match(ps, /navigation = \$navigation;/);
+  const hub = fs.readFileSync(new URL('hub.ts', DIR), 'utf8');
+  assert.match(hub, /if \(r\.navigation === 'other'\) \{[\s\S]*?ok\(false, `navigation failed:/);
+  assert.ok(!/navigated/.test(hub), 'the hub goes by what was read, not by a wait');
+});
+
+test('driver.ps1: the dialog\'s folder is read by the address bar\'s window class, never its words', () => {
+  const ps = read('driver.ps1');
+  const fn = ps.slice(ps.indexOf('function Dialog-Folder('), ps.indexOf('function Same-Folder('));
+  assert.match(fn, /PropertyCondition\(\$uia::ClassNameProperty, 'Address Band Root'\)/);
+  assert.match(fn, /\[System\.Windows\.Automation\.ValuePattern\]::Pattern/);
+  assert.ok(!/Address:/.test(fn), 'no English label');
+  /* the two patterns it reads with, as JavaScript reads them */
+  const rooted = new RegExp(ps.match(/\$s\.Trim\(\) -match '([^']+)'/)![1]!, 'i');
+  for (const p of ['C:\\Files\\a\\files', 'd:\\x', '\\\\server\\share']) assert.ok(rooted.test(p), p);
+  for (const p of ['Desktop', 'This PC', '', 'files', 'C:files']) assert.ok(!rooted.test(p), p);
+  const label = new RegExp(fn.match(/\$bar\.Current\.Name -match '([^']+)'/)![1]!);
+  for (const [name, path] of [['Address: C:\\Files\\a', 'C:\\Files\\a'], ['Adresse : C:\\a\\b', 'C:\\a\\b'], ['Dirección: D:\\x', 'D:\\x']]) assert.strictEqual(name!.match(label)?.[1], path, name);
+  assert.ok(!label.test('C:\\Files\\a'), 'a bare path has no label');
 });

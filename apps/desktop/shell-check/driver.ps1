@@ -122,21 +122,52 @@ function Do-Step($action, $a) {
       if (-not $h) { return @{ found = $false } }
       Start-Sleep -Milliseconds 400
       $owner = [W]::Owner($h)
-      # With 'where', the full path goes in the name box, so the file lands in a known folder.
-      $typed = if ($a.where) { [W]::SaveName($h, (Join-Path (Folder $a.where) $a.file)) } else { $false }
-      if ($a.action -eq 'cancel') { [W]::Press($h, 2) } else { [W]::Press($h, 1) }
+      # With 'where', the dialog is taken to that folder first: the folder in the name box and Save,
+      # which a save dialog answers by going there. Then the name alone, so wherever the dialog
+      # started, the file can only land in that folder. A full path typed in one go once didn't take.
+      # Where it went is read from its address bar: seen there, another folder read there (then it's
+      # cancelled), or unverified when nothing could be read, which saves anyway, as the hub's check
+      # of the file itself is what decides.
+      $typed = $false; $went = ''; $boxes = ''; $navigation = ''
+      if ($a.where) {
+        $folder = Folder $a.where
+        if ([W]::SaveName($h, $folder)) {
+          [W]::Press($h, 1)
+          [void](Wait-Until { Same-Folder (Dialog-Folder $h) $folder } 5)
+          $went = Dialog-Folder $h
+          $navigation = if (-not $went) { 'unverified' } elseif (Same-Folder $went $folder) { 'seen' } else { 'other' }
+          if ($navigation -ne 'other') { $typed = [W]::Alive($h) -and [W]::SaveName($h, $a.file) }
+        }
+        if (-not $typed) { $boxes = [W]::Edits($h) }
+        if ($navigation -eq 'unverified') { Write-Host "dialog: navigation unverified, nothing could be read from its address bar" }
+      }
+      # A dialog that never reached the folder, or took no name, is cancelled: a Save there would leave
+      # a stray file and a misleading failure.
+      $cancelled = $a.action -eq 'cancel' -or ($a.where -and -not $typed)
+      if ($cancelled) { [W]::Press($h, 2) } else { [W]::Press($h, 1) }
       # Saving over a file asks first, in a prompt of its own: Yes, pressed through UI Automation. The
       # prompt is a task dialog, which ignores a posted button command.
       $confirmed = $false
       $seen = ''
-      if ($a.confirm) {
+      if ($a.confirm -and -not $cancelled) {
         for ($i = 0; $i -lt 50 -and -not $confirmed; $i++) {
           Start-Sleep -Milliseconds 100
           $confirmed = Press-Yes ([int]$script:proc.Id)
         }
         if (-not $confirmed) { $seen = Seen-Buttons ([int]$script:proc.Id) }
       }
-      return @{ found = $true; owner = $owner; typed = $typed; confirmed = $confirmed; seen = $seen }
+      return @{ found = $true; owner = $owner; navigation = $navigation; typed = $typed; went = $went; boxes = $boxes; cancelled = [bool]$cancelled; confirmed = $confirmed; seen = $seen }
+    }
+    # Where a file of this name is, in the folders a save dialog lands in, and what each holds, so a
+    # save that missed says where it went. Copies outside this run's folder are its strays, and go.
+    'find' {
+      $places = @($files, [Environment]::GetFolderPath('MyDocuments'), [Environment]::GetFolderPath('Desktop'), (Join-Path $env:USERPROFILE 'Downloads'), $data)
+      $hits = @($places | ForEach-Object { Join-Path $_ $a.file } | Where-Object { Test-Path -LiteralPath $_ })
+      if (-not $hits.Count) { $hits = @(Get-ChildItem $env:USERPROFILE -Recurse -Filter $a.file -ErrorAction SilentlyContinue | Select-Object -First 5 | ForEach-Object FullName) }
+      $found = @($hits | ForEach-Object { [ordered]@{ path = $_; content = (Get-Content -Raw -LiteralPath $_) } })
+      $run = (Split-Path $tmp -Leaf).ToLower()
+      foreach ($x in $found) { if (-not $x.path.ToLower().Contains($run)) { Remove-Item -LiteralPath $x.path } }
+      return @{ found = $found }
     }
     # A file to save over, marked with an attribute a plain rename wouldn't keep.
     'plant' {
@@ -184,6 +215,43 @@ function Press-Yes([int]$owner) {
       }
     }
   }
+  return $false
+}
+
+# A full path, without its last backslash, or '' for anything else.
+function Rooted($s) {
+  if ($s -and $s.Trim() -match '^([A-Za-z]:\\|\\\\)') { return $s.Trim().TrimEnd('\') }
+  return ''
+}
+# The folder a save dialog shows, read by structure through UI Automation: the address bar is the
+# window class "Address Band Root", which no language renames. Its edit box's value first, then any
+# toolbar in it whose name holds a full path after a label. '' when nothing could be read.
+function Dialog-Folder($h) {
+  $uia = [System.Windows.Automation.AutomationElement]
+  try { $top = $uia::FromHandle([IntPtr][long]$h) } catch { return '' }
+  $tree = [System.Windows.Automation.TreeScope]::Descendants
+  $band = $top.FindFirst($tree, (New-Object System.Windows.Automation.PropertyCondition($uia::ClassNameProperty, 'Address Band Root')))
+  if (-not $band) { return '' }
+  $isEdit = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
+  foreach ($box in $band.FindAll($tree, $isEdit)) {
+    $value = $null
+    if ($box.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)) { $read = Rooted $value.Current.Value; if ($read) { return $read } }
+  }
+  $isBar = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolBar)
+  foreach ($bar in $band.FindAll($tree, $isBar)) {
+    if ($bar.Current.Name -match '^[^:\\]*: (.+)$') { $read = Rooted $Matches[1]; if ($read) { return $read } }
+  }
+  return ''
+}
+# Whether a folder read from a dialog is ours: compared without case or a last backslash, by its
+# last parts, as the temp folder may be named in its short form here and in its long one there.
+function Same-Folder($shown, $folder) {
+  if (-not $shown) { return $false }
+  return $shown.TrimEnd('\').ToLower().EndsWith(((Split-Path $tmp -Leaf) + $folder.Substring($tmp.Length)).TrimEnd('\').ToLower())
+}
+function Wait-Until([scriptblock]$test, $seconds) {
+  $t = [Diagnostics.Stopwatch]::StartNew()
+  do { if (& $test) { return $true }; Start-Sleep -Milliseconds 100 } while ($t.Elapsed.TotalSeconds -lt $seconds)
   return $false
 }
 

@@ -152,10 +152,30 @@ public static class W {
   [DllImport("user32")] static extern IntPtr GetParent(IntPtr h);
   [DllImport("user32", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, string l);
   [DllImport("user32", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr h, uint m, IntPtr w, StringBuilder l);
-  /* Types a full path into a save dialog's name box, an Edit in a ComboBox. False if there isn't one. */
+  [DllImport("user32")] static extern int GetDlgCtrlID(IntPtr h);
+  [DllImport("user32")] static extern bool IsWindow(IntPtr h);
+  public static bool Alive(long h) { return IsWindow(new IntPtr(h)); }
+  /* A save dialog's name box: the Edit with control id 1001, as in every save dialog since Vista.
+     The first shown Edit in a ComboBox can be the address bar's own, so that is only the fallback. */
+  static IntPtr NameBox(IntPtr dialog) {
+    IntPtr byId = IntPtr.Zero, first = IntPtr.Zero;
+    EnumChildWindows(dialog, (h, l) => {
+      if (Class(h) != "Edit" || !IsWindowVisible(h)) return true;
+      if (GetDlgCtrlID(h) == 1001) { byId = h; return false; }
+      if (first == IntPtr.Zero && Class(GetParent(h)) == "ComboBox") first = h;
+      return true;
+    }, IntPtr.Zero);
+    return byId != IntPtr.Zero ? byId : first;
+  }
+  /* Every shown Edit in a dialog, as id:its parent's class, to say which one a typed name missed. */
+  public static string Edits(long dialog) {
+    var seen = new List<string>();
+    EnumChildWindows(new IntPtr(dialog), (h, l) => { if (Class(h) == "Edit" && IsWindowVisible(h)) seen.Add(GetDlgCtrlID(h) + ":" + Class(GetParent(h))); return true; }, IntPtr.Zero);
+    return string.Join(" ", seen);
+  }
+  /* Types a path or a name into a save dialog's name box. False if there isn't one, or it didn't take. */
   public static bool SaveName(long dialog, string path) {
-    IntPtr found = IntPtr.Zero;
-    EnumChildWindows(new IntPtr(dialog), (h, l) => { if (Class(h) == "Edit" && Class(GetParent(h)) == "ComboBox" && IsWindowVisible(h)) { found = h; return false; } return true; }, IntPtr.Zero);
+    IntPtr found = NameBox(new IntPtr(dialog));
     if (found == IntPtr.Zero) return false;
     SendMessageW(found, 0x0C, IntPtr.Zero, path); /* WM_SETTEXT */
     var s = new StringBuilder(1024); SendMessageW(found, 0x0D, new IntPtr(1024), s); /* WM_GETTEXT */

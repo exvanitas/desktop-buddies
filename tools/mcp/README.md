@@ -42,4 +42,4 @@ In `%APPDATA%\Claude\claude_desktop_config.json`, then restart Claude Desktop:
 - Calls go one at a time: each waits for the one before, up to the timeout.
 
 ## Tests
-`pnpm test` from the repository root runs `tests/server.test.mjs`, against a stand-in exe.
+`pnpm test` from the repository root runs `tests/server.test.mjs`, against a stand-in exe. `tests/drive.mjs` is a small MCP host that the Windows end-to-end run uses against the real exe, and `tests/drive.test.mjs` runs it against the stand-in.

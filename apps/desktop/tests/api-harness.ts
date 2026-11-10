@@ -1,6 +1,8 @@
 /* The local API's test harness: the real hub on the fake exe, a page on the wire, and a clock the
    test moves. Shared by the local API's test files. */
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { read, type Buddy } from '@buddies/buddy-file';
 import { replyPath } from '../src/api-replies';
 import type { Message } from '../src/host';
@@ -11,7 +13,8 @@ import { text, type Monitor } from '../src/shell';
 import { createFakeExe, type FakeExe, type FakeOptions } from '../src/shell-fake';
 import { createBus } from '../src/wire';
 
-export const SAMPLE = fs.readFileSync(new URL('../../../packages/test-support/fixtures/sample.json', import.meta.url), 'utf8');
+/* By path, not URL: a page's own URL class stands in for Node's under happy-dom, and fs refuses it. */
+export const SAMPLE = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../packages/test-support/fixtures/sample.json'), 'utf8');
 export const SAMPLE_ID = read(SAMPLE).character!;
 export const box = { x0: 0, y0: 0, x1: 1, y1: 1 };
 export const small = (character: string, name = 'Pip'): Buddy => ({ character, name, base: { src: 'base.png', bb: box }, poses: {} });
@@ -56,7 +59,9 @@ export async function setup(o: FakeOptions = {}, prepare?: (e: FakeExe) => Promi
     await launch({ v: 1, id, app, ...body });
     return replyTo(id);
   };
-  return { exe, hub, sent, timers, clock, done, command, launch, replyTo, ask, get state() { return state!; } };
+  /* Another page on the hub's wire, for a real Manager view. */
+  const wire = () => bus.wire();
+  return { exe, hub, sent, timers, clock, done, command, launch, replyTo, ask, wire, get state() { return state!; } };
 }
 export type Run = Awaited<ReturnType<typeof setup>>;
 export const managerOpens = (exe: FakeExe) => exe.calls.filter(c => c.cmd === 'window_open' && (c.args as { spec: { label: string } }).spec.label === 'manager').length;

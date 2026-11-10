@@ -10,7 +10,7 @@
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:browser": "pnpm build && node apps/maker/tests/browser/run.mjs",
-    "test:manager": "pnpm --filter @buddies/desktop build && node apps/desktop/tests/browser/run.mjs",
+    "test:manager": "pnpm --filter @buddies/desktop build && node apps/desktop/tests/browser/run.mjs && node apps/desktop/tests/browser/probe-overlay.mjs",
     "test:maker-view": "node packages/maker-view/tests/browser/run.mjs",
     "typecheck": "pnpm -r typecheck",
     "validate-buddy": "node packages/validate-buddy/bin/validate-buddy.mjs"

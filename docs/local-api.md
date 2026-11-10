@@ -78,7 +78,7 @@ A request with no usable `id`, or too big to read, gets no reply.
 - 60 requests a minute from everyone, since names are free. At most 256 counters are kept at once, and expired ones go on every request.
 - Limits go by a monotonic clock, so moving the PC's clock changes nothing.
 - The replies folder never holds more than 64 replies: see below.
-- The log says what was asked and what came of it, never the app or the words. The exe itself logs every second launch's arguments, so a request does appear in its own log line. That's the frozen exe, and the log stays in the data folder.
+- The log says what was asked and what came of it, never the app or the words. The exe logs a second launch as counts and its own flag names only (API 2). The old frozen exe (API 1) logged every second launch's arguments, so with it a request does appear in its own log line; that log stays in the data folder.
 
 ## Reply slots
 - A reply's slot is FNV-1a (32-bit, offset basis `0x811c9dc5`, prime `0x01000193`) over the id's characters, which are all ASCII, mod 64, written as two digits: `api/replies/07.json`. `slotOf` in `api-replies.ts` and in `tools/mcp/server.mjs` agree, and a test checks it.
@@ -93,6 +93,14 @@ Paths or files, import, export or delete, settings, autostart or the exclude lis
 
 ## The MCP server
 `tools/mcp/server.mjs`, a small stdio server with tools `list_buddies`, `wave` and `say`. It reads input as bytes and handles one message at a time, with input paused meanwhile, so nothing piles up. A message can be at most 64 KB as bytes, not counting its line end, and a longer one is refused as soon as it's past that and skipped. Ids must be a short string or a number. If writing to the host fails, it stops with exit code 1. Its reply deadline is monotonic. See [its README](../tools/mcp/README.md).
+
+## Checked end to end
+`apps/desktop/shell-check/api-e2e.ps1` runs in `shell.yml` after the smoke run, on GitHub's Windows runner. Its own copy of the app has `api-probe.js` added to the Manager and the overlays. Every request is a real second launch, and every reply is read from its slot and checked against the fields above.
+- A cold start answers `not-running` and quits. On a fresh data folder every request is `off`, and no Manager opens.
+- The Manager is opened as the person opens it, and the probe clicks its own buttons when the script writes it a task in `e2e/`: the setting, Allow, Not now, Pause, Hide all, Remove. The answers are read back from `settings.json`.
+- What she shows is read from the overlay, and only once the browser itself says it can be seen: animations ended, `checkVisibility` with opacity and visibility, a size, inside the window. A line counts when her bubble and her decoded image both pass, compared as UTF-8 bytes; a wave when a decoded image of her wave pose does. A WebView2 with no `checkVisibility` tells nothing, so the check fails. `pnpm test:manager` runs these judgments in a real headless browser too (`tests/browser/probe-overlay.mjs`).
+- The MCP server runs with node on stdio, pointed at the real exe, driven by `tools/mcp/tests/drive.mjs`, one message at a time.
+- Last, two requests for each of the 64 slots: each ends up holding its newest reply, and nothing else is in the folder.
 
 ## With the next exe
 - A localhost-only HTTP endpoint on 127.0.0.1, on a random port written to the data folder, with a per-install token on every request, a Host header check and no CORS, so web pages can't call it.

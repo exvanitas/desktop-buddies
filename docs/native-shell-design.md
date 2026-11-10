@@ -150,6 +150,7 @@ On API 2 the hub just opens the Manager or focuses it, which restores it, and th
 1. `cargo test`, and a release build.
 2. **The contract check.** `apps/desktop/shell-check` is a small app folder whose hub calls every command through the app's real client and logs results, and a PowerShell driver does what a page can't: read window styles, move a real window, change the work area, launch a second instance, read the registry. There is no test code in the exe.
 3. **A smoke run.** The built `app` folder beside the exe, a fresh `--data-dir`, `--seconds`, then judged from the log: no errors, library seeded, an overlay up, a clean exit. It finds the buddy with the real cursor and drags her, so the hit test runs on library images.
+4. **The local API end to end.** `api-e2e.ps1`: real `--api` second launches and the MCP server over stdio against the real app, with the Manager's answers given by its own buttons and what she shows read from the overlay. See [local-api.md](local-api.md#checked-end-to-end).
 
 Only native changes start it. To try a new app folder or check on the existing exe, run the workflow by hand with `reuse`.
 

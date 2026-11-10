@@ -108,6 +108,11 @@ jobs:
         shell: pwsh
         run: apps/desktop/shell-check/smoke.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 
+      - name: Local API end to end
+        if: success() || failure()
+        shell: pwsh
+        run: apps/desktop/shell-check/api-e2e.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
