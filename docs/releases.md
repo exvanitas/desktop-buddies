@@ -1,6 +1,6 @@
 # Releases
 
-Releases are `.exe` builds attached to the repo's GitHub releases: the exe and its `app` folder in one zip, built and packed by `.github/workflows/release.yml`. No buddies are included. Signing starts once the repo is public; until then, builds are unsigned.
+Releases are `.exe` builds attached to the repo's GitHub releases: the exe and its `app` folder in one zip, built and packed by `.github/workflows/release.yml`. No buddies are included. Signing through SignPath is applied for; until it's in place, builds are unsigned.
 
 ## Code signing policy
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).

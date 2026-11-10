@@ -12,9 +12,9 @@ Free and open source. See [CHANGELOG.md](CHANGELOG.md) for what's in each versio
 ## Download and run
 Windows 10 or 11, 64-bit.
 
-Downloads are coming: `.exe` builds attached to this repository's GitHub releases, signed through SignPath once the repo is public (see the code signing policy in [docs/releases.md](docs/releases.md)). Until then, build it from source, below.
+Download the zip from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Releases aren't signed yet; signing through SignPath is applied for (see the code signing policy in [docs/releases.md](docs/releases.md)). You can also build it from source, below.
 
-1. Unzip the whole release folder somewhere you'll keep it, like Documents. Keep the `app` folder next to `desktop-buddies.exe`.
+1. Unzip the whole folder somewhere you'll keep it, like Documents. Keep the `app` folder next to `desktop-buddies.exe`.
 2. Double-click `desktop-buddies.exe`. The Manager opens on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
 
 To remove it, quit from the tray and delete the folder. Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`, which you can delete too.
