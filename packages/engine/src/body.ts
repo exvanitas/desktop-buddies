@@ -195,16 +195,13 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     jump(-vy, P.dir * Math.max(span(reach.leapOut) * k, (bw() / 2 + 4 * k) / Math.max(1, frames)));
   }
 
-  /* How many times she's been put somewhere rather than gone there: a drawing doesn't carry across. */
-  let placed = 0;
   /* The one way to lose your footing, whatever took the ground away. */
   function fall() { leaving(here()); P.on = null; P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; emit('lost'); }
   /* Nothing below and nowhere to land: back above the nearest screen, and let it fall. */
   function recover() {
-    placed++;
     const home = terrain.nearest(P), r = home.rect;
     P.home = home.id; P.k = home.scale; P.on = null;
-    P.x = clamp(P.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh();
+    P.x = clamp(P.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh(); P.placed++;
     P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; P.aim = null; P.next = null; P.pierce = false; P.bound = { id: home.id, up: false };
     P.ease = { n: 0 };
     emit('lost');
@@ -344,7 +341,10 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     const s = terrain.surfaceById(P.on.surface.id), rect = s && terrain.rectById(s.owner);
     if (!s || rect!.kind !== 'screen') return;
     const m = s.kind === 'floor' ? bw() / 2 : wallExt();
+    const x = P.x, y = P.y;
     P.on = { surface: s, t: clamp(P.on.t, m, len(s) - m) }; settle();
+    /* the world changes whenever a window does: only a refit that moved her placed her */
+    if (P.x !== x || P.y !== y) P.placed++;
   }
 
   const moves: Record<string, () => void> = {
@@ -355,7 +355,7 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     /* a leap, not a throw: it shows Jump and Fall, and catches what it meets as a throw does */
     ceilGo() { P.dir = random() < .5 ? -1 : 1; const c = terrain.ceilingAbove(P), top = c ? c.at : zone().y; jump(-Math.sqrt(2 * GRAV * P.k * (P.y - top)) * 1.08, P.dir * between(.5, 1.5) * P.k); P.catches = true; },
     drop() {
-      if (P.surf === 'floor') { const r = zone(); P.on = null; P.bound = { id: P.home, up: false }; P.y = r.y - bh() * .2; P.x = clamp(P.x, r.x + bw(), r.x + r.w - bw()); P.vx = 0; P.vy = 0; P.thrown = P.catches = P.hard = false; emit('airborne'); }
+      if (P.surf === 'floor') { const r = zone(); P.on = null; P.bound = { id: P.home, up: false }; P.y = r.y - bh() * .2; P.x = clamp(P.x, r.x + bw(), r.x + r.w - bw()); P.placed++; P.vx = 0; P.vy = 0; P.thrown = P.catches = P.hard = false; emit('airborne'); }
       else if (P.surf !== 'air') dropDown();
     }
   };
@@ -364,10 +364,9 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   /* Brought to the screen under a point, from wherever she was: just over its top at that x, falling
      with nothing thrown and nothing waiting for her landing. */
   function bring(at: Point) {
-    placed++;
     const home = terrain.home(at), r = home.rect;
     P.home = home.id; P.k = home.scale; P.on = null; P.bound = { id: home.id, up: false };
-    P.x = clamp(at.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh() * .2;
+    P.x = clamp(at.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh() * .2; P.placed++;
     P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; P.aim = null; P.next = null; P.pierce = false;
     P.ease = { n: 0 };
     emit('airborne');
@@ -375,11 +374,11 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   /* A new buddy arrives above the primary screen. */
   function arrive() {
     const home = terrain.primary(); P.home = home.id; P.k = home.scale; P.bound = { id: home.id, up: false };
-    P.x = home.rect.x + home.rect.w * between(.25, .75); P.y = home.rect.y - between(0, 200) * P.k; P.vy = 2 * P.k;
+    P.x = home.rect.x + home.rect.w * between(.25, .75); P.y = home.rect.y - between(0, 200) * P.k; P.vy = 2 * P.k; P.placed++;
   }
 
   return {
-    moves, arrive, bring, place, footing, fit, fly, drawnAt, hops, walks, free, hopFor, setOff, placed: () => placed,
+    moves, arrive, bring, place, footing, fit, fly, drawnAt, hops, walks, free, hopFor, setOff,
     bw, bh, wallExt, here, onSurface, settle, blocked, len, linkAt, cross, round, zone, floorY, stretch, move, jump,
     stackedBelow: floorBelowMe, stackedAbove: roofOverMe
   };

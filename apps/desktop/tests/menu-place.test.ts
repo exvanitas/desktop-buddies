@@ -96,7 +96,7 @@ test('anywhere she is, at any scale, on either monitor: inside the work area and
 });
 
 const frame = (box: PetFrame['box'], body: string | null = null): PetFrame =>
-  ({ id: 'a', size: '1', src: 'x', origin: null, body, grab: false, off: false, box, tf: null, bubble: null as never, tag: null as never });
+  ({ id: 'a', size: '1', src: 'x', origin: null, body, grab: false, stage: '', parts: null, off: false, box, tf: null, bubble: null as never, tag: null as never });
 
 /* Overlays cover their monitor less one line across from the taskbar, taskbar and all, so the
    overlay's CSS pixels start at that window's corner, not the work area's. These have a taskbar along

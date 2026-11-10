@@ -290,6 +290,41 @@ test('brought somewhere, she is drawn as she is there, not as she was', () => {
   assert.ok(Math.abs(d.rot) <= .5, `still drawn turned ${d.rot.toFixed(1)} degrees`);
 });
 
+/* Every placing, not only a call or a find: dropped in at the top from where she lay, a buddy whose
+   lying and falling pictures are both her main image is drawn as she is there. */
+test('dropped in at the top, she is drawn as she is there, not as she was', () => {
+  const { w, pet } = plain();
+  rest(pet); w.run(4); pet.go('trip'); w.run(12);
+  assert.ok(Math.abs(look(pet).rot) > 80, 'flat on her face');
+  const placed = pet.P.placed;
+  pet.act('drop'); w.frame();
+  assert.strictEqual(pet.P.placed, placed + 1, 'a placing');
+  const d = look(pet);
+  assert.ok(Math.abs(d.rot) <= 26, `still drawn turned ${d.rot.toFixed(1)} degrees, more than her flight leans`);
+});
+
+/* The one count of placings: what bumps it, and what doesn't. */
+test('she is counted placed when called, found lost, dropped in, moved by a refit or let go, and never by moving, leaving a wall included', () => {
+  const { w, pet } = plain();
+  rest(pet); w.run(4);
+  const n = () => pet.P.placed;
+  let was = n();
+  pet.go('walk'); pet.P.dur = 1e9; w.run(60); pet.go('sit'); w.run(30);
+  assert.strictEqual(n(), was, 'walking and sitting down');
+  pet.bring({ x: 300, y: 100 }); assert.strictEqual(n(), ++was, 'called');
+  w.run(200);
+  pet.act('drop'); assert.strictEqual(n(), ++was, 'dropped in');
+  w.run(200);
+  pet.pressed(pet.P.x, pet.P.y - 40); pet.moved(pet.P.x + 30, pet.P.y - 40); w.frame(); pet.released(); assert.strictEqual(n(), ++was, 'let go');
+  w.run(200);
+  w.sim.setRects([screen('s', 0, 0, 1600, 900)]); assert.strictEqual(n(), was, 'a refit that left her where she was');
+  w.sim.setRects([screen('s', 40, 0, 1560, 900)]); assert.strictEqual(n(), ++was, 'a refit that moved her: her floor moved under her');
+  w.run(200);
+  pet.act('climbGo'); for (let i = 0; i < 3000 && pet.P.surf !== 'left' && pet.P.surf !== 'right'; i++) w.frame();
+  assert.ok(pet.P.surf === 'left' || pet.P.surf === 'right', 'on a wall');
+  was = n(); pet.act('drop'); assert.strictEqual(n(), was, 'stepping off a wall is drawn as a move, not a placing');
+});
+
 test('a fallback trip into her own Sit art draws the sitting picture upright at once', () => {
   const { w, pet } = onFloor(BUDDY('a', { poses: { sit: art('sit', 1, 3, { x0: .2, y0: .3, x1: .8, y1: 1 }) } as BuddyData['poses'] }));
   rest(pet); w.run(4); pet.go('trip'); w.run(12);

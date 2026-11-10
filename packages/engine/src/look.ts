@@ -6,7 +6,7 @@ import { eased, norm, swingOf, type Away, type Corner, type Easing, type Size } 
 import type { Body } from './body';
 import type { Character, PetState } from './state';
 import { BUBBLE, bubbleSize, type Voice } from './voice';
-import type { ParticleKind, ParticleOptions, PetFrame, Viewport, WorldState } from './world';
+import { bodyOf, type BodyParts, type ParticleKind, type ParticleOptions, type PetFrame, type Viewport, type WorldState } from './world';
 
 /* a pose worked out through its fallbacks */
 interface Resolved { key: PoseKey | null; frames: ImageFrame[]; fps: number; scale: number; bb: ContentBox; exact: boolean; custom: boolean }
@@ -25,9 +25,9 @@ export const LIFT_FROM: Readonly<Record<SurfaceKind, keyof Lift>> = { floor: 'fl
 const FOLLOWS: Readonly<Record<string, readonly PoseKey[]>> = { swing: ['drag', 'dragL', 'dragR'], tumble: ['roll'] };
 function union(a: ContentBox | null, b: ContentBox): ContentBox { if (!a) return b; if (!b) return a; return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }; }
 
-export function createLook(world: WorldState, me: Character, P: PetState, { bubble }: Voice, { here, zone, drawnAt, placed }: Pick<Body, 'here' | 'zone' | 'drawnAt' | 'placed'>) {
+export function createLook(world: WorldState, me: Character, P: PetState, { bubble }: Voice, { here, zone, drawnAt }: Pick<Body, 'here' | 'zone' | 'drawnAt'>) {
   /* what the last render worked out, for frames to carry */
-  const drawn = { px: 0, size: null as string | null, ox: 0, oy: 0, cx: 0, ay: 0, origin: null as string | null, body: null as string | null, src: null as string | null, grab: false };
+  const drawn = { px: 0, size: null as string | null, ox: 0, oy: 0, cx: 0, ay: 0, origin: null as string | null, body: null as string | null, src: null as string | null, grab: false, stage: '', parts: null as BodyParts | null };
   const tag = { text: '', hidden: false, placed: false, x: 0, y: 0 };
   const geo = { cx: 0, cy: 0, ux: 0, uy: -1, ch: 0, cw: 0, top: 0, ext: 0 };
   const cache = new Map<string, Resolved>();
@@ -98,12 +98,14 @@ export function createLook(world: WorldState, me: Character, P: PetState, { bubb
        any easing; then a move being eased draws her middle and whole turn, those final values
        included, from where she was last drawn. Each has its own part, so a turn isn't counted twice. */
     const flip = face === me.natural ? 1 : -1;
-    handOn(A, `${entry} ${anim || ''}`, `${r.key} ${P.state === 'held'} ${cxU} ${oy} ${rot} ${k} ${placed()}`, flip, dt);
+    handOn(A, `${entry} ${anim || ''}`, `${r.key} ${P.state === 'held'} ${cxU} ${oy} ${rot} ${k} ${P.placed}`, flip, dt);
     ({ ox, oyS, rot } = moving(ox, oyS, rot, A, { x: (bb.x0 + bb.x1) / 2 * Sz - cxU, y: (bb.y0 + bb.y1) / 2 * Sz - oy }, flip, { w: cw * Math.abs(A.sx) * k, h: ch * A.sy * k, k }));
     drawn.px = Sz; drawn.size = Sz + 'px'; drawn.ox = ox; drawn.oy = oyS; drawn.cx = cxU; drawn.ay = oy;
     drawn.origin = `${cxU.toFixed(1)}px ${oy.toFixed(1)}px`;
-    drawn.body = `rotate(${rot}deg) translate(${A.dx.toFixed(1)}px,${A.dy.toFixed(1)}px) translateY(${-A.pivot}px) rotate(${A.rot.toFixed(1)}deg) translateY(${A.pivot}px) scale(${(A.sx * flip).toFixed(3)},${A.sy.toFixed(3)})`;
+    drawn.parts = { turn: rot, dx: A.dx, dy: A.dy, pivot: A.pivot, rot: A.rot, sx: A.sx * flip, sy: A.sy };
+    drawn.body = bodyOf(drawn.parts);
     drawn.grab = P.state === 'held';
+    drawn.stage = `${P.placed} ${P.state} ${pose}`;
 
     /* geometry for effects & labels */
     const cyRel = ((bb.y0 + bb.y1) / 2 * Sz - oy) * k, a = rot * DEG;
@@ -178,7 +180,7 @@ export function createLook(world: WorldState, me: Character, P: PetState, { bubb
        apparent size, so it doesn't pop when it crosses between scalings. */
     const off = vp.w !== undefined && (drawn.size === null || l + drawn.px * 1.5 < 0 || l - drawn.px * .5 > vp.w || t + drawn.px * 1.5 < 0 || t - drawn.px * .5 > vp.h!);
     return {
-      id: me.data.id, size: drawn.size, src: drawn.src, origin: drawn.origin, body: drawn.body, grab: drawn.grab, off,
+      id: me.data.id, size: drawn.size, src: drawn.src, origin: drawn.origin, body: drawn.body, grab: drawn.grab, stage: drawn.stage, parts: drawn.parts, off,
       box: { l, t, size: drawn.px, ox: drawn.cx, oy: drawn.ay },
       tf: drawn.size === null ? null : `translate(${l.toFixed(1)}px,${t.toFixed(1)}px)`,
       bubble: { text: bubble.text, ...(bubble.from ? { from: bubble.from } : {}), hidden: bubble.hidden || off, pop: bubble.pop, below: bubble.below, tf: bubble.placed ? `translate(${px(bubble.x, vp.x, s)}px,${px(bubble.y, vp.y, s)}px) ${bubble.below ? 'translate(-50%,0)' : 'translate(-50%,-100%)'}` : null,

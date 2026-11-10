@@ -967,6 +967,13 @@
         "hard-mixed",
         "acts-wall-mixed"
       ]
+    },
+    {
+      "why": "Animation audit item 3's placing count, made the one count of placings on the combined engine: an animation's hand-on doesn't carry across any placing, not only a call or a find. Dropped in at the top from where she stood, a buddy whose standing and falling pictures are both her main image is drawn as she is there, not handing on from how she stood. Exactly these traces move, against the combined engine with the look's own count, each first at the frame of such a drop (frame 6019 and frame 880), and only for the hand-on's 8 frames each time: 16 and 12 frames in all. Leaving a wall or the ceiling is drawn as an eased move, so it isn't a placing and moves no trace.",
+      "scenarios": [
+        "acts-floor-plain",
+        "everyone-acts"
+      ]
     }
   ]
 }

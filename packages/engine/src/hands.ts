@@ -49,7 +49,7 @@ export function createHands(world: WorldState, P: PetState, { say, line }: Voice
     const k = P.k;
     vx = clamp(vx, -45 * k, 45 * k); vy = clamp(vy, -45 * k, 45 * k);
     const g = geo; // feet below the grab point
-    P.x = P.hx; P.y = P.hy + g.ch * .88 * k; P.vx = vx; P.vy = vy;
+    P.x = P.hx; P.y = P.hy + g.ch * .88 * k; P.vx = vx; P.vy = vy; P.placed++;
     const sp = Math.hypot(vx, vy);
     P.thrown = P.catches = sp > 4 * k; P.hard = sp > 26 * k;
     P.pierce = breaks(vy, k); P.bound = null;

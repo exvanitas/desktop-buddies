@@ -8,3 +8,4 @@ export type { PetState } from './state';
 export type { Arg, Behaviour, Book, Clip, Place, Rule, Step } from './runner';
 export { createSim, type Sim, type SimOptions } from './sim';
 export type * from './world';
+export { bodyOf } from './world';

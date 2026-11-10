@@ -250,3 +250,23 @@ test('driver.ps1: the dialog\'s folder is read by the address bar\'s window clas
   for (const [name, path] of [['Address: C:\\Files\\a', 'C:\\Files\\a'], ['Adresse : C:\\a\\b', 'C:\\a\\b'], ['Dirección: D:\\x', 'D:\\x']]) assert.strictEqual(name!.match(label)?.[1], path, name);
   assert.ok(!label.test('C:\\Files\\a'), 'a bare path has no label');
 });
+
+test('pacing.ps1: each run reads only its own log, from a file it emptied first, and its own last result', () => {
+  const ps = body(read('pacing.ps1'));
+  const launch = ps.indexOf('Start-Process $runExe');
+  assert.ok(launch > 0);
+  assert.match(ps.slice(0, launch), /Remove-Item -LiteralPath \$log -ErrorAction SilentlyContinue/, 'the log goes before the launch');
+  assert.ok(ps.includes("$found = [regex]::Matches($text, 'PACING result (\\{[^\\r\\n]*\\})') | Select-Object -Last 1"), 'the last result, not the first');
+  assert.ok(!ps.includes("[regex]::Match($text, 'PACING result"));
+});
+
+test('pacing.ps1: its own processes, and only those, are stopped in a finally, whatever happened after the launch', () => {
+  const c = code(read('pacing.ps1'));
+  const at = c.indexOf('$run = Start-Process'), tryAt = c.lastIndexOf('try {', at), fin = c.indexOf('} finally {', at);
+  assert.ok(tryAt > 0 && fin > at, 'the launch is inside a try with a finally');
+  assert.match(c.slice(fin, c.indexOf('\n}\n', fin) + 2), /Stop-Own/, 'the finally stops them');
+  /* what's "its own": the exe it started, and processes run on its own folder */
+  assert.ok(c.includes('$_.ProcessId -eq $run.Id -or ($_.CommandLine -and $_.CommandLine.Contains($tmp))'));
+  assert.ok(!c.includes("$_.Name -eq 'desktop-buddies.exe'"), 'never every copy of the exe on the machine');
+  assert.ok(c.includes('Stop-Process -Id $_.ProcessId'), 'stopped by their own ids');
+});

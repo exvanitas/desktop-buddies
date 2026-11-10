@@ -5,6 +5,7 @@ import { createView } from '@buddies/view';
 import { createCapture, RENEW_EVERY } from './capture';
 import { explain, huntLine, make, noteWith, pointed, under } from './hit';
 import { createHold, viewport, type Area, type Message } from './host';
+import { createDrawing } from './pacing';
 import type { OverlayBoot } from './hub-core';
 import type { MenuToHub } from './manager-api';
 import { herOnScreen, pointOnScreen } from './menu-ask';
@@ -83,13 +84,18 @@ const TRACE_MS = 250;
     if (id !== over) { over = id; send({ k: 'over', id }); }
   }
 
+  /* Frames are drawn on the display's beat, two ticks behind the world: pacing.ts. While the page's
+     animation frames have stopped, each frame is drawn whole as it comes. */
+  const drawing = createDrawing(f => { view.apply(f); check(); }, () => performance.now());
+  const beat = (now: number) => { drawing.beat(now); requestAnimationFrame(beat); };
+  requestAnimationFrame(beat);
   world.onmessage = e => {
     const m = e.data;
     if (m.k === 'frame') {
       for (const f of m.frame.pets) if (f.src) make(f.src);
-      view.apply(m.frame); check();
+      drawing.arrive(m.frame, m.t);
     }
-    else if (m.k === 'area') { me = m.area; Object.assign(vp, viewport(me)); }
+    else if (m.k === 'area') { me = m.area; Object.assign(vp, viewport(me)); drawing.reset(); }
   };
   world.start();
   send({ k: 'join', me, n: boot.n });

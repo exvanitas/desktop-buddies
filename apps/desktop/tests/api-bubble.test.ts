@@ -58,7 +58,7 @@ test('the view shows the badge as text, and markup as text', () => {
   document.body.append(root);
   const input = { down() {}, move() {}, up() {}, enter() {}, leave() {}, pointer() {} } as unknown as Input;
   const view = createView({ root, input, viewport: { x: 0, y: 0, scale: 1, w: 1920, h: 1040 } });
-  const pet = (bubble: Frame['pets'][number]['bubble']): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src: null, origin: null, body: null, grab: false, off: false, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: null, bubble, tag: { text: '', hidden: true, tf: null } }] });
+  const pet = (bubble: Frame['pets'][number]['bubble']): Frame => ({ fx: [], pets: [{ id: 'b0', size: '120px', src: null, origin: null, body: null, grab: false, stage: '', parts: null, off: false, box: { l: 0, t: 0, size: 120, ox: 0, oy: 0 }, tf: null, bubble, tag: { text: '', hidden: true, tf: null } }] });
   view.apply(pet({ text: '<img src=x onerror=alert(1)>', from: '<b>App</b>', hidden: false, pop: 1, below: false, tf: null, at: null }));
   const bub = root.querySelector('.db-bubble')!;
   assert.ok(bub.classList.contains('app'));

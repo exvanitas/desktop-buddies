@@ -128,14 +128,17 @@ export function createHost(io: HostIO) {
       if (was !== undefined && was !== p.P.home) io.note(`crossed ${p.id} ${was} to ${p.P.home} as ${p.P.state}`);
       homes.set(p.id, p.P.home);
     }
-    publish();
+    publish(t);
   }
 
-  /* Images are big and rarely change, so each is sent once per overlay, when it comes into view. */
-  function publish() {
+  /* Images are big and rarely change, so each is sent once per overlay, when it comes into view. Each
+     frame carries its tick's time, by which overlays draw it on the display's beat: pacing.ts. */
+  function publish(t: number) {
     for (const [port, s] of ports) {
       if (!s.vp) continue;
       const frame = world().frame(s.vp);
+      /* one who left is sent her images again if she comes back */
+      for (const id of s.sent.keys()) if (!frame.pets.some(f => f.id === id)) s.sent.delete(id);
       for (const f of frame.pets) {
         if (f.off || s.sent.get(f.id) === f.src) delete f.src;
         else s.sent.set(f.id, f.src);
@@ -143,7 +146,7 @@ export function createHost(io: HostIO) {
       const text = JSON.stringify(frame);
       if (text === s.last) continue;
       s.last = text;
-      port.postMessage({ k: 'frame', frame });
+      port.postMessage({ k: 'frame', frame, t });
     }
   }
 

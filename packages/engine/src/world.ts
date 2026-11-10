@@ -44,8 +44,17 @@ export interface WorldState {
    goes below her, and her middle, `her` across for the tail and `mid` down, for which viewport has her. */
 export interface BubbleFrame { text: string; from?: string; hidden: boolean; pop: number; below: boolean; tf: string | null; at: { x: number; up: number; down: number; her: number; mid: number } | null }
 export interface TagFrame { text: string; hidden: boolean; tf: string | null }
+/* Her body's transform as numbers: the turn her surface gives her, then her animation's move, its turn
+   about `pivot` above her anchor, and its scale, the facing in `sx`. `bodyOf` writes them as `body`. */
+export interface BodyParts { turn: number; dx: number; dy: number; pivot: number; rot: number; sx: number; sy: number }
+export const bodyOf = (p: BodyParts) => `rotate(${p.turn}deg) translate(${p.dx.toFixed(1)}px,${p.dy.toFixed(1)}px) translateY(${-p.pivot}px) rotate(${p.rot.toFixed(1)}deg) translateY(${p.pivot}px) scale(${p.sx.toFixed(3)},${p.sy.toFixed(3)})`;
+
 export interface PetFrame {
   id: string; size: string | null; src?: string | null; origin: string | null; body: string | null; grab: boolean; off: boolean;
+  /* how many times she's been placed, what she's doing and what she shows: two frames with different stages aren't one movement */
+  stage: string;
+  /* the numbers `body` is written from, so a view can draw between two frames without reading strings */
+  parts: BodyParts | null;
   box: { l: number; t: number; size: number; ox: number; oy: number }; tf: string | null; bubble: BubbleFrame; tag: TagFrame;
 }
 export interface ParticleFrame {
