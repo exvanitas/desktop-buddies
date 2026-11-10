@@ -9,6 +9,9 @@ import { shakeTracker, type ShakeTracker } from './shake';
 
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
 
+/* How long a pickup is drawn sliding from where she was pressed to how she's held, in frames. */
+const PICKUP = 10;
+
 export function createHands(world: WorldState, P: PetState, { say, line }: Voice, { geo }: Pick<Look, 'geo'>, emit: (event: string, arg?: Arg) => void) {
   const { now, pace } = world;
   let drag: { sx: number; sy: number; moved: boolean; hist: { x: number; y: number; t: number }[]; shake: ShakeTracker } | null = null;
@@ -16,7 +19,9 @@ export function createHands(world: WorldState, P: PetState, { say, line }: Voice
   function pressed(x: number, y: number) { drag = { sx: x, sy: y, moved: false, hist: [], shake: shakeTracker() }; }
   function moved(mx: number, my: number) {
     if (drag) {
-      if (!drag.moved && Math.hypot(mx - drag.sx, my - drag.sy) > 5 * P.k) { drag.moved = true; P.next = null; emit('grabbed'); }
+      /* Drawn first where she was, moved as far as the cursor since the press, so the spot that was
+         pressed stays under it, then sliding to the hold. */
+      if (!drag.moved && Math.hypot(mx - drag.sx, my - drag.sy) > 5 * P.k) { drag.moved = true; P.next = null; emit('grabbed'); P.ease = { n: PICKUP, by: { x: drag.sx, y: drag.sy } }; }
       if (drag.moved) {
         P.hx = mx; P.hy = my; P.still = 0;
         const t = now(); drag.hist.push({ x: mx, y: my, t });

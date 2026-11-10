@@ -98,8 +98,9 @@ test('what plays once is read from the book', () => {
   assert.deepStrictEqual([...ONCE].sort(), ['fall_asleep', 'laugh', 'signature', 'sit_down', 'stand_from_sit', 'stand_up', 'stand_up_from_dizzy', 'stand_up_from_knocked_out', 'stand_up_from_sleep', 'stand_up_from_sprawl', 'struggle', 'surprised', 'tap_screen', 'turn_back']);
 });
 
-test('what nothing sets off is read from the book, and is DESIGN.md\'s list', () => {
-  assert.deepStrictEqual([...UNTRIGGERED].sort(), ['excited', 'face_away', 'laugh', 'stare', 'surprised', 'tap_screen']);
+/* Personality poses are picked now and then on the floor, so nothing is left that only comes when asked for. */
+test('what nothing sets off is read from the book', () => {
+  assert.deepStrictEqual([...UNTRIGGERED].sort(), []);
   assert.deepStrictEqual([...UNBUILT], ['dangle_legs']);
 });
 

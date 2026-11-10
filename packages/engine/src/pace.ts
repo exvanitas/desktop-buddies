@@ -31,6 +31,8 @@ export const lively: Pace = {
   weights: {
     idle: 3, walk: 5, sit: 1.5, think: .7, sleep: .25, sleepy: 2.5, jump: .45, climbGo: .55, run: .5, dance: .2, sing: .25, eat: .12, roll: .12, spin: .1, ceilGo: .06,
     signature: .15, travelDown: .05, travelUp: .05, hop: 1.5, hopWalk: 1,
+    /* personality, only with her art for each */
+    excited: .08, laugh: .06, surprised: .04, face_away: .05, tap_screen: .04, stare: .06,
     leap: .12, climbUp: .48, climbDown: .4,
     letGo: .3, crawl: .7,
     /* odds, not table weights: of a hop going for a side when both are there, and of leaving a window top at its end */

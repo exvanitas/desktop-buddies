@@ -58,7 +58,7 @@ export function createPet(world: WorldState, data: BuddyData) {
       if (P.chatT <= 0) { voice.say(voice.line(random() < .3 ? 'think' : 'chat')); P.chatT = CHAT[world.chatter] * tools.between(.6, 1.4); }
     }
     if (P.hover && !P.shyDone && world.mouse.still > 100 && P.surf === 'floor' && calm) { P.shyDone = true; emit('hovered'); }
-    look.render(runner.pose(), runner.anim(), runner.once());
+    look.render(runner.pose(), runner.anim(), runner.once(), dt, runner.entry());
   }
 
   runner.go('air');
@@ -68,7 +68,7 @@ export function createPet(world: WorldState, data: BuddyData) {
     bw: body.bw, calm: runner.calm, center: look.center,
     faceTo(x: number) { P.dir = x < P.x ? -1 : 1; },
     /* Drawn where she lands at once, so a paused world shows her there too. */
-    bring(at: { x: number; y: number }) { hands.drop(); body.bring(at); look.render(runner.pose(), runner.anim(), runner.once()); },
+    bring(at: { x: number; y: number }) { hands.drop(); body.bring(at); look.render(runner.pose(), runner.anim(), runner.once(), 0, runner.entry()); },
     /* Wave says its own hello, so bye comes after. A host removes the pet GOODBYE_MS later. */
     farewell() { if (P.surf === 'floor') runner.go('wave'); voice.say(voice.line('bye')); }
   };

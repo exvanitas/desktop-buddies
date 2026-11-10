@@ -1,14 +1,28 @@
 /* The physics behaviours name. Each is registered here by name, and the runner never needs to know
    them: adding one touches nothing else. */
 import type { Actor } from './actor';
-import type { Motion } from './runner';
+import { passEnd, type Motion } from './runner';
 import { GRAV } from './state';
 
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
 /* how long she'll stay held still, in frames of world time: 10 seconds */
 const STRUGGLE_AFTER = 600;
-/* walking speed, in px per frame */
-const WALK = 1.1;
+/* walking and rolling speeds, in px per frame */
+const WALK = 1.1, ROLL = 2.8;
+/* The pace that takes a wheel `at` px round its rim, `circ` px all round, on to a whole turn in `left`
+   frames (this tick's `dt` among them), within half to twice `v`: of those, the one nearest `v`. It
+   goes on to the next turn ahead, a whole one when it's upright with time left. Null when no pace
+   gets there in time. On her last tick it lands, however slowly. */
+export function wheel(at: number, left: number, dt: number, v: number, circ: number): number | null {
+  const L = Math.max(left, dt);
+  if (!(circ > 0) || !(L > 0)) return v;
+  const next = ((-at % circ) + circ) % circ, upright = next < 1e-6 * circ, last = left <= dt + 1e-9;
+  if (last) return upright ? 0 : next / L <= 2 * v ? next / L : null;
+  const first = upright ? 1 : 0, lo = Math.max(first, Math.ceil((v / 2 * L - next) / circ - 1e-9)), hi = Math.floor((2 * v * L - next) / circ + 1e-9);
+  if (lo > hi) return null;
+  const k = Math.min(hi, Math.max(lo, Math.round((v * L - next) / circ)));
+  return (next + k * circ) / L;
+}
 
 export const MOTIONS: Record<string, Motion<Actor>> = {
   walk: {
@@ -49,9 +63,32 @@ export const MOTIONS: Record<string, Motion<Actor>> = {
   watch: {
     tick(c) { const dx = c.world.mouse.x - c.P.x; if (dx) c.P.dir = Math.sign(dx); }
   },
+  /* On her Roll art, which already turns, at her own pace. On Stand, which the tumble turns like a
+     wheel, at the pace nearest hers that ends on whole turns, one at least, when the roll really ends
+     (its time, stretched to the end of her Stand pass): she lands upright, and turns by just the
+     ground she covers. When no pace within half to twice hers gets there (a big buddy, or a turn round
+     late in the roll), the roll runs a pass longer, or a turn's time longer without a pass. How much
+     longer it may run is set once, on its first tick: a turn's time at her pace, or a pass if that's
+     longer. Walls that keep turning her round can't stretch it past that: then she rolls on at her
+     pace and the roll ends when its time is up, upright or not. A tick of no time does nothing. */
   roll: {
-    start(c) { c.P.roll = 0; },
-    tick(c, dt) { const { P } = c, v = 2.8 * P.sp; c.move(dt, v); P.roll += v * dt * P.dir; },
+    start(c) { c.P.roll = 0; c.P.rollBy = NaN; },
+    tick(c, dt) {
+      if (!(dt > 0)) return;
+      const { P } = c, v = ROLL * P.sp, d = P.dir, circ = Math.PI * c.geo.ch, pass = c.loop('stand');
+      let w: number | null = v;
+      if (!c.hasArt('roll')) {
+        if (Number.isNaN(P.rollBy)) P.rollBy = passEnd(P.dur, pass) + Math.max(pass, circ / v);
+        for (let i = 0; i < 64; i++) {
+          w = wheel(P.roll * d, passEnd(P.dur, pass) - P.t + dt, dt, v, circ);
+          const more = pass || circ / v;
+          if (w !== null || passEnd(P.dur + more, pass) > P.rollBy + 1e-6) break;
+          P.dur += more;
+        }
+        if (w === null) w = v;
+      }
+      c.move(dt, w); P.roll += w * dt * d;
+    },
     pose: c => c.hasArt('roll') ? 'roll' : 'stand'
   },
   climb: {
@@ -86,6 +123,9 @@ export const MOTIONS: Record<string, Motion<Actor>> = {
       if (on.t < m || on.t > long - m) {
         const t = clamp(on.t, m, long - m), low = t < long / 2, end = c.linkAt(s, low);
         if (end && end.kind === s.kind) { if (on.t < 0 || on.t > long) c.cross(s, low); else c.settle(); }
+        /* An open end. A window's is where it was cut off at the monitor: past it she'd be off every
+           screen, so she turns back, as on a window's top. */
+        else if (!end && c.terrain.rectById(s.owner)!.kind === 'window') { on.t = t; c.settle(); P.dir = -P.dir; }
         else if (!end) c.settle();
         else {
           on.t = t; c.settle();

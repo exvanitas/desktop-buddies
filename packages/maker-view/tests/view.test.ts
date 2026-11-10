@@ -259,7 +259,7 @@ test('a picked pose with no art of its own says what\'s really happening', async
   assert.match(v.q('.note')!.textContent!, /Not in the game yet/);
   assert.match(v.q('.uf')!.textContent!, /Nothing says lines over this yet/);
   v.pickPose('stare');
-  assert.match(v.q('.note')!.textContent!, /nothing sets it off/);
+  assert.match(v.q('.note')!.textContent!, /Add art and it will/);
   assert.match(v.q('.uf')!.textContent!, /No lines use this art/);
   v.pickPose('tired');
   assert.match(v.q('.note')!.textContent!, /Add art and it will/);

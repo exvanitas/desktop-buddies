@@ -1,6 +1,7 @@
 /* The body: where a buddy is, what it stands on, and how it gets from one surface to the next. */
 import type { Bounds, Point, Rectangle, Surface } from '@buddies/terrain';
 import { aims, gripAt, plan, type Aim, type Jumper, type Plan } from './aim';
+import { norm } from './ease';
 import type { Arg, Place } from './runner';
 import { GRAB_SPEED, GRAV, type Character, type PetState } from './state';
 import type { Tools } from './tools';
@@ -91,11 +92,23 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     } else settle();
     return false;
   }
+  /* How long she's drawn going round a corner, or turning onto what she caught, in frames: from
+     facing off one surface to the next, round the corner point. Where she is changes at once. */
+  const ROUND = 12;
+  function turning(s: Surface, b: Surface) {
+    const low = entersLow(s, b), ang = (n: Point) => Math.atan2(n.y, n.x) * 180 / Math.PI;
+    /* An inner corner: past it, b runs on towards s's open side. */
+    const on = b.kind === 'wall' ? { x: 0, y: low ? 1 : -1 } : { x: low ? 1 : -1, y: 0 };
+    P.ease = { n: ROUND, corner: {
+      pivot: terrain.pointOn(b, low ? 0 : len(b)), wind: Math.sign(norm(ang(b.normal) - ang(s.normal))),
+      na: s.normal, nb: b.normal, inner: on.x * s.normal.x + on.y * s.normal.y > 0
+    } };
+  }
   /* Up onto a wall from a floor, unless that's behind a window. True when she went. */
   function mountWall(s: Surface, w: Surface) {
     const at = corner(s, w); if (!at) return false;
     const low = entersLow(s, w);
-    hold(w, at);
+    hold(w, at); turning(s, w);
     if (random() < .4) say(line('climb'));
     emit('wall', { dir: low ? 1 : -1 });
     return true;
@@ -104,16 +117,18 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   function round(s: Surface, b: Surface) {
     const at = corner(s, b); if (!at) return;
     const low = entersLow(s, b);
-    hold(b, at);
+    hold(b, at); turning(s, b);
     if (b.kind === 'wall') return emit('wall', { dir: low ? 1 : -1 });
     P.dir = low ? 1 : -1;
     emit(b.kind === 'ceil' ? 'ceiling' : 'floor');
   }
   /* Step off a wall, into the open in front of it. */
   function offWall(s: Surface) { P.x = s.at + s.normal.x * (bw() / 2); P.y += bh() / 2; }
-  function leap() { const s = here()!, n = s.normal.x; P.on = null; offWall(s); P.vx = n * between(3, 5) * P.k; P.vy = -between(2, 5) * P.k; P.thrown = P.catches = false; P.dir = n; emit('airborne'); }
+  /* Off a wall or the ceiling into the air, she's drawn turning upright over a few frames, clear of it. */
+  function leaving(s: Surface | null) { if (s && s.kind !== 'floor') P.ease = { n: ROUND, away: { n: s.normal, p: terrain.pointOn(s, 0) } }; }
+  function leap() { const s = here()!, n = s.normal.x; leaving(s); P.on = null; offWall(s); P.vx = n * between(3, 5) * P.k; P.vy = -between(2, 5) * P.k; P.thrown = P.catches = false; P.dir = n; emit('airborne'); }
   function dropDown() {
-    const s = here();
+    const s = here(); leaving(s);
     if (s && s.kind === 'ceil') { P.y = s.at + bh(); } else if (s && s.kind === 'wall') offWall(s);
     P.on = null; P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false;
     if (random() < .6) say(line('drop'));
@@ -180,14 +195,18 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     jump(-vy, P.dir * Math.max(span(reach.leapOut) * k, (bw() / 2 + 4 * k) / Math.max(1, frames)));
   }
 
+  /* How many times she's been put somewhere rather than gone there: a drawing doesn't carry across. */
+  let placed = 0;
   /* The one way to lose your footing, whatever took the ground away. */
-  function fall() { P.on = null; P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; emit('lost'); }
+  function fall() { leaving(here()); P.on = null; P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; emit('lost'); }
   /* Nothing below and nowhere to land: back above the nearest screen, and let it fall. */
   function recover() {
+    placed++;
     const home = terrain.nearest(P), r = home.rect;
     P.home = home.id; P.k = home.scale; P.on = null;
     P.x = clamp(P.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh();
     P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; P.aim = null; P.next = null; P.pierce = false; P.bound = { id: home.id, up: false };
+    P.ease = { n: 0 };
     emit('lost');
   }
   /* A carried buddy keeps its grip only so far. These are per 40 ms tick, in px. */
@@ -265,7 +284,7 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
       P.x = x;
       /* No grab where she'd be held behind a window, wherever she met it. */
       if ((P.aim?.way === 'side' || (P.catches && Math.abs(P.vx) > 3 * k)) && speed < GRAB_SPEED * k && P.y < wall.to - h * .3 && !behind(wall, at.t)) {
-        hold(wall, at);
+        hold(wall, at); P.ease = { n: ROUND };
         P.thrown = P.catches = P.hard = false; P.vx = P.vy = 0; say(line('grab')); return emit('grabbedWall');
       }
       if (speed >= GRAB_SPEED * k) { say(line('hurt')); P.hard = true; }
@@ -273,11 +292,18 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     }
     if (ceil && !gives(ceil)) {
       const at = spot(ceil, k => gripAt(ceil, P.x, wallExt(k)));
-      if (P.catches && P.vy < -5 * k && !behind(ceil, at.t)) { hold(ceil, at); P.dir = P.vx >= 0 ? 1 : -1; P.thrown = P.catches = P.hard = false; P.vx = P.vy = 0; say(line('grab')); return emit('grabbedCeiling'); }
+      if (P.catches && P.vy < -5 * k && !behind(ceil, at.t)) { hold(ceil, at); P.ease = { n: ROUND }; P.dir = P.vx >= 0 ? 1 : -1; P.thrown = P.catches = P.hard = false; P.vx = P.vy = 0; say(line('grab')); return emit('grabbedCeiling'); }
       P.y = ceil.at + h; P.vy = -P.vy * .3;
     }
     if (floor && !gives(floor)) {
+      /* Let go with her feet under it, she's on it at once, and drawn rising to it: 10 px a frame
+         on average, over 6 to 20 frames. */
+      const under = from.y - floor.at;
       hold(floor, spot(floor, () => P.x - floor.from));
+      /* Landed before a turn off a wall or the ceiling was drawn at all, a long tick say: it never
+         starts, as it would have ended on landing. */
+      if (P.ease && P.ease.away) P.ease = null;
+      if (under > 1) P.ease = { n: clamp(under / (10 * k), 6, 20) };
       const vy = P.vy; P.vx = P.vy = 0;
       if (P.hard) { P.hard = P.thrown = P.catches = false; P.next = null; P.impact = vy; say(line('hurt')); return emit('slammed'); }
       P.thrown = P.catches = false;
@@ -307,8 +333,13 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
 
   /* The world changed. A plan from before it is about windows that may be gone. A screen changed
      size: stay on its surface, in reach. Windows carry their buddies instead. */
+  /* A monitor that moved, changed size or scale, or came or went. */
+  const monitors = () => terrain.screens().map(r => `${r.id} ${r.rect.x} ${r.rect.y} ${r.rect.w} ${r.rect.h} ${r.scale}`).sort().join();
+  let seen = monitors();
   function fit() {
     mine = null;
+    /* What was being drawn was worked out on the old monitors: she's drawn where she is. */
+    const now = monitors(); if (now !== seen) { seen = now; P.ease = { n: 0 }; }
     if (!P.on) return;
     const s = terrain.surfaceById(P.on.surface.id), rect = s && terrain.rectById(s.owner);
     if (!s || rect!.kind !== 'screen') return;
@@ -333,10 +364,12 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   /* Brought to the screen under a point, from wherever she was: just over its top at that x, falling
      with nothing thrown and nothing waiting for her landing. */
   function bring(at: Point) {
+    placed++;
     const home = terrain.home(at), r = home.rect;
     P.home = home.id; P.k = home.scale; P.on = null; P.bound = { id: home.id, up: false };
     P.x = clamp(at.x, r.x + bw(), r.x + r.w - bw()); P.y = r.y - bh() * .2;
     P.vx = 0; P.vy = 0; P.thrown = P.catches = false; P.hard = false; P.aim = null; P.next = null; P.pierce = false;
+    P.ease = { n: 0 };
     emit('airborne');
   }
   /* A new buddy arrives above the primary screen. */
@@ -346,7 +379,7 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   }
 
   return {
-    moves, arrive, bring, place, footing, fit, fly, drawnAt, hops, walks, free, hopFor, setOff,
+    moves, arrive, bring, place, footing, fit, fly, drawnAt, hops, walks, free, hopFor, setOff, placed: () => placed,
     bw, bh, wallExt, here, onSurface, settle, blocked, len, linkAt, cross, round, zone, floorY, stretch, move, jump,
     stackedBelow: floorBelowMe, stackedAbove: roofOverMe
   };

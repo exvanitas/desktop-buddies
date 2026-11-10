@@ -216,25 +216,38 @@ const watch=(page,errs)=>{page.on('pageerror',e=>errs.push('pageerror '+e.messag
   await page.click('.bm-back');await page.waitForTimeout(300);ok('brought back',await page.evaluate(`document.querySelectorAll('.db-pet').length`)===3);
   await page.screenshot({path:SP+'/shots/exported.png'});
   ok('exported page has no errors',errs.length===0,errs.join(' | '));await ctx.close();}
- // ---- same run, original and refactor, in a real DOM
- {const seed=`(()=>{let a=12345;window.__reseed=()=>{a=12345};Math.random=()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};let n=0;performance.now=()=>n;const due=[],clear=clearTimeout;let id=1e6;window.__fakeTimers=()=>{window.setTimeout=(f,ms=0)=>{due.push({id:++id,at:n+ms,f});return id};window.clearTimeout=i=>{const k=due.findIndex(t=>t.id===i);if(k>=0)due.splice(k,1);else clear(i)}};window.__tick=v=>{n+=v;for(const t of due.filter(t=>t.at<=n).sort((a,b)=>a.at-b.at)){due.splice(due.indexOf(t),1);t.f()}};})();`;
-  const scene=`(async()=>{if(window.buddies)buddies.pause();await new Promise(r=>setTimeout(r,300));__fakeTimers();if(window.__reseed)__reseed();let root=document.getElementById('root');if(window.buddies){root=document.createElement('div');document.body.append(root);}const ctl=(window.buddies?buddies.tools:DesktopBuddies).createWorld({root,bounds:()=>({w:1000,h:600})});ctl.pause();
+ // ---- the real DOM shows what the golden traces record
+ // This used to run the original engine against the refactor. It no longer pins to the original: the
+ // engine now paints some things on purpose that the original didn't (golden/rerecorded.json says what
+ // and why), and the golden traces already hold the engine to what was decided. What's left to prove
+ // here is the DOM layer: that a real page ends up showing what the traces record. So the same scene
+ // runs twice on the built maker, both times on the same engine and view: once into a real element,
+ // and once into the golden harness's own fake DOM, the one every trace is recorded from. The fake
+ // elements are then built as real ones and both are read the same way, so the browser's way of
+ // writing CSS out is the only thing between them. Same steps, exact strings.
+ {const harness=fs.readFileSync(path.join(REPO,'apps/maker/tests/golden/harness.js'),'utf8');
+  const shim=['ClassList','FakeEl'].map(n=>{const m=new RegExp(`^class ${n} \\{[\\s\\S]*?^\\}$`,'m').exec(harness);if(!m)throw new Error(`no ${n} in the golden harness`);return m[0];}).join('\n');
+  const seed=`(()=>{let a=12345;window.__reseed=()=>{a=12345};Math.random=()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};let n=0;performance.now=()=>n;const due=[],clear=clearTimeout;let id=1e6;window.__fakeTimers=()=>{window.setTimeout=(f,ms=0)=>{due.push({id:++id,at:n+ms,f});return id};window.clearTimeout=i=>{const k=due.findIndex(t=>t.id===i);if(k>=0)due.splice(k,1);else clear(i)}};window.__tick=v=>{n+=v;for(const t of due.filter(t=>t.at<=n).sort((a,b)=>a.at-b.at)){due.splice(due.indexOf(t),1);t.f()}};})();`;
+  /* fake: into the harness's elements, which are built as real ones to be read */
+  const scene=fake=>`(async()=>{${shim}
+   buddies.pause();await new Promise(r=>setTimeout(r,300));__fakeTimers();__reseed();
+   let root;if(${fake}){root=new FakeEl('div');root.ownerDocument={createElement:t=>new FakeEl(t)};}else{root=document.createElement('div');document.body.append(root);}
+   const ctl=buddies.tools.createWorld({root,bounds:()=>({w:1000,h:600})});ctl.pause();
    const art=k=>Object.fromEntries(['dance','sing','eat','think'].map(p=>[p,{fps:4,frames:[{src:'data:image/png;base64,iVBORw0KGgoAAA'+k,bb:{x0:.2,y0:.05,x1:.8,y1:1}}]}]));
    ctl.sync({pets:[{id:'a',name:'Ann',size:120,faces:'right',poses:art('a'),base:{src:'data:image/png;base64,iVBORw0KGgo=',bb:{x0:.2,y0:.05,x1:.8,y1:1}}},{id:'b',name:'Bo',size:90,faces:'left',poses:{...art('b'),walk:{fps:6,frames:[{src:'data:image/png;base64,iVBORw0KGgoA',bb:{x0:.1,y0:.1,x1:.9,y1:1}}]}},base:{src:'data:image/png;base64,iVBORw0KGgoAA',bb:{x0:.2,y0:.05,x1:.8,y1:1}}}]});
+   /* a fake element as a real one: its class, its styles in the order they were first written, then the rest as the view writes them */
+   const real=f=>{const e=document.createElement(f.tag);if(f.classList.s.size)e.className=f.className;for(const k of Object.keys(f.style))e.style[k]=f.style[k];if(f.hidden)e.hidden=true;
+     if(f.alt!==undefined)e.alt=f.alt;if(f.draggable!==undefined)e.draggable=f.draggable;if(f.src)e.src=f.src;if(f.html)e.innerHTML=f.html;else if(f.text)e.textContent=f.text;for(const c of f.children)e.append(real(c));return e;};
    const out=[];const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    for(let i=0;i<60;i++){for(let j=0;j<40;j++){__tick(16.667);ctl.step(1);}await raf();
-     out.push([...root.children].map(e=>e.className+'|'+e.style.cssText+'|'+e.hidden+'|'+e.textContent+'|'+e.innerHTML.replace(/data:[^"]*/g,'')).join('\\n'));}
+     out.push([...root.children].map(c=>${fake}?real(c):c).map(e=>e.className+'|'+e.style.cssText+'|'+e.hidden+'|'+e.textContent+'|'+e.innerHTML.replace(/data:[^"]*/g,'')).join('\\n'));}
    return out;})()`;
-  fs.mkdirSync(SP+'/orig',{recursive:true});
-  fs.copyFileSync(path.join(REPO,'apps/maker/tests/golden/original/engine.js'),SP+'/orig/engine.js');
-  fs.writeFileSync(SP+'/style.css',fs.readdirSync(MAKER+'/assets').filter(f=>f.endsWith('.css')).map(f=>fs.readFileSync(MAKER+'/assets/'+f,'utf8')).join(''));
-  fs.writeFileSync(SP+'/orig/index.html','<!doctype html><link rel=stylesheet href=/style.css><div id=root></div><script src=/orig/engine.js></script>');
   // the maker draws random numbers as it starts, so it has to be done starting before the scene reseeds;
   // and the scene's clock is its own, so timers run on it, not on how busy the machine is
-  const run=async(url,ready)=>{const ctx=await browser.newContext({viewport:{width:1000,height:600}});const page=await ctx.newPage();await page.route(/fonts\.g/,r=>r.abort());await page.addInitScript(seed);await page.goto(url);if(ready)await page.waitForSelector(ready);const r=await page.evaluate(scene);await ctx.close();return r;};
-  const A=await run(scratch.origin+'/orig/index.html'),B=await run(maker.origin+'/','.pn-count:not(:empty)');
-  let same=A.length===B.length,at=-1;for(let i=0;i<A.length;i++)if(A[i]!==B[i]){same=false;at=i;break;}
-  ok('real DOM: original and refactor write the same strings over 2400 steps',same,same?A[59].length+' chars at the end':'differ at '+at+'\n'+A[at]+'\n---\n'+B[at]);}
+  const run=async fake=>{const ctx=await browser.newContext({viewport:{width:1000,height:600}});const page=await ctx.newPage();await page.route(/fonts\.g/,r=>r.abort());await page.addInitScript(seed);await page.goto(maker.origin+'/');await page.waitForSelector('.pn-count:not(:empty)');const r=await page.evaluate(scene(fake));await ctx.close();return r;};
+  const A=await run(false),B=await run(true);
+  let same=A.length===60&&A.length===B.length,at=-1;for(let i=0;i<A.length;i++)if(A[i]!==B[i]){same=false;at=i;break;}
+  ok('real DOM: a real page shows what the golden harness records, over 2400 steps',same,same?A[59].length+' chars at the end':'differ at '+at+'\n'+A[at]+'\n---\n'+B[at]);}
  // ---- desktop: the real hub, overlays and world, on a fake exe
  {const MONS=[{i:0,name:'A',primary:true,scale:1,x:0,y:0,w:3440,h:1392,full:{x:0,y:0,w:3440,h:1440}},{i:1,name:'B',primary:false,scale:1.5,x:720,y:1440,w:1920,h:1008,full:{x:720,y:1440,w:1920,h:1080}}];
   const ctx=await browser.newContext({viewport:{width:3440,height:1392}});

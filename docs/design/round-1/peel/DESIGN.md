@@ -62,7 +62,7 @@ A second Maker to compare, in `maker-moments.html`. `maker.html` stays as it was
 
 **What the engine and app must provide**
 - `dragme` lines exist, but only an action nothing calls can say them. The caption says so. Decide whether something should.
-- Dangle legs is in the schema with no behaviour in the engine. Stare, Face away, Tap the screen, Surprised, Laugh and Excited have behaviours that nothing sets off. Their captions say so, and the tray won't promise "add art and it will".
+- Dangle legs is in the schema with no behaviour in the engine. Its caption says so, and the tray won't promise "add art and it will". Stare, Face away, Tap the screen, Surprised, Laugh and Excited were here too, with behaviours nothing set off; since the animation audit they are picked now and then on the floor, and their captions promise it.
 - A real preview has to respect play-once poses and the two-frame swing, where frame 1 is gentle and frame 2 strong. The prototype plays once and holds the swing art still. Loops still need a real stage. Try here only places the pose on its surface.
 - The pose-to-situation table is hand-written in this page. The real one should come from the engine's behaviour book, so captions can't drift.
 - Lines stay in the buddy's `lines`. Nothing new in the file format, and no new exe.

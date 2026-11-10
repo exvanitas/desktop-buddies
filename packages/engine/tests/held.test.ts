@@ -2,6 +2,7 @@
 import assert from 'node:assert';
 import { test } from 'vitest';
 import { POSE, canShow, type PoseKey } from '@buddies/buddy-file';
+import { HAND_ON } from '../src/anims';
 import { BOOK, type BuddyData, type Pet } from '../src/index';
 import { BUDDY, screen, world, type TestWorld } from './support';
 
@@ -36,7 +37,8 @@ const SIDES = {
 for (const [held, h] of Object.entries(HELD)) for (const [sides, s] of Object.entries(SIDES)) {
   test(`Held ${held}, side poses ${sides}: the lean follows the swing, never the pose`, () => {
     const { w, pet } = onFloor({ ...h, ...s });
-    hold(w, pet);
+    /* once her pickup has handed on from what she was doing to the swing */
+    hold(w, pet); w.run(HAND_ON);
     const seen = new Set<string>(), sweep: number[] = [];
     for (let v = -20; v <= 20; v += .25) sweep.push(v);
     let last: { swing: number; rot: number } | null = null, worst = 0;

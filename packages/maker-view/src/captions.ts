@@ -33,8 +33,8 @@ export const saidOnce = (s: SitDef) => s.needs ? `Saved, and said once ${label(s
 export function noArtNote(name: string, k: PoseKey) {
   if (UNBUILT.has(k)) return 'Not in the game yet. Art added here is kept for when it is.';
   if (UNTRIGGERED.has(k)) return 'Try can show this once it has art, but nothing sets it off on its own yet.';
-  if (k === 'turn_back') return 'Plays after Face away, and nothing sets that off on its own yet.';
   const who = name || 'this buddy';
+  if (k === 'turn_back') return `Without it ${who} turns back from Face away at once. Add art and she plays it as she does.`;
   if (k === 'dragL' || k === 'dragR') return `Without it ${who} swings on Held. Add art and she leans into the swing.`;
   if (k === 'roll') return `Without it ${who} rolls by spinning Stand like a wheel. Add art and she shows it as she rolls.`;
   if (k.startsWith('stand_up_from_')) return `Without it ${who} gets up through Stand up, if that has art. Add art and this one gets its own.`;

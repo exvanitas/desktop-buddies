@@ -5,6 +5,8 @@ export interface Anim { dx: number; dy: number; rot: number; sx: number; sy: num
 export type AnimFn = (A: Anim, P: PetState, exact: boolean, ch: number, cw: number) => void;
 
 const DEG = Math.PI / 180;
+/* The last whole sway of a wave within its first second: its sway and lift are both at rest there. */
+const GREET_END = 6 * Math.PI / .35;
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
 const lift = (A: Anim, P: PetState, ch: number, k: number) => { A.dy -= Math.abs(Math.sin(P.t * k)) * ch; };
 
@@ -20,7 +22,7 @@ export const ANIMS: Record<string, AnimFn> = {
   chew(A, P, ex) { if (!ex) A.sy = 1 + Math.sin(P.t * .45) * .045; },
   groove(A, P, ex, ch) { A.rot = Math.sin(P.t * .15) * (ex ? 5 : 14); if (!ex) lift(A, P, ch * .07, .3); },
   croon(A, P, ex) { if (!ex) A.rot = Math.sin(P.t * .06) * 7; },
-  greet(A, P, ex, ch) { if (!ex && P.t < 60) { A.rot = Math.sin(P.t * .35) * 9; lift(A, P, ch * .03, .35); } },
+  greet(A, P, ex, ch) { if (!ex && P.t < GREET_END) { A.rot = Math.sin(P.t * .35) * 9; lift(A, P, ch * .03, .35); } },
   /* a full turn over her time, and no further while her art finishes its pass */
   whirl(A, P, _, ch) { A.pivot = ch / 2; A.rot = Math.min(1, P.t / P.dur) * 360 * P.dir; },
   faceplant(A, P, ex, _, cw) { if (!ex) { A.dy = -cw / 2; A.rot = 90 * P.dir; } },
@@ -37,3 +39,30 @@ export const ANIMS: Record<string, AnimFn> = {
   squash(A, P, ex) { if (!ex) { const k = 1 - P.t / P.dur; A.sy = 1 - .22 * k; A.sx = 1 + .16 * k; } },
   swing(A, P, ex) { A.rot = P.swing * (ex ? .25 : 1); }
 };
+
+/* How long one animation's values take to hand on to the next's, in 60 Hz frames of world time. */
+export const HAND_ON = 8;
+const turn = (a: number) => a - 360 * Math.round(a / 360);
+/* A new animation starts from the values she was last drawn with and comes to its own over HAND_ON
+   frames, so a fallback that starts or stops in one tick (a trip, a landing, a walk's bob) doesn't
+   jump. `key` names this run of an animation; when it changes, a hand-on starts. `basis` is what the
+   values are drawn in: her picture, the surface's frame, her size, and where she was last put. Values
+   don't carry across a change of it: a new picture or a teleport is drawn as it is. A turn round
+   (`flip`) mirrors the drawing, so the values carried are mirrored too. Turns take the short way
+   round, so a whole turn ending (a spin, a roll) hands on as nothing. */
+export function createHandOn() {
+  let key: string | null = null, basis: string | null = null, flip = 1, last: Anim | null = null, from: Anim | null = null, left = 0;
+  return (A: Anim, now: string, base: string, facing: number, dt: number) => {
+    if (base !== basis) { from = null; left = 0; }
+    else if (now !== key && last) { from = facing === flip ? last : { ...last, dx: -last.dx, rot: -last.rot }; left = HAND_ON; }
+    else if (facing !== flip && from) from = { ...from, dx: -from.dx, rot: -from.rot };
+    key = now; basis = base; flip = facing;
+    left = Math.max(0, left - dt);
+    if (left > 0 && from) {
+      const k = left / HAND_ON, f = from;
+      A.dx += (f.dx - A.dx) * k; A.dy += (f.dy - A.dy) * k; A.sx += (f.sx - A.sx) * k; A.sy += (f.sy - A.sy) * k;
+      A.pivot += (f.pivot - A.pivot) * k; A.rot += turn(f.rot - A.rot) * k;
+    }
+    last = { ...A };
+  };
+}

@@ -54,7 +54,7 @@ export const BOOK: Book = {
     /* a landing too hard to shrug off */
     knocked_out: { on: ['floor'], main: { pose: 'knocked_out', hold: 'knockedOut' }, exit: { clip: 'stand_up_from_knocked_out', or: 'stand_up' }, then: 'idle' },
 
-    /* personality: nothing sets most of these off yet, so they come when asked for */
+    /* personality: picked now and then on the floor, with her art for it, and when asked for */
     excited: { on: ['floor'], main: { pose: 'excited', hold: 'excited' }, then: 'idle' },
     laugh: { on: ['floor'], main: { pose: 'laugh', once: true }, then: 'idle' },
     surprised: { on: ['floor'], main: { pose: 'surprised', once: true }, then: 'idle' },
@@ -86,7 +86,8 @@ export const BOOK: Book = {
       { to: 'sleep', when: 'wakeful' }, { to: 'sleep', weight: 'sleepy', when: 'sleepy' },
       { to: 'jump' }, { to: 'climbGo' }, { to: 'run' }, { to: 'dance' }, { to: 'sing' }, { to: 'eat' }, { to: 'roll' }, { to: 'spin' }, { to: 'ceilGo' }, { to: 'signature' },
       { to: 'dropThrough', weight: 'travelDown', when: 'stackedBelow' }, { to: 'jumpThrough', weight: 'travelUp', when: 'stackedAbove' },
-      { to: 'hop', when: 'canHop' }, { to: 'hopWalk', when: 'canWalkToHop' }
+      { to: 'hop', when: 'canHop' }, { to: 'hopWalk', when: 'canWalkToHop' },
+      { to: 'excited' }, { to: 'laugh' }, { to: 'surprised' }, { to: 'face_away' }, { to: 'tap_screen' }, { to: 'stare' }
     ],
     wall: [{ to: 'leap' }, { to: 'climb', weight: 'climbUp', arg: { dir: -1 } }, { to: 'climb', weight: 'climbDown', arg: { dir: 1 } }],
     ceil: [{ to: 'dropDown', weight: 'letGo' }, { to: 'crawl', dir: 'either' }]

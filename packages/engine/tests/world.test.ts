@@ -117,6 +117,19 @@ test('a window cut off at the monitor turns her back: past it she would be off e
   assert.ok(pet.P.x >= pet.bw() / 2 - .01, `all of her stayed on: ${pet.P.x}`);
 });
 
+test('so does crawling under one: all of her stays on the monitor', () => {
+  const w = world([SCREEN(), windowRect('w', 0, 300, 600, 200, 1, { cut: ['left'] })]), pet = w.add(BUDDY());
+  w.run(5);
+  const under = w.terrain.surfaces().find(s => s.owner === 'w' && s.kind === 'ceil')!;
+  pet.P.on = { surface: under, t: 300 }; pet.P.x = under.from + 300; pet.P.y = under.at;
+  pet.go('crawl', { dir: -1 }); pet.P.dur = 1e9;
+  let least = Infinity;
+  for (let i = 0; i < 800 && pet.P.dir === -1; i++) { w.frame(); if (pet.P.on) least = Math.min(least, pet.P.x); }
+  assert.strictEqual(pet.P.dir, 1, 'turned back');
+  assert.strictEqual(pet.P.on?.surface.owner, 'w');
+  assert.ok(least >= pet.bw() / 2 - .01, `all of her stayed on: ${least}`);
+});
+
 test('a screen changing size is a re-fit, not a lost grip', () => {
   const w = world([SCREEN()]), pet = standOn(w);
   w.sim.setRects([screen('s', 0, 0, 900, 500)]); w.frame();
@@ -151,7 +164,8 @@ test('a window side poses like the screen wall that faces the same way', () => {
   w.until(() => pet.P.surf === 'floor');
   fling(w, pet, { x: 170, y: 420 }, { x: 8, y: 0 }, 6);
   assert.ok(w.until(() => pet.P.state === 'wall', 200));
-  rest(pet, 'wall'); w.frame();
+  /* once she's done turning onto it */
+  rest(pet, 'wall'); w.run(20);
   assert.strictEqual(pet.P.on!.surface.at, 300); assert.strictEqual(pet.P.surf, 'right');
   assert.match(pet.frame({ x: 0, y: 0, scale: 1 }).body!, /^rotate\(-90deg\)/);
   const low = pet.P.on!;

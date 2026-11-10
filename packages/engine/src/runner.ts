@@ -114,6 +114,14 @@ export interface Parts<A> {
    120-frame loop at 6.5 fps (18 s), ends on time unless it was nearly done, so a queued request
    behind Land or anything else waits 3 s at most. */
 export const PASS_WAIT = 180;
+/* When a timed step of `dur` frames really ends, with her art's pass `pass` frames long (0 for none):
+   at the first pass end at or after its time, so it never waits a whole pass, and only if that comes
+   within PASS_WAIT. */
+export function passEnd(dur: number, pass: number) {
+  if (!pass) return dur;
+  const end = Math.ceil(dur / pass - 1e-9) * pass;
+  return end - dur > PASS_WAIT ? dur : end;
+}
 
 export function createRunner<A extends Actor>(book: Book, parts: Parts<A>, actor: A) {
   const P = actor.P;
@@ -238,15 +246,11 @@ export function createRunner<A extends Actor>(book: Book, parts: Parts<A>, actor
     if (exit) return clip(exit, () => after(b));
     after(b);
   }
-  /* A timed step whose time is up lets the pass of her art it's in reach its last frame: it ends at the
-     first pass end at or after its time, so it never waits a whole pass, and only if that comes within
-     PASS_WAIT. A motion that stops the step sets its time to 0, which ends it at once. */
+  /* A timed step whose time is up lets the pass of her art it's in reach its last frame (passEnd). A
+     motion that stops the step sets its time to 0, which ends it at once. */
   function over(step: Step) {
     if (P.t <= P.dur) return false;
-    const pass = step.hold ? actor.loop(pose()) : 0;
-    if (!pass) return true;
-    const end = Math.ceil(P.dur / pass - 1e-9) * pass;
-    return end - P.dur > PASS_WAIT || P.t >= end - 1e-6;
+    return P.t >= passEnd(P.dur, step.hold ? actor.loop(pose()) : 0) - 1e-6;
   }
   function after(b: Behaviour) {
     const then = b.then;
@@ -291,8 +295,8 @@ export function createRunner<A extends Actor>(book: Book, parts: Parts<A>, actor
       if (step.once && !actor.hasArt(step.pose)) return finish(b);
       if ((step.hold || step.once) && over(step)) finish(b);
     },
-    /* what to show now */
-    pose,
+    /* what to show now, and which run of a behaviour or clip it is */
+    pose, entry: () => entered,
     anim: () => P.clip ? undefined : book.behaviours[P.state]!.main.anim,
     /* does the art stop on its last frame? */
     once: () => !!P.clip || !!book.behaviours[P.state]!.main.once,

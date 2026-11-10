@@ -80,21 +80,24 @@ test('a lift below zero sinks her into the floor', () => {
   assert.deepStrictEqual(s.moved(), [0, 6]);
 });
 
-/* Floor, wall and ceiling in turn, saying how far she's drawn from where she'd be with no lift. */
+/* Floor, wall and ceiling in turn, saying how far she's drawn from where she'd be with no lift.
+   Turning onto a wall or the ceiling is drawn over a few frames, a half turn 18 at most. */
+const TURNED = 20;
 function tour(lift: Lift, more: Partial<BuddyData>) {
   const s = pair(lift, more), out: Record<string, number[]> = {};
   assert.ok(s.until(settled));
   s.step(); out.floor = s.moved();
   s.do(p => p.act('climbGo'));
   assert.ok(s.until(p => p.P.surf === 'left' || p.P.surf === 'right'));
-  s.step(); s.same();
+  /* once she's done turning onto it */
+  s.step(TURNED); s.same();
   const away = s.a.pet.here()!.normal.x;
   out.wall = s.moved().map(x => x * away + 0);
   s.do(p => p.act('drop'));
   assert.ok(s.until(settled));
   s.do(p => p.act('ceilGo'));
   assert.ok(s.until(p => p.P.surf === 'ceil'));
-  s.step(); s.same();
+  s.step(TURNED); s.same();
   out.ceiling = s.moved();
   return out;
 }
@@ -124,7 +127,8 @@ for (const move of ['spin', 'roll']) test(`mid-${move}, only her floor lift move
 test('held or in the air, the lift is gone', () => {
   const s = pair(floor(.1));
   assert.ok(s.until(settled));
-  s.do((p, w) => { w.sim.input.down('a', p.P.x, p.P.y - 30); for (let i = 1; i <= 5; i++) { w.sim.input.move('a', 400 + i * 30, 300); w.frame(); } });
+  /* carried till she's done sliding from where she was pressed to the hold, which starts from her drawing, lift and all */
+  s.do((p, w) => { w.sim.input.down('a', p.P.x, p.P.y - 30); for (let i = 1; i <= 15; i++) { w.sim.input.move('a', 400 + i * 30, 300); w.frame(); } });
   s.same();
   assert.strictEqual(s.a.pet.P.state, 'held');
   assert.deepStrictEqual(s.moved(), [0, 0]);

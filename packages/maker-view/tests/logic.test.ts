@@ -242,8 +242,9 @@ test('the player says when it starts and when it stops', () => {
 
 test('a pose with no art promises only what the engine does', () => {
   assert.match(noArtNote('Ann', 'dangle_legs'), /Not in the game yet/);
-  for (const k of ['stare', 'face_away', 'tap_screen', 'surprised', 'laugh', 'excited'] as const) assert.match(noArtNote('Ann', k), /nothing sets it off/);
-  assert.match(noArtNote('Ann', 'turn_back'), /Plays after Face away, and nothing sets that off/);
+  /* picked now and then, once they have art */
+  for (const k of ['stare', 'face_away', 'tap_screen', 'surprised', 'laugh', 'excited'] as const) assert.strictEqual(noArtNote('Ann', k), "Ann doesn't do this yet. Add art and it will.", k);
+  assert.strictEqual(noArtNote('Ann', 'turn_back'), 'Without it Ann turns back from Face away at once. Add art and she plays it as she does.');
   assert.strictEqual(noArtNote('Ann', 'dance'), "Ann doesn't do this yet. Add art and it will.");
   for (const k of ['dragL', 'dragR'] as const) assert.strictEqual(noArtNote('Ann', k), 'Without it Ann swings on Held. Add art and she leans into the swing.', k);
   assert.strictEqual(noArtNote('Ann', 'roll'), 'Without it Ann rolls by spinning Stand like a wheel. Add art and she shows it as she rolls.');
@@ -251,7 +252,7 @@ test('a pose with no art promises only what the engine does', () => {
   assert.strictEqual(noArtNote('', 'sit_down'), 'Without it this buddy sits at once. Add art and she sits down into Sit from standing.');
   assert.strictEqual(noArtNote('Ann', 'fall_asleep'), 'Without it Ann drops straight into Sleep. Add art and she dozes off first.');
   assert.strictEqual(noArtNote('', 'dance'), "This buddy doesn't do this yet. Add art and it will.");
-  for (const k of keys) if (['dangle_legs', 'stare', 'face_away', 'tap_screen', 'surprised', 'laugh', 'excited', 'turn_back'].includes(k)) assert.doesNotMatch(noArtNote('Ann', k), /Add art and it will/);
+  for (const k of keys) if (k === 'dangle_legs') assert.doesNotMatch(noArtNote('Ann', k), /Add art and it will/);
 });
 
 test('a pose with art says what it does', () => {
@@ -260,7 +261,7 @@ test('a pose with art says what it does', () => {
   assert.match(ownNote('dragL', 2), /Frame 1 is a gentle swing, frame 2 a strong one\./);
   assert.match(ownNote('dragL', 1), /One frame, or two/);
   assert.doesNotMatch(ownNote('dragL', 2), /1.2 frames/);
-  assert.match(ownNote('stare', 1), /Nothing sets this off/);
+  assert.doesNotMatch(ownNote('stare', 1), /Nothing sets this off/);
   assert.match(ownNote('dangle_legs', 1), /Not in the game yet/);
   assert.strictEqual(ownNote('walk', 2), '');
   assert.strictEqual(ownNote('walk', 3), '');
