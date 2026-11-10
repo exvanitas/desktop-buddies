@@ -357,6 +357,16 @@ test('starting a spin again mid-spin hands on too', () => {
   assert.ok(at.deg <= 25, `turned ${at.deg.toFixed(1)} degrees in one tick`);
 });
 
+/* The desktop blends two frames of one stage. A spin started again resets its turn, so the restart
+   must be a new stage, or the blend would sweep her most of a turn backwards in one tick. */
+test('starting a spin again is a new stage', () => {
+  const { w, pet } = plain();
+  rest(pet); w.run(4); pet.go('spin'); pet.P.dur = 46; w.run(30);
+  const before = pet.frame(VP).stage;
+  pet.go('spin'); w.frame();
+  assert.notStrictEqual(pet.frame(VP).stage, before, 'a restarted animation is a new stage');
+});
+
 /* ---------- With eased moves: a hand-on and an eased move in the same frames ---------- */
 
 /* her art in its picture */

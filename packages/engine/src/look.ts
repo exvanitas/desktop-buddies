@@ -105,7 +105,7 @@ export function createLook(world: WorldState, me: Character, P: PetState, { bubb
     drawn.parts = { turn: rot, dx: A.dx, dy: A.dy, pivot: A.pivot, rot: A.rot, sx: A.sx * flip, sy: A.sy };
     drawn.body = bodyOf(drawn.parts);
     drawn.grab = P.state === 'held';
-    drawn.stage = `${P.placed} ${P.state} ${pose}`;
+    drawn.stage = `${P.placed} ${P.state} ${pose} ${entry}`;
 
     /* geometry for effects & labels */
     const cyRel = ((bb.y0 + bb.y1) / 2 * Sz - oy) * k, a = rot * DEG;
