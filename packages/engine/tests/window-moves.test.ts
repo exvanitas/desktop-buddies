@@ -103,6 +103,90 @@ test('a fall with no aim still takes the tick as it comes', () => {
   assert.ok(Math.abs(pet.P.x - 506) < .01);
 });
 
+/* The desktop ticks every 16 ms, a little under a planned frame, so one tick in about 25 runs no frame
+   of an aimed flight. She's drawn on through it, between the last two frames, and lands where she lands. */
+test('an aimed flight is drawn moving on every tick of a 16 ms timer, and drawn where she lands', () => {
+  for (const ticks of [[16], [16, 17, 15, 18, 16, 14, 19], [8]]) {
+    const w = world([SCREEN(), windowRect('w', 800, 400, 400, 100)], { pace: JUST_HOP() }), pet = placed(w, 300);
+    pickNow(w, pet);
+    const vp = { x: 0, y: 0, scale: 1 }, drawn = () => pet.frame(vp).tf;
+    /* the planned frames: frame f is at x0 + f vx, y0 + f vy + g f (f + 1) / 2, and the last is the aim */
+    const a = pet.P.aim!, g = .6, x0 = a.x - a.frames * a.vx, y0 = a.y - a.frames * a.vy - g * a.frames * (a.frames + 1) / 2;
+    const yAt = (f: number) => y0 + f * a.vy + g * f * (f + 1) / 2;
+    let last = drawn(), still = 0, n = 0;
+    for (let i = 0; i < 2000 && pet.P.state === 'air'; i++) {
+      tick(w, ticks[i % ticks.length]!);
+      if (pet.P.state !== 'air') break;
+      const now = drawn(); if (now === last) still++; last = now; n++;
+      /* and always on the planned path, between two of its frames */
+      const box = pet.frame(vp).box, x = box.l + box.ox, y = box.t + box.oy, u = (x - x0) / a.vx, f = Math.floor(u);
+      assert.ok(u >= 0 && u <= a.frames + 1e-6, `${ticks}: drawn at frame ${u.toFixed(2)} of ${a.frames}`);
+      assert.ok(Math.abs(y - (yAt(f) + (yAt(f + 1) - yAt(f)) * (u - f))) < .1, `${ticks}: drawn off the path at frame ${u.toFixed(2)}`);
+    }
+    assert.ok(n > 30, `flew ${n} ticks`);
+    assert.strictEqual(still, 0, `${ticks}: drawn in the same place on ${still} of ${n} ticks`);
+    const box = pet.frame(vp).box;
+    assert.ok(Math.abs(box.l + box.ox - pet.P.x) < .05 && Math.abs(box.t + box.oy - pet.P.y) < .05, 'drawn where she landed');
+  }
+});
+
+/* Drawn ahead of her last frame, she's still never drawn past what stops her: not through the floor
+   when the window she aimed at closes, nor through a window that moved into her way. */
+test('an aimed flight is never drawn past what stops her, when its window closes or moves mid-flight', () => {
+  const W = () => windowRect('w', 800, 230, 400, 100);
+  const changes: [string, (r: Rectangle) => Rectangle[]][] = [
+    ['closed', () => [SCREEN()]],
+    ['moved down', r => [SCREEN(), { ...r, rect: { ...r.rect, y: r.rect.y + 250 } }]],
+    ['moved toward her', r => [SCREEN(), { ...r, rect: { ...r.rect, x: r.rect.x - 250, y: r.rect.y + 150 } }]],
+    ['moved under her', r => [SCREEN(), { ...r, rect: { ...r.rect, x: r.rect.x - 450, y: r.rect.y + 300 } }]],
+    /* raised a little: she meets its top partway through a frame */
+    ...[7, 23, 37].map((d): [string, (r: Rectangle) => Rectangle[]] => [`raised ${d}`, r => [SCREEN(), { ...r, rect: { ...r.rect, y: r.rect.y - d } }]])
+  ];
+  for (const [name, change] of changes) for (const at of [6, 12, 20, 30, 40]) {
+    const w = world([SCREEN(), W()], { pace: JUST_HOP() }), pet = placed(w, 300);
+    pickNow(w, pet);
+    assert.ok(pet.P.aim, 'jumped');
+    const vp = { x: 0, y: 0, scale: 1 }, feet = () => { const b = pet.frame(vp).box; return { x: b.l + b.ox, y: b.t + b.oy }; };
+    let drawn = feet();
+    for (let i = 0; i < 400 && pet.P.state === 'air'; i++) {
+      if (i === at) w.sim.setRects(change(W()));
+      tick(w, 16);
+      const where = `${name} at tick ${at}, tick ${i}`;
+      if (pet.P.on) {
+        /* the tick she lands: the tick before never had her past it */
+        const s = pet.P.on.surface;
+        if (s.kind === 'floor') assert.ok(drawn.y <= s.at + .01, `${where}: drawn at ${drawn.y.toFixed(2)}, past the floor she landed on at ${s.at}`);
+        if (s.kind === 'wall') assert.ok(s.normal.x > 0 ? drawn.x >= s.at - .01 : drawn.x <= s.at + .01, `${where}: drawn past the side she caught`);
+        break;
+      }
+      drawn = feet();
+      assert.ok(drawn.y <= FLOOR + .01, `${where}: drawn at ${drawn.y.toFixed(2)}, below the floor`);
+    }
+  }
+});
+
+/* Partway through a step she's drawn where that much of the step leaves her, by the step's own rule:
+   stopped by a screen wall, she slides on down it as the step will slide her, not stalls then jumps. */
+test('an aimed flight whose window closes is drawn sliding down the screen wall it meets, smoothly', () => {
+  const w = world([SCREEN(), windowRect('w', 1100, 230, 500, 100)], { pace: JUST_HOP() }), pet = placed(w, 800);
+  pickNow(w, pet);
+  assert.ok(pet.P.aim, 'jumped');
+  const vp = { x: 0, y: 0, scale: 1 }, feet = () => { const b = pet.frame(vp).box; return { x: b.l + b.ox, y: b.t + b.oy }; };
+  const ys: number[] = [];
+  let wall = false;
+  for (let i = 0; i < 400 && pet.P.state === 'air'; i++) {
+    if (i === 6) w.sim.setRects([SCREEN()]);
+    tick(w, 16);
+    if (pet.P.state !== 'air') break;
+    ys.push(feet().y);
+    wall ||= feet().x > 1600 - 61;
+  }
+  assert.ok(wall, 'she met the screen wall');
+  /* falling, each step a little longer than the last: nothing stalls and nothing jumps */
+  const steps = ys.slice(1).map((y, k) => y - ys[k]!);
+  for (let k = 1; k < steps.length; k++) assert.ok(Math.abs(steps[k]! - steps[k - 1]!) < 2, `tick ${k}: ${steps.slice(Math.max(0, k - 2), k + 2).map(s => s.toFixed(2)).join(', ')}`);
+});
+
 test('a flight stops at the frame she lands, whatever is left of the tick', () => {
   /* a frame after the grab would have her falling off the spot she just took */
   for (const lead of [0, 1, 2]) {

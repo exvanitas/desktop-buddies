@@ -1,5 +1,5 @@
 /* The body: where a buddy is, what it stands on, and how it gets from one surface to the next. */
-import type { Bounds, Point, Surface } from '@buddies/terrain';
+import type { Bounds, Point, Rectangle, Surface } from '@buddies/terrain';
 import { aims, gripAt, plan, type Aim, type Jumper, type Plan } from './aim';
 import type { Arg, Place } from './runner';
 import { GRAB_SPEED, GRAV, type Character, type PetState } from './state';
@@ -217,30 +217,52 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   }
 
   /* Where a screen's walls and ceiling leave a body that went past them. */
-  const inside = (r: Bounds, m: number, h: number) => ({ x: clamp(P.x, r.x + m, r.x + r.w - m), y: Math.max(P.y, r.y + h) });
+  const inside = (r: Bounds, m: number, h: number, p: Point = P) => ({ x: clamp(p.x, r.x + m, r.x + r.w - m), y: Math.max(p.y, r.y + h) });
+  /* On the way to a screen until inside it, or until a rise runs out of height: whether that's over,
+     and her home for the step. */
+  function bound(from: Point) {
+    const aim = P.bound && terrain.rectById(P.bound.id);
+    const over = !aim || terrain.holds(aim.rect, from) || (P.bound!.up && P.vy >= 0);
+    return { over, passing: !over, home: over ? terrain.home(from) : aim! };
+  }
+
+  /* A step of flight from `from` to `to` by the edges it meets: where it leaves her, and what it met.
+     The one rule for a whole step and for where she's drawn partway through one. It changes nothing:
+     what meeting an edge does to her is the step's own. */
+  function resolve(from: Point, to: Point, vy: number, passing: boolean, home: Rectangle) {
+    const m = bw() / 2, h = bh(), body = { side: m, up: h, k: P.k };
+    let x = to.x, y = to.y, pierce = P.pierce;
+    /* A window edge is met where the path first crosses one. Screen edges keep today's order. */
+    const swept = passing ? null : terrain.sweep(from, to, { box: body });
+    const edge = swept && swept.surface.kind !== 'floor' ? terrain.rectById(swept.surface.owner)! : null;
+    /* A screen wall or ceiling puts her back after the path was swept: for windows, the path ends where it leaves her. */
+    const first = edge && edge.kind === 'screen' ? terrain.sweep(from, inside(edge.rect, m, h, to), { box: body, only: 'window' }) || swept : swept;
+    const win = first && terrain.rectById(first.surface.owner)!.kind === 'window' ? first : null;
+    if (win) { x = win.x; y = win.y; }
+    const meet = (kind: Surface['kind']) => win ? (win.surface.kind === kind ? win.surface : null) : terrain.contact(kind, from, { x, y }, body, home, passing);
+    /* a floor or ceiling she's meant to go through, once, as `gives` lets her */
+    const through = (s: Surface) => { if (!pierce || !terrain.across(s, x)) return false; pierce = false; return true; };
+    const wall = meet('wall');
+    if (wall) x = terrain.rectById(wall.owner)!.kind === 'screen' ? inside(terrain.rectById(wall.owner)!.rect, m, h, { x, y }).x : wall.at + wall.normal.x * m;
+    const ceil = vy < 0 ? meet('ceil') : null;
+    if (ceil && !through(ceil)) y = ceil.at + h;
+    const floor = meet('floor');
+    if (floor && !through(floor)) y = terrain.pointOn(floor, x - floor.from).y;
+    return { x, y, win, wall, ceil, floor };
+  }
 
   function airTick(dt: number) {
     const k = P.k, from = { x: P.x, y: P.y };
     if (terrain.lost(from)) return recover();
-    /* On the way to a screen until inside it, or until a rise runs out of height. */
-    const aim = P.bound && terrain.rectById(P.bound.id);
-    if (!aim || terrain.holds(aim.rect, from) || (P.bound!.up && P.vy >= 0)) P.bound = null;
-    const passing = !!P.bound, home = passing ? aim! : terrain.home(from);
+    const { over, passing, home } = bound(from);
+    if (over) P.bound = null;
     P.vy += GRAV * k * dt; P.x += P.vx * dt; P.y += P.vy * dt;
-    const m = bw() / 2, h = bh(), body = { side: m, up: h, k: P.k };
-    const speed = Math.hypot(P.vx, P.vy);
-    /* A window edge is met where the path first crosses one. Screen edges keep today's order. */
-    const swept = passing ? null : terrain.sweep(from, P, { box: body });
-    const edge = swept && swept.surface.kind !== 'floor' ? terrain.rectById(swept.surface.owner)! : null;
-    /* A screen wall or ceiling puts her back after the path was swept: for windows, the path ends where it leaves her. */
-    const first = edge && edge.kind === 'screen' ? terrain.sweep(from, inside(edge.rect, m, h), { box: body, only: 'window' }) || swept : swept;
-    const win = first && terrain.rectById(first.surface.owner)!.kind === 'window' ? first : null;
+    const h = bh(), speed = Math.hypot(P.vx, P.vy);
+    const { x, win, wall, ceil, floor } = resolve(from, P, P.vy, passing, home);
     if (win) { P.x = win.x; P.y = win.y; }
-    const meet = (kind: Surface['kind']) => win ? (win.surface.kind === kind ? win.surface : null) : terrain.contact(kind, from, P, body, home, passing);
-    const wall = meet('wall');
     if (wall) {
-      const owner = terrain.rectById(wall.owner)!, at = spot(wall, k => gripAt(wall, P.y - bh(k) / 2, wallExt(k)));
-      P.x = owner.kind === 'screen' ? inside(owner.rect, m, h).x : wall.at + wall.normal.x * m;
+      const at = spot(wall, k => gripAt(wall, P.y - bh(k) / 2, wallExt(k)));
+      P.x = x;
       /* No grab where she'd be held behind a window, wherever she met it. */
       if ((P.aim?.way === 'side' || (P.catches && Math.abs(P.vx) > 3 * k)) && speed < GRAB_SPEED * k && P.y < wall.to - h * .3 && !behind(wall, at.t)) {
         hold(wall, at);
@@ -249,13 +271,11 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
       if (speed >= GRAB_SPEED * k) { say(line('hurt')); P.hard = true; }
       P.vx = -P.vx * .35;
     }
-    const ceil = P.vy < 0 ? meet('ceil') : null;
     if (ceil && !gives(ceil)) {
       const at = spot(ceil, k => gripAt(ceil, P.x, wallExt(k)));
       if (P.catches && P.vy < -5 * k && !behind(ceil, at.t)) { hold(ceil, at); P.dir = P.vx >= 0 ? 1 : -1; P.thrown = P.catches = P.hard = false; P.vx = P.vy = 0; say(line('grab')); return emit('grabbedCeiling'); }
       P.y = ceil.at + h; P.vy = -P.vy * .3;
     }
-    const floor = meet('floor');
     if (floor && !gives(floor)) {
       hold(floor, spot(floor, () => P.x - floor.from));
       const vy = P.vy; P.vx = P.vy = 0;
@@ -272,6 +292,17 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
     if (!P.aim) return airTick(dt);
     owed += dt;
     while (owed >= 1 && P.aim) { owed -= 1; airTick(1); }
+  }
+  /* Where she's drawn. In an aimed flight, on along her arc by the part of a frame the tick has run
+     past its last whole one, so a tick that runs no frame, as one in about 25 at the desktop's 16 ms
+     does, still shows her moving. That part of the step is resolved by the rule the whole step will
+     be, so a window that moved or closed under her can't put her past what stops her, and along an
+     edge she slides on as the step will slide her. */
+  function drawnAt(): Point {
+    if (!P.aim || P.on) return P;
+    const vy = P.vy + GRAV * P.k, to = { x: P.x + P.vx * owed, y: P.y + vy * owed }, { passing, home } = bound(P);
+    const { x, y } = resolve(P, to, vy, passing, home);
+    return { x, y };
   }
 
   /* The world changed. A plan from before it is about windows that may be gone. A screen changed
@@ -315,7 +346,7 @@ export function createBody(world: WorldState, me: Character, P: PetState, { betw
   }
 
   return {
-    moves, arrive, bring, place, footing, fit, fly, hops, walks, free, hopFor, setOff,
+    moves, arrive, bring, place, footing, fit, fly, drawnAt, hops, walks, free, hopFor, setOff,
     bw, bh, wallExt, here, onSurface, settle, blocked, len, linkAt, cross, round, zone, floorY, stretch, move, jump,
     stackedBelow: floorBelowMe, stackedAbove: roofOverMe
   };

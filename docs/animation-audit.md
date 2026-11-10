@@ -1,0 +1,55 @@
+# Animation audit
+
+What looks rough in the buddy event loop, measured headless on the real engine, ranked by what a person would notice per hour of work. The owner picks; only item 2 is built.
+
+**How it was measured.** The engine ran headless with the fixture art (the code-drawn sample, "Olive") and two synthetic buddies: the same art with no poses, and one with a one-sided arm and its own wall, ceiling, land and held art. Every tick, her drawn box was worked out from the frame a view gets (the same transform strings the DOM applies). The runs: 3 x 17 min per buddy on a messy desk of 12 windows with a throw every 12 s; 2 h per buddy on four messy desks untouched; 5 h on a messy desk and 5 h on a bare screen for idle stats. Frame pacing was measured in headless Chromium with the desktop's SharedWorker and 16 ms timer. Strips of the worst moments were rendered with the real view and CSS.
+
+## Ranked findings
+
+| # | What a person sees | Measured | Cause | Fix sketch | Cost | Golden traces |
+|---|---|---|---|---|---|---|
+| 1 | **She teleports over window corners.** From standing on a window's top to clinging to its side (or back up, or onto its underside), one frame, a full body away, turned a quarter. | 21/h with the sample art, 42/h with none, on a messy desk; median 126 px, max 134 px, 90 degrees, in one tick. | `round()` and `mountWall()` place her "just past the end" of the next surface (`packages/engine/src/body.ts:63`, `:95`, `:104`); `look.ts:82` turns her at once. On a window's outer corner that's her whole height away. | A short corner move: for about 8 ticks, draw her turning round the corner point from the old surface's facing to the new one, then hand on. Only on outer (window) corners. | 0.5 to 1 day | Unmoved if kept to window corners: the maker has none. |
+| 2 | **Hops onto windows stall.** On the desktop, a homing jump freezes for one tick about every 25. | 5.2% of aimed-flight ticks drawn still at 16 ms (0.2% at 16.667 ms). | Aimed flights run whole planned frames (`body.ts:271`); a 16 ms tick is 0.96 of one. | **Built on this branch:** she's drawn along her arc by the part of a frame the tick ran past, and that bit of the way is swept as the next frame will sweep it, so a window that closes or moves mid-flight can't put her past what stops her (`drawnAt`, `body.ts:280`). Physics and the arc are unchanged. | done | Unmoved (byte-identical, the maker has no windows). |
+| 3 | **Fast motion hitches on the desktop.** A throw, fall or hop jumps double a few times a second. | Headless Chromium: 62.5 ticks/s against 60 frames/s; 4.3% of display frames show two ticks at once, 2.5 a second. At 144 Hz each tick shows for 2 or 3 refreshes, unevenly (by arithmetic). | The world ticks on `setInterval(16)` in the worker (`apps/desktop/src/host.ts:111`) and overlays apply frames as they arrive (`overlay.ts:86`), with no tie to the display. | Overlays keep the last two frames and draw in `requestAnimationFrame`, placing her between them by the time since the newer one arrived (one tick behind). Held buddies skip it so the drag doesn't lag. | 1 day, plus a Windows check | Unmoved: desktop only. |
+| 4 | **She jumps when picked up.** The moment a drag starts she snaps so the cursor is near her head. | Every pickup. 22 px grabbed a third of the way down, 45 px at her middle (strip), up to 106 px at her feet. | Held art is anchored 12% from her top under the cursor (`look.ts:77`), wherever she was grabbed. | Keep where on her the press was, and ease it to the head anchor over about 8 ticks. Release (`hands.ts:47`) uses the same offset. | 2 to 3 h | Moves the held scenarios: a decision. |
+| 5 | **A roll ends with a snap upright** for a buddy without Roll art, the sample included. | 44 to 76 degrees with the sample art, up to 179 degrees on the synthetic one, in one tick. | `tumble` turns Stand by distance rolled (`anims.ts:33`), so it stops at any angle; Dizzy starts at 0. Roll's 130 ticks are also stretched to finish a pass of her Stand art (`runner.ts:244`): the sample's 16 frames at 4 fps make it 240 ticks, 605 to 753 px of travel against 377 px a turn, so 1.6 to 2 turns. | Either end the roll at her next upright (no slip, up to one more turn, 2 to 2.5 s), or count whole turns from the real end, after the pass wait, and scale the turn to fit (the sample rounds to 2 turns, up to 25% faster than she rolls; a one-frame Stand rounds to 1 turn within 13%). The first is simpler and never slips. | 1 to 2 h | Moves roll scenarios: a decision. |
+| 6 | **Personality art never plays on its own.** Excited, Laugh, Surprised, Face away, Tap the screen and Stare only play when asked for. | 0 picks in 5 h for each. Idle is 28 to 30% of her time, mean 5 s a stand. | They're in no pick table (`behaviours.ts:84`). | Add them to the floor table with small weights. `available()` already leaves out what she has no art for. | 1 h | Likely unmoved: no golden buddy has that art, so the draws don't change. Check by running. The weights are a decision. |
+| 7 | **Dropped low, she pops up.** Let go with her feet below the floor line (over the taskbar, say), she appears standing on the floor next frame. | Released into the floor in the throw runs: median 77 px, max 283 px, one tick. | On release her feet go 88% of her height under the cursor (`hands.ts:47`); the floor contact sets her on it (`body.ts:258`). | Let her rise to the floor over about 6 ticks with the landing squash, rather than at once. | 2 h | May move throw scenarios. |
+| 8 | **Her body shifts sideways between poses with one-sided art.** A pose with an arm out to one side moves her body by half the reach. | Synthetic arm to 92% of the width: 13 px on every change into and out of that pose. The sample art is symmetric, so 0 there. | The engine centres each pose on its art's content box (`look.ts:69`), but the art pipeline lines poses up on the image centre (`packages/art/src/images.ts:126`). | Centre on the image (half its size) instead of the content box. Hit test and bubble follow. | 1 h, plus a look at imported Shimeji sets | Moves scenarios with off-centre boxes: a decision. |
+| 9 | **Snaps in the fallback animations,** for a buddy without the art: a trip goes flat and back up in one tick each; a landing goes from tilted to upright; a lean flips on a turn; a walk's bob drops to a sit or nap. | Trip 60 px and 90 degrees in and out; landing up to 25 degrees; lean flip 12 to 20 degrees; walk to sit or sleep 21 to 24 px, about 30/h; Wave's sway is cut at 1 s mid-sway, 7.6 degrees. | Each animation starts from nothing and stops dead (`anims.ts`); `greet` (`anims.ts:23`) ends at `P.t < 60`, not at a zero of its sway. | Blend the previous animation's values into the new one over about 6 ticks in `look.render`; end `greet` at a zero crossing. | 3 h | Moves scenarios with art-less buddies: a decision. |
+| 10 | **Quarter turns in one tick** at screen corners and on wall or ceiling catches, for art without wall or ceiling poses. | About 20/h; the jump itself is small (median 11 px), the turn is 90 to 180 degrees. | `look.ts:82`. | The same turn as item 1, extended to inner corners and catches. | +2 h on item 1 | Moves climbing scenarios. |
+
+Smaller, noted only: standing past a window's end, she's pulled in 24 to 51 px when she next walks (1 to 3/h, `body.ts:86`); her bubble swaps sides in one frame near the screen top (1.5 to 5.5/h); `pairs()` counts its cooldown in ticks, not time (`sim.ts:79`), so in the maker on a 144 Hz screen buddies meet 2.4 times as often.
+
+## What's fine
+
+- Pose frames advance on time (`P.t += dt`), not on ticks. A late tick moves her proportionally up to 50 ms; past that, time is dropped, so there's never a burst. The worker held 62 ticks/s hidden on the runner (native-shell-design.md).
+- Between poses of the sample art her feet stay planted: each pose is anchored at its content bottom with one box for all its frames, so frames within a pose never jump.
+- Variety: the same non-idle behaviour comes twice running 3 to 6% of the time. The longest still stretch is about a minute (a nap and what follows), median 4 s.
+- Flight, throw and held swing are smooth within themselves (single-tick moves follow speed only).
+
+## Recommended first batch
+
+1. **Window corners** (1): the biggest and most frequent pop, and golden-safe if kept to windows.
+2. **Pickup ease** (4): every drag starts with it.
+3. **Roll end** (5): one hour, every roll of most buddies.
+4. **Personality picks** (6): one hour, and art an artist drew finally plays.
+5. Item 2 is already on this branch; item 3 is the next batch, since it needs a Windows check.
+
+## Where the numbers come from
+
+The probes were throwaway scripts kept outside the repo. Each figure can be had again this way, with the engine test support (`packages/engine/tests/support.ts`: `messy(seed)` desks, `mulberry32` seeds) and the fixture `packages/test-support/fixtures/sample.json`:
+
+- **Drawn box:** each tick, `sim.frame({ x: 0, y: 0, scale: 1 })`; apply the frame's `body` transform about its `origin`, at `box.l`, `box.t`, to the current frame's content box; take the bounding box. A "jump" is the largest move of any of its four edges in one tick.
+- **1, 10, the "smaller" pulls and bubble flips:** 2 h per buddy on `messy(11)` to `messy(14)`, seeds 11 to 14, 16.667 ms ticks, nobody touching her; counted where a tick turns her 45 degrees or more and moves an edge over 60 px (1), or turns her without that (10).
+- **2:** four 17 min runs on `messy(4)`, seeds 1 to 4, at 16.667 and 16 ms ticks; ticks with `P.aim` set where her position didn't change.
+- **3:** headless Chromium, a SharedWorker posting on `setInterval(16)` to a page that counts arrivals per `requestAnimationFrame`, 20 s.
+- **4:** press at her middle while idle, move 7 px, compare her drawn box the tick before and after; the other figures follow from the 12% anchor.
+- **5, 9:** each behaviour asked for alone with `sim.act`, from idle on a bare 1920x1040 screen, six seeds; the turn and edge jump as it starts and as it hands on. 5's 179 degrees and 9's art-less figures use the fixture with `poses` emptied, or a synthetic buddy with a one-sided arm.
+- **6, the variety figures:** five 1 h runs each on `messy(4)` and on its screen alone, seeds 1 to 5; time and entries per behaviour.
+- **7:** three 17 min runs per buddy on `messy(4)` with a scripted throw every 700 ticks; the jump on the tick a release lands her.
+- **8:** arithmetic from the content boxes: body 0.3 to 0.7 and arm pose 0.3 to 0.92 of a 120 px image move her centre 0.11 x 120 = 13 px, confirmed by the behaviour-alone runs.
+
+## Evidence
+
+Strips of the corner, pickup, roll and trip, rendered headless with the real view and CSS, were shared with the review and not kept in the repo.

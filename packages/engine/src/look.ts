@@ -24,7 +24,7 @@ export const LIFT_FROM: Readonly<Record<SurfaceKind, keyof Lift>> = { floor: 'fl
 const FOLLOWS: Readonly<Record<string, readonly PoseKey[]>> = { swing: ['drag', 'dragL', 'dragR'], tumble: ['roll'] };
 function union(a: ContentBox | null, b: ContentBox): ContentBox { if (!a) return b; if (!b) return a; return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }; }
 
-export function createLook(world: WorldState, me: Character, P: PetState, { bubble }: Voice, { here, zone }: Pick<Body, 'here' | 'zone'>) {
+export function createLook(world: WorldState, me: Character, P: PetState, { bubble }: Voice, { here, zone, drawnAt }: Pick<Body, 'here' | 'zone' | 'drawnAt'>) {
   /* what the last render worked out, for frames to carry */
   const drawn = { px: 0, size: null as string | null, ox: 0, oy: 0, cx: 0, ay: 0, origin: null as string | null, body: null as string | null, src: null as string | null, grab: false };
   const tag = { text: '', hidden: false, placed: false, x: 0, y: 0 };
@@ -72,7 +72,8 @@ export function createLook(world: WorldState, me: Character, P: PetState, { bubb
 
     /* Facing comes from the surface's normal: a wall you lean left on looks the same on any owner. */
     const s = here(), onWall = !!s && s.kind === 'wall', n = onWall ? s.normal.x : 0, k = P.k;
-    let rot = 0, oy, ox = P.x, oyS = P.y, face = P.dir;
+    const at = drawnAt();
+    let rot = 0, oy, ox = at.x, oyS = at.y, face = P.dir;
     if (P.state === 'held') { oy = bb.y0 * Sz + ch * .12; ox = P.hx; oyS = P.hy; }
     else if (onWall && r.custom) { oy = (bb.y0 + bb.y1) / 2 * Sz; ox = s.at + n * (cw / 2) * k; face = n > 0 ? -1 : 1; }
     else if (P.surf === 'ceil' && r.custom) { oy = bb.y0 * Sz; }
