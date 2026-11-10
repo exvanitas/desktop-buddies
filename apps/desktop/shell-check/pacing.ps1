@@ -88,7 +88,9 @@ try {
 
 $text = if (Test-Path $log) { Get-Content -Raw $log } else { '' }
 Expect 'pacing.probe_up' ($text -match 'PACING probe up')
-Expect 'pacing.no_errors' ($text -notmatch '(?m)\b(error|rejected|hub error|failed)\b') (($text -split "`n" | Select-String '\b(error|rejected|hub error|failed)\b' | Select-Object -First 3) -join ' | ')
+# The probe's own result line counts moves that "failed", so it's left out of the scan for errors.
+$scan = ($text -split "`n" | Where-Object { $_ -notmatch 'PACING result' }) -join "`n"
+Expect 'pacing.no_errors' ($scan -notmatch '(?m)\b(error|rejected|hub error|failed)\b') (($scan -split "`n" | Select-String '\b(error|rejected|hub error|failed)\b' | Select-Object -First 3) -join ' | ')
 # This run's own: the log was emptied before it, and its last result is the one it ends with.
 $found = [regex]::Matches($text, 'PACING result (\{[^\r\n]*\})') | Select-Object -Last 1
 Expect 'pacing.result' ($null -ne $found)

@@ -251,6 +251,12 @@ test('driver.ps1: the dialog\'s folder is read by the address bar\'s window clas
   assert.ok(!label.test('C:\\Files\\a'), 'a bare path has no label');
 });
 
+test('pacing.ps1: its own result line is never read as an error', () => {
+  const ps = body(read('pacing.ps1'));
+  assert.ok(ps.includes("$scan = ($text -split \"`n\" | Where-Object { $_ -notmatch 'PACING result' }) -join \"`n\""), 'the result line is left out of the scan');
+  assert.match(ps, /Expect 'pacing\.no_errors' \(\$scan -notmatch /);
+});
+
 test('pacing.ps1: each run reads only its own log, from a file it emptied first, and its own last result', () => {
   const ps = body(read('pacing.ps1'));
   const launch = ps.indexOf('Start-Process $runExe');
