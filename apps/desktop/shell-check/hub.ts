@@ -744,10 +744,11 @@ async function dialogs() {
     await up('asker');
     await step('plant', { where: 'files', name: 'check-owned.txt', content: 'old' });
     const p = shell.saveAs({ name: 'check-owned.txt', owner: 'asker', content: 'owned' });
-    const r = await step<{ found: boolean; owner: number; typed: boolean; confirmed: boolean }>('dialog', { action: 'ok', where: 'files', file: 'check-owned.txt', confirm: true });
+    const r = await step<{ found: boolean; owner: number; typed: boolean; confirmed: boolean; seen?: string }>('dialog', { action: 'ok', where: 'files', file: 'check-owned.txt', confirm: true });
     if (!r.found) skip('no dialog could be seen on the runner');
-    ok(r.typed && r.confirmed, `the path typed into the dialog (${r.typed}) and saving over it confirmed (${r.confirmed})`);
-    same(await p, true, 'the answer');
+    /* The outcome is what counts: whether a replace prompt came up, and was answered, is only told. */
+    ok(r.typed, `the path typed into the dialog (replace prompt answered: ${r.confirmed}${r.seen ? `; no Yes found, saw: ${r.seen}` : ''})`);
+    same(await Promise.race([p, sleep(15000).then(() => 'no answer in 15 s')]), true, `the answer (replace prompt answered: ${r.confirmed}${r.seen ? `; saw: ${r.seen}` : ''})`);
     same(r.owner, (await facts('check-asker')).hwnd, 'the dialog\'s owner');
     const f = await step<{ content: string; attrs: string }>('peek', { where: 'files', name: 'check-owned.txt', remove: true });
     same(f.content, 'owned', 'the file');

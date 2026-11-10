@@ -128,13 +128,15 @@ function Do-Step($action, $a) {
       # Saving over a file asks first, in a prompt of its own: Yes, pressed through UI Automation. The
       # prompt is a task dialog, which ignores a posted button command.
       $confirmed = $false
+      $seen = ''
       if ($a.confirm) {
         for ($i = 0; $i -lt 50 -and -not $confirmed; $i++) {
           Start-Sleep -Milliseconds 100
           $confirmed = Press-Yes ([int]$script:proc.Id)
         }
+        if (-not $confirmed) { $seen = Seen-Buttons ([int]$script:proc.Id) }
       }
-      return @{ found = $true; owner = $owner; typed = $typed; confirmed = $confirmed }
+      return @{ found = $true; owner = $owner; typed = $typed; confirmed = $confirmed; seen = $seen }
     }
     # A file to save over, marked with an attribute a plain rename wouldn't keep.
     'plant' {
@@ -175,13 +177,30 @@ function Press-Yes([int]$owner) {
   foreach ($top in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $ofApp)) {
     foreach ($button in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, $isButton)) {
       $aid = $button.Current.AutomationId
-      if ($aid -eq 'CommandButton_6' -or $aid -eq '6') {
+      $label = $button.Current.Name -replace '&', ''
+      if ($aid -eq 'CommandButton_6' -or $aid -eq '6' -or $label -eq 'Yes') {
         $invoke = $null
         if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) { $invoke.Invoke(); return $true }
       }
     }
   }
   return $false
+}
+
+# What a failed Press-Yes saw, for the log: each window of the app's process, its class, and its
+# buttons' ids and names. Only the app's own windows, so nothing of anyone else's.
+function Seen-Buttons([int]$owner) {
+  $uia = [System.Windows.Automation.AutomationElement]
+  $ofApp = New-Object System.Windows.Automation.PropertyCondition($uia::ProcessIdProperty, $owner)
+  $isButton = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+  $parts = @()
+  foreach ($top in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $ofApp)) {
+    $ids = @($top.FindAll([System.Windows.Automation.TreeScope]::Descendants, $isButton) | ForEach-Object { "$($_.Current.AutomationId)=$($_.Current.Name)" })
+    $parts += "$($top.Current.ClassName)[$($ids -join ',')]"
+  }
+  $text = if ($parts.Count) { $parts -join ' ' } else { 'no windows of the app' }
+  if ($text.Length -gt 600) { $text = $text.Substring(0, 600) }
+  return $text
 }
 
 function Folder($where) {
