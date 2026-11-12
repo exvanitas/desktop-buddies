@@ -398,7 +398,7 @@ class Installer(Base):
 
     def test_refuses_any_file_outside_the_install_folder_but_nsis_own(self):
         """7-Zip shows the install folder beside NSIS's own files: everything there is looked at too."""
-        for name in ("$APPDATA/stray.json", "stray.json", "$PLUGINSDIR/evil.dll", "$INSTDIR2/x.txt"):
+        for name in ("$APPDATA/stray.json", "stray.json", "$PLUGINSDIR/evil.dll", "$INSTDIR2/x.txt", "$APPDATA/LICENSE", "elsewhere/app/hub.html"):
             with self.subTest(name):
                 self.refused_setup(self.repo.setup(mode=f"outside:{name}"), f"{name} shouldn't be there")
         for name in ("$PLUGINSDIR/nsis_tauri_utils.dll", "[NSIS].nsi"):
@@ -465,6 +465,9 @@ class Installer(Base):
             "backslash": top + "app\\..\\..\\escaped.txt",
             "drive": top + "app/C:/x.js",
             "stream": top + "app/x.js:hidden",
+            "trailing-dot": top + "app/x.js.",
+            "trailing-space": top + "app/x.js ",
+            "control": top + "app/x\x01.js",
             "absolute": "/" + top + "app/x.js",
         }
         for name, entry in bad.items():

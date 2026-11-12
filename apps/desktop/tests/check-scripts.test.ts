@@ -326,8 +326,10 @@ test("installer-check.ps1: an upgrade is the new setup run over the old install,
   assert.ok(!/UninstallString\)|oldUninstall/.test(ps.slice(old, fresh)), 'no uninstall before the upgrade');
   assert.equal([...ps.slice(0, ps.lastIndexOf('} finally {')).matchAll(/Run-Silent \$uninstaller '\/S'/g)].length, 1, 'the one uninstall, at the end');
   assert.match(ps, /\$runValue = '"' \+ \$installedExe \+ '"'/);
-  assert.match(ps, /Expect 'old\.has_its_file' \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\) -PathType Leaf\)/);
-  assert.match(ps, /Expect 'upgrade\.old_file_gone' \(-not \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\)\)\)/);
+  /* from a lower version to this one, so the setup's version compare is the path taken */
+  assert.match(ps, /if \(\[version\]\$OldVersion -ge \[version\]\$Version\) \{ throw /);
+  assert.match(ps, /Expect 'old\.arp_version' \(\$oldArp -and \$oldArp\.DisplayVersion -eq \$OldVersion\)/);
+  assert.ok(!/OldOnly|old_file_gone|has_its_file/.test(ps), 'no stale-file check');
   assert.match(ps, /Expect 'upgrade\.run_value_kept' \(\(Run-Value\) -eq \$runValue\)/);
   assert.match(ps, /function Run-Value \{ return \(Get-ItemProperty -LiteralPath \$runKey -Name \$product -ErrorAction SilentlyContinue\)\.\$product \}/);
 });
@@ -368,7 +370,7 @@ test('installer-check.ps1: the cleanup touches only what this run made, and only
 
 test('installer-check.ps1: every check it promises is made, and none passes by being skipped', () => {
   const ps = body(read('installer-check.ps1'));
-  for (const name of ['old.exit', 'old.has_its_file', 'upgrade.old_file_gone', 'upgrade.run_value_kept', 'upgrade.data_kept',
+  for (const name of ['old.exit', 'old.arp_version', 'upgrade.run_value_kept', 'upgrade.data_kept',
     'install.exit', 'install.exe_same', 'install.app_same', 'install.top_files', 'install.start_menu', 'install.arp',
     'run.exit', 'run.no_strays', 'run.log_no_errors', 'run.log_app_folder', 'run.log_hub_up', 'run.log_clean_quit', 'run.buddy_saved', 'run.data_written',
     'second.exit', 'second.no_strays', 'second.log_no_errors', 'second.log_app_folder',
@@ -386,35 +388,50 @@ test('installer-check.ps1: the exe is named only by -Exe, so no log line carries
   assert.match(body(ps), /\$exeName = Split-Path -Leaf \$Exe/);
 });
 
-test('shell.yml: the installer step builds as the release does, then runs the check on it', () => {
+test("shell.yml: the installer job builds as the release does, on the build job's exe and app folder, then runs the check", () => {
   const yml = fs.readFileSync(new URL('../../../.github/workflows/shell.yml', import.meta.url), 'utf8');
   const release = fs.readFileSync(new URL('../../../.github/workflows/release.yml', import.meta.url), 'utf8');
-  const at = yml.indexOf('- name: Installer');
-  assert.ok(at > 0, 'the step');
-  const step = yml.slice(at, yml.indexOf('\n\n', at));
-  assert.match(step, /if: success\(\) \|\| failure\(\)/);
-  assert.match(step, /shell: pwsh/);
+  /* a job of its own, after the build, with its own time */
+  const jobAt = yml.indexOf('\n  installer:\n');
+  assert.ok(jobAt > yml.indexOf('\n  windows:\n'), 'the installer job, after the build job');
+  const job = yml.slice(jobAt);
+  assert.match(job, /^\n  installer:\n    needs: windows\n    if: \$\{\{ !cancelled\(\) \}\}\n    runs-on: windows-latest\n    timeout-minutes: \d+\n/);
+  const build = yml.slice(yml.indexOf('\n  windows:\n'), jobAt);
+  for (const moved of ['- name: Installer', '- name: winget validate']) assert.ok(!build.includes(moved), `${moved} isn't in the build job`);
+  /* the build job hands over its exe, reused or not, and its app folder */
+  const exeUp = build.slice(build.indexOf('name: desktop-buddies-windows') - 200, build.indexOf('name: desktop-buddies-windows'));
+  assert.ok(!/if: env\.REUSE/.test(exeUp.slice(exeUp.lastIndexOf('- uses: actions/upload-artifact'))), 'the exe is uploaded on every run');
+  assert.match(build, /- uses: actions\/upload-artifact@v4\n        with:\n          name: app-folder\n          path: apps\/desktop\/dist\/app\n/);
+  assert.match(job, /- uses: actions\/download-artifact@v4\n        with:\n          name: desktop-buddies-windows\n          path: exe\n/);
+  assert.match(job, /- uses: actions\/download-artifact@v4\n        with:\n          name: app-folder\n          path: apps\/desktop\/dist\/app\n/);
+  /* tauri-cli pinned as the release pins it, cached by its version, and checked it's that version */
   const cli = (s: string) => s.match(/TAURI_CLI: ([\d.]+)/)?.[1];
-  assert.ok(cli(step) && cli(step) === cli(release), 'the same tauri-cli as the release');
-  assert.match(step, /cargo install tauri-cli --version \$env:TAURI_CLI --locked/);
+  assert.ok(cli(job) && cli(job) === cli(release), 'the same tauri-cli as the release');
+  assert.match(job, /- uses: actions\/cache@v4\n        with:\n          path: ~\/\.cargo\/bin\/cargo-tauri\.exe\n          key: tauri-cli-\$\{\{ runner\.os \}\}-\$\{\{ env\.TAURI_CLI \}\}\n/);
+  assert.match(job, /if \(-not \(Test-Path ~\/\.cargo\/bin\/cargo-tauri\.exe\)\) \{ cargo install tauri-cli --version \$env:TAURI_CLI --locked; if \(\$LASTEXITCODE\) \{ throw /);
+  assert.match(job, /if \(\$said -ne "tauri-cli \$env:TAURI_CLI"\) \{ throw /);
+  const at = job.indexOf('- name: Installer');
+  assert.ok(at > 0, 'the step');
+  const step = job.slice(at, job.indexOf('\n\n', at));
+  assert.match(step, /shell: pwsh/);
   /* the zip first, as the release packs it, then the installer from that zip */
   assert.match(step, /python -I apps\/desktop\/scripts\/preview\.py --release \$v --exe exe\/desktop-buddies\.exe --notices \S+ --out-dir installer\n/);
   assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --zip installer\/desktop-buddies-\$v-windows-x64\.zip --out-dir installer\n/);
-  /* the older build: that zip with one more app file, built the same way */
-  assert.match(step, /Copy-Item installer\/desktop-buddies-\$v-windows-x64\.zip installer-old\/old\.zip/);
-  assert.match(step, /z\.writestr\(sys\.argv\[2\], 'old\(\)'\)[^\n]*installer-old\/old\.zip "Desktop Buddies \$v\/app\/old-only\.js"/);
-  assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --zip installer-old\/old\.zip --out-dir installer-old\n/);
-  assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -OldSetup installer-old\/desktop-buddies-\$v-setup-x64\.exe -OldOnly app\\old-only\.js -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
+  /* the older build: the same files at a lower version */
+  assert.match(step, /python -I apps\/desktop\/shell-check\/older-installer\.py --zip installer\/desktop-buddies-\$v-windows-x64\.zip --old-version \$old --out-dir installer-old\n/);
+  assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -OldSetup installer-old\/desktop-buddies-\$old-setup-x64\.exe -OldVersion \$old -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
   for (const line of step.split('\n').filter(l => /^\s*python /.test(l))) {
     const next = step.split('\n')[step.split('\n').indexOf(line) + 1] ?? '';
     assert.match(next, /^\s*if \(\$LASTEXITCODE\) \{ throw /, `a failed ${line.trim()} stops the step`);
   }
   /* winget validate: on manifests for the installer just built, failing on any error */
-  const at2 = yml.indexOf('- name: winget validate');
+  const at2 = job.indexOf('- name: winget validate');
   assert.ok(at2 > at, 'after the installer step');
-  const wv = yml.slice(at2, yml.indexOf('\n\n', at2) < 0 ? yml.length : yml.indexOf('\n\n', at2));
+  const wv = job.slice(at2, job.indexOf('\n\n', at2) < 0 ? job.length : job.indexOf('\n\n', at2));
+  assert.match(wv, /if: success\(\) \|\| failure\(\)/);
   assert.match(wv, /packaging\/winget\/manifest\.py --version \$v --sha256 \(Get-FileHash \$setup -Algorithm SHA256\)\.Hash --out winget-manifests/);
   assert.match(wv, /winget validate --manifest winget-manifests/);
   assert.match(wv, /if \(\$LASTEXITCODE -and \$said -notmatch 'validation succeeded'\) \{ throw/);
   assert.match(wv, /::warning::winget isn't on this runner/);
+  assert.match(job, /name: installer-results\n          path: results\n/);
 });

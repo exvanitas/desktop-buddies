@@ -1,11 +1,11 @@
 # The per-user installer on the Actions Windows runner: an older build installed silently and run once
 # as smoke runs it, upgraded to this one as winget does it, run again, then uninstalled silently.
-#   old: -OldSetup, the same build with one app file more (-OldOnly), installs with that file
+#   old: -OldSetup, the same build at a lower version, -OldVersion, installs at that version
 #   run: the installed exe finds the installed app folder, takes the test buddy (first-buddy.ps1),
 #     quits by itself, leaves no process behind, and writes its settings and library
 #   upgrade: as winget's UpgradeBehavior install does it, -Setup with /S straight over the old install,
-#     with Start with Windows on. The old file is gone, the Run value is as it was, and every data file
-#     is kept, by its hash
+#     with Start with Windows on: the setup's upgrade from a lower version. The Run value is as it was,
+#     and every data file is kept, by its hash
 #   install: the exe is -Exe byte for byte, the app folder is -App file for file, the licence files are
 #     there and nothing else, the Start menu entry points at the exe, and Installed apps has it at -Version
 #   second: the upgraded install runs, on the data the first run left
@@ -21,7 +21,7 @@
 param(
   [Parameter(Mandatory)][string]$Setup,
   [Parameter(Mandatory)][string]$OldSetup,
-  [Parameter(Mandatory)][string]$OldOnly,
+  [Parameter(Mandatory)][string]$OldVersion,
   [Parameter(Mandatory)][string]$Exe,
   [Parameter(Mandatory)][string]$App,
   [Parameter(Mandatory)][string]$Version,
@@ -88,8 +88,9 @@ try {
   if (-not (Test-Path -LiteralPath $OldSetup -PathType Leaf)) { throw "-OldSetup '$OldSetup' is not a file" }
   if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "-Exe '$Exe' is not a file" }
   if (-not (Test-Path -LiteralPath $App -PathType Container)) { throw "-App '$App' is not a folder" }
-  if ($OldOnly -notmatch '^app\\[\w.-]+$') { throw "-OldOnly '$OldOnly' isn't a file in app, like app\old-only.js" }
   if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "-Version '$Version' isn't a version like 1.2.3" }
+  if ($OldVersion -notmatch '^\d+\.\d+\.\d+$') { throw "-OldVersion '$OldVersion' isn't a version like 1.2.3" }
+  if ([version]$OldVersion -ge [version]$Version) { throw "-OldVersion $OldVersion isn't lower than -Version $Version" }
   if ($Seconds -lt 10) { throw "-Seconds $Seconds is below 10" }
   $Setup = (Resolve-Path -LiteralPath $Setup).Path
   $OldSetup = (Resolve-Path -LiteralPath $OldSetup).Path
@@ -129,7 +130,6 @@ try {
   $makerKeyWas = Test-Path -LiteralPath $makerKey
   $wantApp = Files-In $App
   if ($wantApp.Count -eq 0) { throw "-App '$App' is empty" }
-  if ($wantApp -contains $OldOnly.Substring(4)) { throw "-OldOnly '$OldOnly' is in this build too" }
   Expect 'setup.checks' $true "setup $Setup, old $OldSetup, app $App ($($wantApp.Count) files), version $Version, out $Out"
 
   if ($SetupOnly) {
@@ -184,7 +184,8 @@ try {
     $installed = $true
     $code = Run-Silent $OldSetup '/S' 'the old install'
     Expect 'old.exit' ($code -eq 0) "code $code"
-    Expect 'old.has_its_file' (Test-Path -LiteralPath (Join-Path $installDir $OldOnly) -PathType Leaf) "$OldOnly, which this build doesn't have"
+    $oldArp = Get-ItemProperty -LiteralPath $arpKey -ErrorAction SilentlyContinue
+    Expect 'old.arp_version' ($oldArp -and $oldArp.DisplayVersion -eq $OldVersion) "Installed apps says '$($oldArp.DisplayVersion)'"
 
     # ---------- run once on it, on a fresh data folder
     $ran = Launch ((@('--seconds', $Seconds, '--no-manager') + (First-Buddy $installedApp $userData $work)) -join ' ')
@@ -210,7 +211,6 @@ try {
     $t = [Diagnostics.Stopwatch]::StartNew()
     $code = Run-Silent $Setup '/S' 'the install'
     Expect 'install.exit' ($code -eq 0) "code $code after $($t.ElapsedMilliseconds) ms"
-    Expect 'upgrade.old_file_gone' (-not (Test-Path -LiteralPath (Join-Path $installDir $OldOnly))) "$OldOnly"
     Expect 'upgrade.run_value_kept' ((Run-Value) -eq $runValue) "Start with Windows: $(if ($null -eq (Run-Value)) { 'gone' } else { 'as it was' })"
     Expect 'upgrade.data_kept' ((Snapshot $userData) -eq $beforeUpgrade) 'every file in %APPDATA%, by its hash'
 

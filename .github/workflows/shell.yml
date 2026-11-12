@@ -20,8 +20,8 @@ on:
       - apps/desktop/shell-core/**
       - apps/desktop/packaging/**
       - apps/desktop/scripts/installer.py
-      - apps/desktop/scripts/installer-hooks.nsh
       - apps/desktop/shell-check/installer-check.ps1
+      - apps/desktop/shell-check/older-installer.py
       - packaging/winget/**
       - .github/workflows/shell.yml
 
@@ -88,8 +88,8 @@ jobs:
           $line
           "$line`n" >> $env:GITHUB_STEP_SUMMARY
 
+      # On every run, reused or not: the installer job takes it from here.
       - uses: actions/upload-artifact@v4
-        if: env.REUSE != 'true'
         with:
           name: desktop-buddies-windows
           path: exe/desktop-buddies.exe
@@ -103,6 +103,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @buddies/desktop build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-folder
+          path: apps/desktop/dist/app
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Contract check
         shell: pwsh
@@ -131,30 +138,65 @@ jobs:
         shell: pwsh
         run: apps/desktop/shell-check/store-package.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 
-      # The per-user installer, built from this exe as the release builds it: the zip, then the
-      # installer from the zip, with a stand-in for the crates' notices, which only the release writes.
-      # An older build, the same with one more app file, is installed first, then upgraded to this one.
-      - name: Installer
-        if: success() || failure()
-        shell: pwsh
-        env:
-          TAURI_CLI: 2.12.4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shell-results
+          path: results
+          retention-days: 14
+          if-no-files-found: warn
+
+  # The per-user installer, in a job of its own with its own time, on the build job's exe and app
+  # folder: built as the release builds it, an upgrade from a lower version run over it, then winget's
+  # check of its manifests.
+  installer:
+    needs: windows
+    if: ${{ !cancelled() }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TAURI_CLI: 2.12.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-buddies-windows
+          path: exe
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-folder
+          path: apps/desktop/dist/app
+
+      # tauri-cli at the release's version, built once and kept by that version.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-${{ runner.os }}-${{ env.TAURI_CLI }}
+
+      - name: tauri-cli
         run: |
-          cargo install tauri-cli --version $env:TAURI_CLI --locked
-          if ($LASTEXITCODE) { throw 'installing tauri-cli failed' }
+          if (-not (Test-Path ~/.cargo/bin/cargo-tauri.exe)) { cargo install tauri-cli --version $env:TAURI_CLI --locked; if ($LASTEXITCODE) { throw 'installing tauri-cli failed' } }
+          $said = cargo-tauri --version
+          if ($said -ne "tauri-cli $env:TAURI_CLI") { throw "cargo-tauri says '$said', not tauri-cli $env:TAURI_CLI" }
+          $said
+
+      # The zip, then the installer from the zip, with a stand-in for the crates' notices, which only
+      # the release writes. The older build is the same files at a lower version.
+      - name: Installer
+        shell: pwsh
+        run: |
           $v = (Get-Content -Raw apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $old = '0.0.1'
           'Third-party notices: a stand-in. The release build writes the real ones.' | Set-Content notices.txt
           python -I apps/desktop/scripts/preview.py --release $v --exe exe/desktop-buddies.exe --notices notices.txt --out-dir installer
           if ($LASTEXITCODE) { throw 'packing the zip failed' }
           python -I apps/desktop/scripts/installer.py --release $v --zip installer/desktop-buddies-$v-windows-x64.zip --out-dir installer
           if ($LASTEXITCODE) { throw 'building the installer failed' }
-          New-Item -ItemType Directory -Force installer-old | Out-Null
-          Copy-Item installer/desktop-buddies-$v-windows-x64.zip installer-old/old.zip
-          python -I -c "import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], 'a'); z.writestr(sys.argv[2], 'old()'); z.close()" installer-old/old.zip "Desktop Buddies $v/app/old-only.js"
-          if ($LASTEXITCODE) { throw 'making the older zip failed' }
-          python -I apps/desktop/scripts/installer.py --release $v --zip installer-old/old.zip --out-dir installer-old
+          python -I apps/desktop/shell-check/older-installer.py --zip installer/desktop-buddies-$v-windows-x64.zip --old-version $old --out-dir installer-old
           if ($LASTEXITCODE) { throw 'building the older installer failed' }
-          apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -OldSetup installer-old/desktop-buddies-$v-setup-x64.exe -OldOnly app\old-only.js -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
+          apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -OldSetup installer-old/desktop-buddies-$old-setup-x64.exe -OldVersion $old -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
 
       # winget's own check of the manifests, written for the installer just built. A runner image with
       # no winget says so in a warning and the summary: then the schema tests in tools/release are all.
@@ -185,7 +227,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shell-results
+          name: installer-results
           path: results
           retention-days: 14
           if-no-files-found: warn
