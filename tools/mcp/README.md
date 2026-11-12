@@ -12,7 +12,7 @@ Tools: `list_buddies`, `wave` (`buddy`), `say` (`buddy`, `text`).
 ## Options
 | Flag | Environment | Default |
 |---|---|---|
-| `--exe` | `BUDDIES_EXE` | The zip at `%LOCALAPPDATA%\Desktop Buddies\desktop-buddies.exe` if it's there, else the Store app's alias, `%LOCALAPPDATA%\Microsoft\WindowsApps\desktop-buddies.exe`, if the Store app is installed. Unzipped somewhere else? Set it. |
+| `--exe` | `BUDDIES_EXE` | The installer's `%LOCALAPPDATA%\Desktop Buddies\desktop-buddies.exe` if it's there, else the Store app's alias, `%LOCALAPPDATA%\Microsoft\WindowsApps\desktop-buddies.exe`, if the Store app is installed. Using the zip, unzipped somewhere else? Set it. |
 | `--data` | `BUDDIES_DATA` | The data folder that goes with the exe: see below |
 | `--package-family` | `BUDDIES_PACKAGE_FAMILY` | The Store package's family name, for its data folder. Only for a test build with its own identity. |
 | `--app` | `BUDDIES_APP` | `AI agent`, the name the Manager shows |
@@ -20,10 +20,10 @@ Tools: `list_buddies`, `wave` (`buddy`), `say` (`buddy`, `text`).
 
 ### The exe and its data folder go together
 The app writes its replies in its data folder, so the server has to read the folder of the exe it starts:
-- The zip keeps its data in `%APPDATA%\dev.exvanitas.desktop-buddies`.
+- The installer's app and the zip keep their data in `%APPDATA%\dev.exvanitas.desktop-buddies`.
 - The Store app is started by its alias, and keeps its data in its package's own folder, `%LOCALAPPDATA%\Packages\<family name>\LocalState\data`.
 
-With neither flag, the zip and its folder win if the zip is there, else the Store app and its folder, which count only when its alias and its own package folder are both there. An `--exe` in `%LOCALAPPDATA%\Microsoft\WindowsApps` or under `%ProgramFiles%\WindowsApps` is the Store app's, and brings the package's folder; any other `--exe` brings the zip's.
+With neither flag, the installer's exe and that folder win if the exe is there, else the Store app and its folder, which count only when its alias and its own package folder are both there. An `--exe` in `%LOCALAPPDATA%\Microsoft\WindowsApps` or under `%ProgramFiles%\WindowsApps` is the Store app's, and brings the package's folder; any other `--exe`, the installer's or a zip's, brings `%APPDATA%`'s.
 
 Both builds share one single-instance lock, so with both installed a request reaches whichever is running, and its reply lands in that one's folder. So unless `--data` is given, the server watches both folders for its own request's id, the exe's own first. `--data` always wins, and is then the only folder watched.
 
@@ -33,7 +33,7 @@ These checks tell the two installs apart; they don't defend against a program ru
 ```
 claude mcp add desktop-buddies -s user -- node C:\path\to\desktop-buddies\tools\mcp\server.mjs --exe "C:\path\to\desktop-buddies.exe" --app "Claude Code"
 ```
-With the Store app, or the zip in its usual place, leave out `--exe`:
+With the Store app or the installer, leave out `--exe`:
 ```
 claude mcp add desktop-buddies -s user -- node C:\path\to\desktop-buddies\tools\mcp\server.mjs --app "Claude Code"
 ```

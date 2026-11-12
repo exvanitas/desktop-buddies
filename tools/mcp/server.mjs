@@ -37,8 +37,8 @@ export const TOOLS = [
 export const PACKAGE_FAMILY = 'PLACEHOLDER.DesktopBuddies_m8z88z54g2w36';
 const DATA = 'dev.exvanitas.desktop-buddies';
 
-/* The two ways it's installed, each an exe and the data folder its replies land in. The zip,
-   unzipped to its usual place, keeps its data in %APPDATA%. The Store's package is started by its
+/* The two ways it's installed, each an exe and the data folder its replies land in. The installer's
+   exe, in %LOCALAPPDATA%\Desktop Buddies (`zip` here, as a zip there is the same build), keeps its data in %APPDATA%. The Store's package is started by its
    alias, and keeps its data in its own LocalState. */
 export function installs(env, family = PACKAGE_FAMILY) {
   const win = path.win32, local = env.LOCALAPPDATA || 'C:\\';
