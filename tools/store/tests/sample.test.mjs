@@ -2,12 +2,15 @@
    in her place. A file the app would refuse is never written. */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_FROM, exportSample } from '../sample-buddy.mjs';
 
-const dir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'store-sample-'));
+/* in the tool's own ignored dist folder, gone after each test */
+const SCRATCH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/tests');
+const dir = () => { fs.mkdirSync(SCRATCH, { recursive: true }); return fs.mkdtempSync(path.join(SCRATCH, 'sample-')); };
+afterEach(() => fs.rmSync(path.dirname(SCRATCH), { recursive: true, force: true }));
 const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 
 describe('sample-buddy', () => {

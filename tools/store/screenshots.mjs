@@ -14,7 +14,8 @@
 
    The desktop is drawn: a plain wallpaper, a taskbar and three windows with no words in them, at the
    places the fake exe reports to the real hub. The world runs on a seeded random and a stepped clock,
-   so the same buddy gives the same pictures. Needs `pnpm --filter @buddies/desktop build` first
+   so the same buddy gives the same pictures. A buddy with animated images is refused, since those play
+   on the browser's own clock. Built pages go in apps/desktop/dist/store-shots for the run only. Needs `pnpm --filter @buddies/desktop build` first
    (pnpm store:shots does it), and a Chromium that's already installed: set CHROME_PATH, or it looks
    in Playwright's cache. */
 import fs from 'node:fs';
@@ -25,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { build } from 'vite';
 import { playerBundle } from '../../apps/desktop/player-bundle.ts';
+import { animatedImages } from './animated.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const DESKTOP = path.join(REPO, 'apps/desktop'), BROWSER = path.join(DESKTOP, 'tests/browser'), APP = path.join(DESKTOP, 'dist/app');
@@ -36,6 +38,12 @@ const THEME = flag('theme') || 'dark', ONLY = flag('only');
    with --verbose, which prints where each copy is and what she says. */
 const SEED = +(flag('seed') || 31), AT = +(flag('at') || 7000);
 if (!fs.existsSync(path.join(APP, 'manager.html'))) throw new Error('no app build: run pnpm --filter @buddies/desktop build');
+/* A picture that moves by itself plays on the browser's clock, not the world's, so it would never shoot the same twice. */
+const moving = animatedImages(fs.readFileSync(SAMPLE, 'utf8'));
+if (moving.length) {
+  console.error(`${path.basename(SAMPLE)} has animated images (${moving.slice(0, 3).join(', ')}${moving.length > 3 ? ', ...' : ''}). Screenshots need still ones: save those frames as plain PNG or WebP.`);
+  process.exit(1);
+}
 
 function chrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -45,16 +53,26 @@ function chrome() {
   throw new Error('no Chromium found: set CHROME_PATH');
 }
 
+/* Built pages for this run, in the desktop app's ignored dist folder, gone when it ends however it ends. */
+const HARNESS = path.join(DESKTOP, 'dist/store-shots');
+let server = null, browser = null, ORIGIN = '';
+
 /* the scene, and the real Maker page's logic with the Maker where this can reach it, as the Manager check builds them */
-const HARNESS = fs.mkdtempSync(path.join(os.tmpdir(), 'store-shots-'));
-await build({
-  root: DESKTOP, configFile: false, logLevel: 'error', publicDir: false,
-  build: { outDir: HARNESS, emptyOutDir: false, minify: false, lib: { entry: path.join(BROWSER, 'store-scene.ts'), formats: ['iife'], name: 'StoreScene', fileName: () => 'scene.js' } }
-});
-await build({
-  root: DESKTOP, configFile: false, logLevel: 'error', publicDir: false, plugins: [playerBundle()],
-  build: { outDir: HARNESS, emptyOutDir: false, minify: false, rollupOptions: { input: path.join(BROWSER, 'maker-page.ts'), output: { format: 'iife', entryFileNames: 'maker-page.js' } } }
-});
+async function setUp() {
+  fs.rmSync(HARNESS, { recursive: true, force: true });
+  await build({
+    root: DESKTOP, configFile: false, logLevel: 'error', publicDir: false,
+    build: { outDir: HARNESS, emptyOutDir: false, minify: false, lib: { entry: path.join(BROWSER, 'store-scene.ts'), formats: ['iife'], name: 'StoreScene', fileName: () => 'scene.js' } }
+  });
+  await build({
+    root: DESKTOP, configFile: false, logLevel: 'error', publicDir: false, plugins: [playerBundle()],
+    build: { outDir: HARNESS, emptyOutDir: false, minify: false, rollupOptions: { input: path.join(BROWSER, 'maker-page.ts'), output: { format: 'iife', entryFileNames: 'maker-page.js' } } }
+  });
+  server = http.createServer(serve);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  ORIGIN = `http://127.0.0.1:${server.address().port}`;
+  browser = await chromium.launch({ headless: true, executablePath: chrome(), args: ['--no-sandbox'] });
+}
 
 /* The wallpaper and the drawn windows. Only the overlay's own CSS draws her. */
 const DESK_CSS = `
@@ -73,17 +91,14 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 const SCENE = `<!doctype html><html><head><meta charset=utf-8><title>scene</title><style>${fs.readFileSync(path.join(APP, 'style.css'), 'utf8')}\n${DESK_CSS}</style></head><body><div id="desk"></div><div id="root"></div><script src="__scene.js"></script></body></html>`;
 
 const MIME = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp', '.woff2': 'font/woff2', '.png': 'image/png' };
-const server = http.createServer((q, a) => {
+function serve(q, a) {
   const p = decodeURIComponent(q.url.split('?')[0]);
   if (p === '/__scene.html') { a.writeHead(200, { 'content-type': MIME['.html'] }); return a.end(SCENE); }
   const f = p === '/__scene.js' ? path.join(HARNESS, 'scene.js') : p === '/maker.js' ? path.join(HARNESS, 'maker-page.js') : path.join(APP, p);
-  if (!f.startsWith(HARNESS) && !f.startsWith(APP + path.sep)) { a.writeHead(404); return a.end(); }
+  if (!f.startsWith(APP + path.sep) && f !== path.join(HARNESS, 'scene.js') && f !== path.join(HARNESS, 'maker-page.js')) { a.writeHead(404); return a.end(); }
   if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { a.writeHead(404); return a.end(); }
   a.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream' }); a.end(fs.readFileSync(f));
-});
-await new Promise(r => server.listen(0, '127.0.0.1', r));
-const ORIGIN = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({ headless: true, executablePath: chrome(), args: ['--no-sandbox'] });
+}
 
 /* 1080p at 150%: physical pixels for the world, CSS pixels for pages */
 const SCREEN = { w: 1920, h: 1080, scale: 1.5, taskbar: 72 };
@@ -141,7 +156,18 @@ const makerUp = p => p.evaluate(() => new Promise(done => {
   const look = () => window.M && M.maker.state ? M.settled().then(() => { clearTimeout(gave); done(true); }) : setTimeout(look, 20);
   look();
 }));
-const asImage = async p => 'data:image/png;base64,' + (await p.screenshot()).toString('base64');
+/* A page's picture once two shots a moment apart agree, so nothing still settling gets in. */
+async function asImage(p) {
+  await p.evaluate(() => Promise.all([...document.images].map(i => i.decode().catch(() => {}))));
+  let last = await p.screenshot();
+  for (let i = 0; i < 20; i++) {
+    await p.waitForTimeout(250);
+    const now = await p.screenshot();
+    if (now.equals(last)) return 'data:image/png;base64,' + now.toString('base64');
+    last = now;
+  }
+  throw new Error('a page kept changing: nothing still to shoot');
+}
 async function shoot(s, file) {
   if (VERBOSE) console.log(JSON.stringify(await s.page.evaluate(() => [S.where(), [...document.querySelectorAll('.db-bubble:not([hidden])')].map(b => b.textContent)])));
   await settled(s.page);
@@ -188,19 +214,21 @@ const SHOTS = {
     await s.page.evaluate(() => S.run(6000));
     return s;
   },
-  /* the light theme, in the window that shows the most of it */
-  '05-maker-light.png': () => maker('light', 1)
+  /* the light theme, on All words: everything she says. Hanging around's step icons load in either of two
+     orders, so a picture of it isn't the same twice. */
+  '05-maker-light.png': () => maker('light', 'words')
 };
 
-fs.mkdirSync(OUT, { recursive: true });
 try {
+  await setUp();
+  fs.mkdirSync(OUT, { recursive: true });
   for (const [file, make] of Object.entries(SHOTS)) {
     if (ONLY && !file.includes(ONLY)) continue;
     await shoot(await make(), file);
     console.log(`${file}`);
   }
 } finally {
-  await browser.close(); server.close();
+  await browser?.close(); server?.close();
   fs.rmSync(HARNESS, { recursive: true, force: true });
 }
 if (problems.length) { console.error(problems.slice(0, 10).join('\n')); process.exitCode = 1; }
