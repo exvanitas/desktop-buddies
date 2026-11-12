@@ -59,7 +59,7 @@ The first question is the kind of product. Choose the app type that fits an ente
 
 | Topic | Answer | What it rests on |
 |---|---|---|
-| Violence | See [Decisions for the owner](#decisions-for-the-owner): mild and comic at most. | You can drag and throw a buddy. She lands, may be dizzy or knocked out for a moment, and says a line like "Ouch!" from her own list. No blood and no injury is drawn, and she's a cartoon. The sample's lines are in `packages/test-support/fixtures/sample.json`. |
+| Violence | See [Decisions for the owner](#decisions-for-the-owner): mild and comic at most. | You can drag and throw a buddy. She lands, may be dizzy for a moment, and says a line like "Ouch!" from her own list. A buddy can also have a Knocked out pose. The sample is a cartoon chick and draws no blood or injury. The sample's lines are in `packages/test-support/fixtures/sample.json`. |
 | Fear, horror | No | Nothing in the app's own content. |
 | Sexual content, nudity | No | Nothing in the app's own content. |
 | Language (swearing) | No | The sample's lines have none. A buddy's lines are whatever the person who made her wrote. |
@@ -71,7 +71,7 @@ The first question is the kind of product. Choose the app type that fits an ente
 | Shares personal information with third parties | No | It sends nothing anywhere (README, Network use; PRIVACY.md). |
 | Digital purchases | No | It sells nothing and has no store or add-ons. |
 | Ads | No | None. |
-| Unrestricted internet or web browser | No | It opens no web pages and fetches nothing. Each page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`). |
+| Unrestricted internet or web browser | No | It shows no web pages and fetches nothing. Each page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`). |
 | User-generated content | No, in IARC's and the Store's sense | Store Policy 11.12 defines it as content "viewed or accessed by other users in an online state". Buddies people make or import stay on their own PC: the library is a folder in the app's data folder (`apps/desktop/README.md`, The library). |
 
 Two facts to keep in mind while answering, so nothing is missed:
@@ -81,7 +81,7 @@ Two facts to keep in mind while answering, so nothing is missed:
 ## Store listing (English)
 
 ### Product name
-Pick the reserved name. It must match the package's display name.
+Pick the reserved name. Microsoft recommends the same name as the package's display name, which is Desktop Buddies.
 
 ```text
 Desktop Buddies
@@ -93,7 +93,7 @@ Plain text, up to 10,000 characters. No links in it: Microsoft asks for those in
 ```text
 Little characters that live on your Windows desktop. They walk along your windows, climb the sides, hang underneath, nap, chat and get thrown about.
 
-Make your own in the Maker from one picture or a full set of poses, or bring in a Shimeji folder. No buddies come with the app: open a .buddy file someone shared, make one in the Maker, or bring in a Shimeji folder.
+No buddies come with the app: open a .buddy file someone shared, make your own in the Maker from one picture or a full set of poses, or bring in a Shimeji folder.
 
 Buddies on your desktop
 One world across all your monitors. Buddies walk along your windows, climb the sides, hang underneath, nap and chat, and ride along when you move a window. Drag them and throw them. Right-click one to give her a treat, have her chase your mouse, or call another copy.
@@ -108,7 +108,7 @@ Yours, and on your PC
 No accounts, ads, purchases, analytics, update checks or telemetry. The app sends nothing anywhere. To use your windows as terrain it reads which windows are open, where they are and which program each belongs to, never their titles or contents, and none of it leaves your PC.
 
 For tinkerers
-A local API and an MCP server, both off by default, let apps and AI agents on your PC ask buddies to wave or say a line, after you allow each app.
+A local API, off by default, lets apps and AI agents on your PC ask buddies to wave or say a line, after you allow each app. An MCP server for it is in the source repository.
 
 Free and open source, under the MIT licence.
 ```
@@ -130,7 +130,7 @@ Bring in Shimeji folders
 Share a buddy as one .buddy file
 Keep buddies off any program, or off windows altogether
 Dark and light themes
-Optional local API and MCP server for apps on your PC, off by default
+A local API for apps and AI agents on your PC, off by default
 No accounts, ads or purchases, and no network use
 Free and open source (MIT)
 ```
@@ -204,7 +204,7 @@ animated characters
 ```
 
 ### Copyright and trademark info
-Up to 200 characters. It names no holder, as LICENSE does; add the name from LICENSE if you'd like it here.
+Up to 200 characters. LICENSE names the copyright holder and this line doesn't: add the name from LICENSE if you'd like it here.
 
 ```text
 Code copyright 2026, under the MIT licence: see LICENSE. The Desktop Buddies name, logo and mascot are not covered by it: see TRADEMARKS.md.
@@ -252,7 +252,8 @@ runFullTrust: Desktop Buddies is a desktop app (Tauri, on WebView2). It draws tr
 If Partner Center asks why the package declares `runFullTrust`, paste the last paragraph of the notes above.
 
 ## Decisions for the owner
-- **Violence in the age questionnaire.** Throwing a buddy, with her dizzy or knocked-out pose and an "Ouch!", may count as mild cartoon or comic violence. Answering yes to the mildest option is the safe reading; the rating should stay in the youngest bands either way.
+- **Violence in the age questionnaire.** Throwing a buddy, with her dizzy or knocked-out pose and an "Ouch!", may count as mild cartoon or comic violence. Answering yes to the mildest option is the safe reading. IARC sets the rating from the answers.
+- **The privacy question.** "No" above is the plain reading: the app collects and sends nothing, and an exe name of a window isn't personal information. Store Policy 10.5.1 also says Win32 products inherently have access to personal information. If you read the question that way, answer Yes: the privacy policy URL is the same either way.
 - **"shimeji" as a keyword.** The app imports Shimeji folders, so it's accurate, but Microsoft asks to avoid others' brand names. It's a project and genre name rather than a company's brand; drop it if you'd rather not.
 - **The empty first run.** Store Policy 10.1.1 asks that "the value proposition of your product must be clear during the first run experience". The Manager opens empty, with Import and New buddy. The notes point testers to the sample. If certification still calls it incomplete, a Store build could seed the sample on first run: `apps/desktop/public/seed.json` exists for that, but the release packer refuses an app folder with a seed today.
 - **Generative AI declaration.** Left unticked above, because the app runs and calls no model. Tick it only if you read the local API's lines from AI agents as the app's own.
