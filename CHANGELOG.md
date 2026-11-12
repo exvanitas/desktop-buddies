@@ -14,8 +14,9 @@
 - **Frame pacing.** On the desktop, buddies are drawn on the display's beat, so throws, falls and hops no longer hitch.
 
 ### Install
-- **Install routes.** The README now lists the Microsoft Store and winget, both coming soon, beside the per-user installer and the portable zip, and says plainly that the installer and the zip aren't signed.
-- **Privacy.** A new PRIVACY.md says what the app reads, keeps and sends (nothing), and where the Store version keeps its data.
+- **A per-user installer.** `desktop-buddies-1.0.0-setup-x64.exe` installs Desktop Buddies for you alone, with a Start menu entry and an uninstaller. Uninstalling keeps your buddies. The portable zip is still here.
+- **Not signed yet.** Windows may say "Windows protected your PC": choose More info, then Run anyway. Smart App Control may block it with no way past. A Microsoft Store version, signed by Microsoft, and a winget package are coming.
+- **Privacy.** A new PRIVACY.md says what the app reads, keeps and sends. Its own code sends nothing; the page also says what Microsoft's WebView2 runtime does by itself.
 - **Store kit.** docs/store has the Store listing, its screenshots, and the scripts that make them and the sample buddy for a release.
 
 ### Checks
