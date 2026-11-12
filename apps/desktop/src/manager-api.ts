@@ -15,6 +15,8 @@ export interface HubState {
   ready: boolean;
   buddies: BuddyRow[];
   hidden: boolean; paused: boolean; autostart: boolean;
+  /* The Store's package: Windows opens .buddy files, and Start with Windows is its startup task. */
+  packaged: boolean;
   /* Walk on windows, the apps to stay off, and the apps in the latest snapshot, all by exe name in
      lower case */
   walk: boolean; exclude: string[]; apps: string[];

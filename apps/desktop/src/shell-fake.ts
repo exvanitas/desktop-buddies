@@ -8,6 +8,8 @@ const bad = (path: string) => path.split(/[/\\]/).some(n => !n || n === '.' || n
 
 export interface FakeOptions {
   monitors?: Monitor[]; args?: string[]; api?: number; opened?: Opened[]; system?: Partial<System>;
+  /* The Store's package: autostart is its startup task, and .buddy files are declared. */
+  packaged?: boolean;
   /* called as each page listener goes on, for events that arrive while the rest are going on */
   listening?(event: string, exe: FakeExe): void;
 }
@@ -18,6 +20,9 @@ export interface FakeExe {
   /* what the exe would hold */
   files: Map<string, Uint8Array>; windows: Map<string, WindowSpec & { hidden: boolean; minimized?: boolean }>; tray: Parameters<Shell['traySet']>[0] | null;
   autostart: boolean; system: System; monitors: Monitor[];
+  /* Packaged: the person turned the startup task off in Windows Settings, so the app can't turn
+     it on, as the real one refuses. */
+  offInWindows: boolean;
   /* What's on the desktop. Like the tracker, this speaks only while watched, only on a change, and
      once at the start of every watch. */
   watching: boolean;
@@ -66,7 +71,7 @@ export function createFakeExe(o: FakeOptions = {}): FakeExe {
   const snapshot = () => ({ seq: ++seq, foreground: desktop[0]?.id ?? 0, list: desktop });
   const exe: FakeExe = {
     shell: null as unknown as Shell, invoke: null as unknown as Tauri['core']['invoke'],
-    files: new Map(), windows: new Map(), tray: null, autostart: false, focused: null, raising: false, saved: [], dialog: false,
+    files: new Map(), windows: new Map(), tray: null, autostart: false, offInWindows: false, focused: null, raising: false, saved: [], dialog: false,
     system: { userState: 'normal', onBattery: false, saver: false, ...o.system },
     monitors: o.monitors || [],
     watching: false,
@@ -148,7 +153,7 @@ export function createFakeExe(o: FakeOptions = {}): FakeExe {
   const CAN = ['raise', 'tool-overlays', 'window-focus-spec', 'window-closed', 'focus-restores', 'save-atomic', 'save-owner', 'quit-wait'];
 
   const commands: Record<string, (a: never, h: Record<string, string>) => unknown> = {
-    shell_info: () => ({ api, version: '0.1.0', platform: 'windows', args: o.args || [], dataDir: 'C:\\data', ...(newer ? { can: CAN } : {}) }),
+    shell_info: () => ({ api, version: '0.1.0', platform: 'windows', args: o.args || [], dataDir: 'C:\\data', ...(newer ? { can: CAN } : {}), ...(o.packaged ? { packaged: true } : {}) }),
     quit: () => { exe.emit('quitting', newer ? { grace: 250, bound: 10000 } : null); },
     ...(newer ? {
       quit_wait: () => {},
@@ -202,8 +207,19 @@ export function createFakeExe(o: FakeOptions = {}): FakeExe {
     },
     windows_now: () => ({ seq, foreground: desktop[0]?.id ?? 0, list: desktop }),
     system: () => exe.system,
-    autostart: (a: { on?: boolean }) => { if (a.on !== undefined) exe.autostart = a.on; return exe.autostart; },
-    file_assoc: () => false
+    autostart: (a: { on?: boolean }) => {
+      if (o.packaged && exe.offInWindows) {
+        exe.autostart = false;
+        if (a.on) throw new Error('the startup task was turned off in Windows Settings');
+      }
+      if (a.on !== undefined) exe.autostart = a.on;
+      return exe.autostart;
+    },
+    file_assoc: (a: { on?: boolean }) => {
+      if (!o.packaged) return false;
+      if (a.on !== undefined) throw new Error('the package declares .buddy files, so Windows handles them');
+      return true;
+    }
   };
 
   const tauri: Tauri = {

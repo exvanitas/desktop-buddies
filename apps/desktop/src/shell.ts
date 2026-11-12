@@ -10,8 +10,9 @@ export const MIN_API = 1;
 export interface Rect { x: number; y: number; w: number; h: number }
 /* x y w h are the work area, `full` the whole screen. All physical pixels on the virtual desktop. */
 export interface Monitor extends Rect { i: number; name: string; primary: boolean; scale: number; full: Rect }
-/* `can`: what the exe does beyond API 1, by name. API 1 has none. */
-export interface Info { api: number; version: string; platform: string; args: string[]; dataDir: string; can?: string[] }
+/* `can`: what the exe does beyond API 1, by name. API 1 has none. `packaged`: running as the Store's
+   MSIX package. Only an exe that knows says so: a missing field is not packaged. */
+export interface Info { api: number; version: string; platform: string; args: string[]; dataDir: string; can?: string[]; packaged?: boolean }
 export interface Cursor { x: number; y: number; down: boolean; right: boolean }
 export interface System { userState: 'normal' | 'fullscreen' | 'presentation' | 'busy' | 'away'; onBattery: boolean; saver: boolean }
 export interface Listed { name: string; dir: boolean; size: number; modified: number }

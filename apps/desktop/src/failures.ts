@@ -175,6 +175,10 @@ export const makerHolding = (): Problem => ({
 export const notSet = (what: string): Problem => ({
   kind: 'other', file: what, title: `${what} didn't change`, why: "Windows didn't accept the change.", fix: 'Try again.', again: 'Try again'
 });
+/* The Store's package: the person's own switch in Windows Settings, or a policy, decides. */
+export const startupInWindows = (): Problem => ({
+  kind: 'other', file: 'Start with Windows', title: "Start with Windows didn't change", why: 'Windows Settings has the last word on this one.', fix: 'Change it in Windows Settings, under Apps, Startup.'
+});
 export const broke = (what: string): Problem => ({
   kind: 'other', file: what, title: `${what} didn't work`, why: 'Something went wrong inside the app.', fix: 'Try again. If it keeps happening, restart the app.', again: 'Try again'
 });

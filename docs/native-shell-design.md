@@ -40,7 +40,7 @@ From API 2 a second launch's arguments never reach the log: the exe logs `second
 
 | Group | Command | Does |
 |---|---|---|
-| Shell | `shell_info()` | `{ api, version, platform, args, dataDir }`, and from API 2 `can`: what it does beyond API 1, by name |
+| Shell | `shell_info()` | `{ api, version, platform, args, dataDir }`, and from API 2 `can`: what it does beyond API 1, by name. `packaged: true` when it runs as the Store's MSIX package; any other exe leaves it out |
 | | `quit()` | Emits `quitting`, exits shortly after. From API 2, waits for pages that ask, see [API 2](#api-2) |
 | | `quit_wait()`, `quit_ready()` | API 2. After `quitting`, the calling page asks to be waited for, then says it's done |
 | | `raise({ on })` | API 2. Keeps overlays, then visible always-on-top windows, on top. Off until asked |
@@ -59,7 +59,7 @@ From API 2 a second launch's arguments never reach the log: the exe logs `second
 | | `take_opened()` | Files passed at launch, read once. Each is `{ name, content, error? }` |
 | Windows on screen | `windows_watch({ on })`, `windows_now()` | The tracker, see below |
 | System | `system()` | `{ userState, onBattery, saver }` |
-| Registry | `autostart({ on? })`, `file_assoc({ on? })` | Read, or set then read. Current user only |
+| Registry | `autostart({ on? })`, `file_assoc({ on? })` | Read, or set then read. Current user only. Packaged, `autostart` is the package's startup task, which the person can also change in Windows Settings, so it's read again each time; turning it on after they turned it off there is refused. `file_assoc` reads true and refuses a set, since the package declares `.buddy` |
 
 **Events**
 

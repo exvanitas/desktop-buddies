@@ -570,6 +570,55 @@ test('start with Windows that fails says so, and neither side thinks it\'s on', 
   assert.strictEqual(s().failures.length, 2, 'from the tray too');
 });
 
+/* The Store's package: Start with Windows is the package's startup task, which the person can
+   also change in Windows Settings while the app runs. */
+
+test('packaged: the Manager opening reads Start with Windows again, and both sides show it', async () => {
+  const r = await setup({ api: 2, packaged: true }), { client, s } = await r.open();
+  assert.strictEqual(s().packaged, true);
+  await client.setAutostart(true);
+  assert.strictEqual(s().autostart, true);
+  r.exe.offInWindows = true;
+  r.exe.emit('tray-click', null);
+  await r.done();
+  assert.strictEqual(s().autostart, false, 'turned off in Windows Settings');
+  agree(r, s());
+});
+
+test('packaged: the tray reads before it flips, so it flips what Windows has now', async () => {
+  const r = await setup({ api: 2, packaged: true }), { s } = await r.open();
+  r.exe.autostart = true; /* turned on in Windows Settings, unseen so far */
+  await r.clicked('autostart');
+  assert.strictEqual(r.exe.autostart, false, 'the click turned it off, as the tick it showed would have said');
+  assert.strictEqual(s().autostart, false);
+  agree(r, s());
+});
+
+test('packaged: a turn-on that Windows Settings refuses says where to change it, and shows it off', async () => {
+  const r = await setup({ api: 2, packaged: true }), { client, s } = await r.open();
+  await client.setAutostart(true);
+  r.exe.offInWindows = true; /* unseen so far, so the app still shows it on */
+  const a = await client.setAutostart(true);
+  assert.ok(!a.ok);
+  assert.deepStrictEqual(s().failures.map(f => [f.title, f.why, f.fix]), [["Start with Windows didn't change", 'Windows Settings has the last word on this one.', 'Change it in Windows Settings, under Apps, Startup.']]);
+  assert.strictEqual(s().autostart, false);
+  agree(r, s());
+});
+
+test('not packaged: nothing reads Start with Windows again, and a failure says what it always did', async () => {
+  const r = await setup({ api: 2 }), { client, s } = await r.open();
+  assert.strictEqual(s().packaged, false);
+  const reads = () => r.exe.calls.filter(c => c.cmd === 'autostart').length;
+  const before = reads();
+  r.exe.emit('tray-click', null);
+  await r.done();
+  assert.strictEqual(reads(), before, 'opening the Manager reads nothing');
+  r.exe.failNext('autostart', 'registry refused');
+  await client.setAutostart(true);
+  assert.deepStrictEqual(s().failures.map(f => f.why), ["Windows didn't accept the change."]);
+  assert.strictEqual(reads(), before + 1, 'only the set itself');
+});
+
 /* the Maker's hook */
 
 test('new and edit open the Maker, and state says so', async () => {
@@ -742,7 +791,7 @@ test('a window can open while the old one\'s command is still running, and both 
 
 test('a hub that never answers: the command gives up with a failure a person can read', async () => {
   const bus = createBus<Said>(), hub = bus.wire(), clocks: { ms: number; f: () => void }[] = [];
-  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
+  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
   const c = createManagerClient({ wire: bus.wire(), session: 'w', after: (ms, f) => { const x = { ms, f }; clocks.push(x); return () => {}; }, shimeji: async () => null, closeWindow: async () => {} });
   await tick(); await tick();
   const going = c.setPaused(true);

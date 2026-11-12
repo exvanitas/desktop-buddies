@@ -46,11 +46,18 @@ export function createWalkSetting(io: WalkIO) {
   };
 }
 
-export function settingsPanel(theme: Theme, pick: (t: Theme) => void, walk: HTMLElement, api: HTMLElement) {
+/* The Store's package declares .buddy files, so Windows opens them and there's nothing to switch.
+   Shown only there. */
+export function createFilesNote() {
+  const el = h('p', { class: 'files-note', hidden: true }, 'Windows opens .buddy files with Desktop Buddies.');
+  return { el, update(packaged: boolean) { el.hidden = !packaged; } };
+}
+
+export function settingsPanel(theme: Theme, pick: (t: Theme) => void, walk: HTMLElement, api: HTMLElement, files: HTMLElement) {
   const choice = (t: Theme, words: string) => button(words, () => pick(t), { role: 'radio', 'aria-checked': String(t === theme), 'data-theme-choice': t });
   return h('div', { class: 'panel', role: 'dialog', 'aria-label': 'Settings' },
     h('h2', {}, 'Settings'),
     h('div', { class: 'setting' }, h('span', {}, 'Theme'),
       h('div', { class: 'choice', role: 'radiogroup', 'aria-label': 'Theme' }, choice('dark', 'Dark'), choice('light', 'Light'))),
-    walk, api);
+    files, walk, api);
 }

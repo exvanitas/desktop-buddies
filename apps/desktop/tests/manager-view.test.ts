@@ -29,7 +29,7 @@ import { createBus } from '../src/wire';
 
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r)); };
 const row = (name: string, copies = 0, id = name.toLowerCase(), can: BuddyRow['can'] = []): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 1 });
-const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
+const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
 const fail = (id: string, title: string, more: Partial<Failure> = {}): Failure => ({ id, kind: 'other', file: title, title, why: 'Why.', fix: 'Fix.', ...more });
 const LINE: Outline = rectangle(138, 138, 1.5);
 
@@ -854,6 +854,21 @@ test('Settings is a small panel: Theme, dark first', async () => {
   assert.deepStrictEqual(v.all('.panel [role=radio]').map(b => [b.textContent, b.getAttribute('aria-checked')]), [['Dark', 'true'], ['Light', 'false']]);
   press('Escape');
   gone(v.one('.panel'));
+});
+
+const FILES_NOTE = 'Windows opens .buddy files with Desktop Buddies.';
+
+test('Settings says Windows opens .buddy files only in the Store\'s package, with nothing to switch', async () => {
+  const plain = await scripted();
+  await click(plain.button('Settings'));
+  assert.deepStrictEqual(plain.words('.panel .files-note'), []);
+  press('Escape');
+  const boxed = await scripted({ packaged: true });
+  await click(boxed.button('Settings'));
+  assert.deepStrictEqual(boxed.words('.panel .files-note'), [FILES_NOTE]);
+  assert.ok(!boxed.all('.panel [role=switch]').some(b => /buddy/i.test(b.getAttribute('aria-label') ?? '')), 'no .buddy switch');
+  await boxed.set({ packaged: false });
+  assert.deepStrictEqual(boxed.words('.panel .files-note'), []);
 });
 
 test('Theme: dark by default, Light is shown and remembered, and the panel stays', async () => {

@@ -4,7 +4,7 @@
    `send` and the wire come in, so tests can drive it. */
 import { EXTENSION, newCharacter, read, saveName, write } from '@buddies/buddy-file';
 import { canDo, type BuddyData } from '@buddies/engine';
-import { badFile, broke, changedSinceDelete, changedSinceImport, gone, keptAsNew, lastEditLost, notDeleted, notExported, notOpened, notReadBack, notReady, notSaved, notSet, notStored, notWritten, reason, saveOpen, tooMany, tooManyWaiting, askGone, type Failure, type Problem } from './failures';
+import { badFile, broke, changedSinceDelete, changedSinceImport, gone, keptAsNew, lastEditLost, notDeleted, notExported, notOpened, notReadBack, notReady, notSaved, notSet, notStored, startupInWindows, notWritten, reason, saveOpen, tooMany, tooManyWaiting, askGone, type Failure, type Problem } from './failures';
 import type { Area, Message } from './host';
 import { createBuddyMenu } from './buddy-menu';
 import { createLibrary, type Prepared, type Shelved } from './library';
@@ -119,6 +119,9 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   const concealed = new Set<number>(); /* those of them that really are hidden */
   let retry = RETRY_MS, retrying = false, stocked = false, started = false;
   let hidden = false, paused = false, away = false, autostart = false;
+  /* The Store's package: Start with Windows is its startup task, which the person can also turn off
+     in Windows Settings, so it's read again whenever it's about to be shown or changed. */
+  let packaged = false;
   /* API 2: whether the hub wants overlays kept on top, and what the exe last said yes to. One call
      at a time, so a late answer can't undo a later wish. null: nothing yet, or the last call failed. */
   let raiseWant: boolean | null = null, raiseSent: boolean | null = null, raiseBusy = false;
@@ -168,7 +171,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     return { id: b.id, name: b.name, image: b.buddy.base.src, status: n ? 'out' : 'home', copies: n, can: PLAYS.filter(a => canDo(b.buddy, a)), rev: revisions.of(b.id) };
   });
   const replacing = () => waiting.map(q => ({ ask: q.ask, id: q.id, name: shelf.find(b => b.id === q.id)?.name ?? q.was ?? q.called, called: q.called, file: q.file.name }));
-  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, walk, exclude, apps, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
+  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, packaged, walk, exclude, apps, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
   const publish = () => wire.post({ k: 'state', state: state() });
   /* Her row from a copy's world id. With --buddies every copy is the first buddy. */
   const rowOf = (copy: string) => rows().find(r => r.id === (copies !== null ? shelf[0]?.id : copy.split('~')[0])) ?? null;
@@ -696,7 +699,13 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     pause: async ({ on }) => { paused = on; if (on) buddyMenu.close(); pauseWorld(); await changed(); return OK; },
     autostart: async ({ on }) => {
       try { autostart = await shell.autostart(on); }
-      catch (e) { note(`autostart failed: ${reason(e)}`); return refuse(notSet('Start with Windows')); }
+      catch (e) {
+        note(`autostart failed: ${reason(e)}`);
+        if (!packaged) return refuse(notSet('Start with Windows'));
+        await readAutostart();
+        await catchUp(); /* the tray's tick */
+        return refuse(startupInWindows());
+      }
       await changed();
       return OK;
     },
@@ -781,7 +790,15 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     else if (m.k.startsWith('menu-')) buddyMenu.heard(m);
   }
 
-  async function showManager() { wantManager = true; await catchUp(); }
+  async function showManager() { wantManager = true; await readAutostart(); await catchUp(); }
+  /* Packaged only: what Windows says now, in case the person changed it in Windows Settings. */
+  async function readAutostart() {
+    if (!packaged) return;
+    let now: boolean;
+    try { now = await shell.autostart(); }
+    catch (e) { note(`autostart read failed: ${reason(e)}`); return; }
+    if (now !== autostart) { autostart = now; trayStale = true; publish(); }
+  }
 
   async function trayChoice(id: string) {
     if (id.startsWith(BUDDY)) {
@@ -793,7 +810,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     else if (id === 'bring') await bringEveryone();
     else if (id === 'hide') await run({ k: 'hide', on: !hidden });
     else if (id === 'pause') await run({ k: 'pause', on: !paused });
-    else if (id === 'autostart') await run({ k: 'autostart', on: !autostart });
+    else if (id === 'autostart') { await readAutostart(); await run({ k: 'autostart', on: !autostart }); }
     else if (id === 'library') await shell.openDataFolder();
     else note(`tray: unknown item ${id}`);
   }
@@ -829,6 +846,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       return;
     }
     exeApi = info.api;
+    packaged = info.packaged === true;
     note(`exe api ${info.api}`);
     const o = options(info.args);
     /* Another app asked, and nothing was running to answer: say so and go, with nothing opened,
