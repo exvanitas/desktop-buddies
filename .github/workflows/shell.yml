@@ -19,6 +19,10 @@ on:
       - apps/desktop/src-tauri/**
       - apps/desktop/shell-core/**
       - apps/desktop/packaging/**
+      - apps/desktop/scripts/installer.py
+      - apps/desktop/scripts/installer-hooks.nsh
+      - apps/desktop/shell-check/installer-check.ps1
+      - packaging/winget/**
       - .github/workflows/shell.yml
 
 permissions:
@@ -126,6 +130,22 @@ jobs:
         if: success() || failure()
         shell: pwsh
         run: apps/desktop/shell-check/store-package.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
+
+      # The per-user installer, built from this exe as the release builds it, with a stand-in for the
+      # crates' notices, which only the release writes. Installed silently, run once, uninstalled silently.
+      - name: Installer
+        if: success() || failure()
+        shell: pwsh
+        env:
+          TAURI_CLI: 2.12.4
+        run: |
+          cargo install tauri-cli --version $env:TAURI_CLI --locked
+          if ($LASTEXITCODE) { throw 'installing tauri-cli failed' }
+          $v = (Get-Content -Raw apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          'Third-party notices: a stand-in. The release build writes the real ones.' | Set-Content notices.txt
+          python -I apps/desktop/scripts/installer.py --release $v --exe exe/desktop-buddies.exe --notices notices.txt --out-dir installer
+          if ($LASTEXITCODE) { throw 'building the installer failed' }
+          apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
 
       - uses: actions/upload-artifact@v4
         if: always()

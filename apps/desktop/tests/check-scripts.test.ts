@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { test } from 'vitest';
 
-const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1', 'store-package.ps1'] as const;
+const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1', 'store-package.ps1', 'installer-check.ps1'] as const;
 const DIR = new URL('../shell-check/', import.meta.url);
 const ALL = fs.readdirSync(DIR).filter(f => f.endsWith('.ps1')).sort();
 const read = (name: string) => fs.readFileSync(new URL(name, DIR), 'utf8');
@@ -295,4 +295,53 @@ test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, an
     '[System.Security.Cryptography.CngKey]::Exists($keyName)', '-not $keyLeft']) assert.ok(cert.includes(bit), bit);
   assert.ok(c.includes('$keyName = $rsa.Key.KeyName'), 'the key is named before anything can go wrong');
   assert.ok(fin.indexOf("Tidy 'processes'") < fin.indexOf("Tidy 'logs'") && fin.indexOf("Tidy 'logs'") < fin.indexOf("Tidy 'uninstall'"), 'stop, keep the log, then uninstall');
+
+/* The installer check installs into the real profile, so it runs on the Actions runner only. */
+test('installer-check.ps1: it runs only on the Actions runner, before anything else happens', () => {
+  const ps = code(read('installer-check.ps1'));
+  const guard = ps.indexOf("if ($env:GITHUB_ACTIONS -ne 'true') { throw");
+  assert.ok(guard > 0, 'the guard');
+  assert.ok(guard < ps.indexOf('New-Item -ItemType Directory'), 'before any folder is made');
+  assert.ok(guard < ps.indexOf('if ($SetupOnly) {'), 'before the -SetupOnly gate');
+});
+
+test('installer-check.ps1: silent both ways, and the uninstall is waited for, not taken at its word', () => {
+  const ps = body(read('installer-check.ps1'));
+  assert.match(ps, /Run-Silent \$Setup '\/S'/);
+  assert.match(ps, /Run-Silent \$uninstaller '\/S'/);
+  /* the uninstaller copies itself away and returns at once: its files are what say it's done */
+  assert.match(ps, /Wait-For 'the uninstall' \{ -not \(Test-Path -LiteralPath \$uninstaller\) -and -not \(Test-Path -LiteralPath \$arpKey\) \}/);
+});
+
+test('installer-check.ps1: every check it promises is made, and none passes by being skipped', () => {
+  const ps = body(read('installer-check.ps1'));
+  for (const name of ['install.exit', 'install.exe_same', 'install.app_same', 'install.top_files', 'install.start_menu', 'install.arp',
+    'run.exit', 'run.no_strays', 'run.log_no_errors', 'run.log_app_folder', 'run.log_hub_up', 'run.log_clean_quit', 'run.buddy_saved',
+    'uninstall.exit', 'uninstall.done', 'uninstall.files_gone', 'uninstall.start_menu_gone', 'uninstall.desktop_gone', 'uninstall.arp_gone',
+    'uninstall.data_kept']) {
+    assert.ok(ps.includes(`Expect '${name}'`), name);
+  }
+  assert.ok(!/skip/i.test(ps), 'nothing is skipped');
+  assert.match(ps, /if \(\$fails\.Count -or \$passes -eq 0\) \{ exit 1 \}/);
+});
+
+test('installer-check.ps1: the exe is named only by -Exe, so no log line carries its name', () => {
+  const ps = read('installer-check.ps1');
+  assert.ok(!/desktop-buddies\.exe/i.test(code(ps)), 'no exe name in the code');
+  assert.match(body(ps), /\$exeName = Split-Path -Leaf \$Exe/);
+});
+
+test('shell.yml: the installer step builds as the release does, then runs the check on it', () => {
+  const yml = fs.readFileSync(new URL('../../../.github/workflows/shell.yml', import.meta.url), 'utf8');
+  const release = fs.readFileSync(new URL('../../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const at = yml.indexOf('- name: Installer');
+  assert.ok(at > 0, 'the step');
+  const step = yml.slice(at, yml.indexOf('\n\n', at));
+  assert.match(step, /if: success\(\) \|\| failure\(\)/);
+  assert.match(step, /shell: pwsh/);
+  const cli = (s: string) => s.match(/TAURI_CLI: ([\d.]+)/)?.[1];
+  assert.ok(cli(step) && cli(step) === cli(release), 'the same tauri-cli as the release');
+  assert.match(step, /cargo install tauri-cli --version \$env:TAURI_CLI --locked/);
+  assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --exe exe\/desktop-buddies\.exe --notices \S+ --out-dir installer/);
+  assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
 });
