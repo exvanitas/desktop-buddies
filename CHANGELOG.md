@@ -37,7 +37,7 @@ The first public version of Desktop Buddies: little characters that live on your
 - **The Maker,** in the app and on the web. Make a buddy from one image or a full set of poses, with lines for what she says, Lift to set her on floors, walls and ceilings, optional transition poses, and a prompt kit for image AIs. The web Maker can export a standalone page with your buddies on it.
 - **Your windows as terrain.** The app reads only which windows are open, where, and which app each belongs to, never titles or contents. Settings can turn this off or keep buddies off one app.
 - **A local API and an MCP server, off by default.** Turn it on in Settings, and apps or AI agents on your PC can ask buddies to wave or say a line, after you allow each app.
-- **No network use.** No accounts, analytics, update checks or telemetry.
+- **No network use by the app itself.** No accounts, analytics, update checks or telemetry in its code. Microsoft's WebView2 runtime has its own diagnostics: see PRIVACY.md.
 
 ### Download
 Windows 10 or 11, 64-bit. Unzip it somewhere you'll keep it and run `desktop-buddies.exe`, with the `app` folder beside it.

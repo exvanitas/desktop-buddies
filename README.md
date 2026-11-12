@@ -58,10 +58,14 @@ The golden traces in `apps/maker/tests/golden` record what the engine painted, f
 By contributing, you agree your contribution is under the MIT licence.
 
 ## Code signing policy
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Committers, reviewers and approvers: the maintainer, Severian (@severian-dev). This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The full policy and the release workflow are in [docs/releases.md](docs/releases.md).
+The Microsoft Store version is signed by Microsoft. The installer and the zip on GitHub aren't signed yet: a free open-source signing service may be applied for again later.
+
+Committers, reviewers and approvers: the maintainer, Severian (@severian-dev).
+
+Desktop Buddies' own code doesn't transfer any information to other networked systems unless the person using it asks. Microsoft's WebView2 runtime, which it draws with, has its own diagnostics and updates: see [PRIVACY.md](PRIVACY.md). The release workflow is in [docs/releases.md](docs/releases.md).
 
 ## Plans
-Before the project rests: an end-to-end test of the local API and the MCP server, and polish on the buddies' animations. Later, a Desktop Buddies site: a landing page, a public gallery of uploaded buddies with moderation, links, and a short guide to making your own buddy and to the local API and MCP.
+Next: the Microsoft Store listing and the winget package. Later, a Desktop Buddies site: a landing page, a public gallery of uploaded buddies with moderation, links, and a short guide to making your own buddy and to the local API and MCP.
 
 ## Licence
 The code is under the [MIT licence](LICENSE). The Desktop Buddies name, logo and mascot are not: see [TRADEMARKS.md](TRADEMARKS.md). Buddies you make are yours. The bundled fonts (DynaPuff, Lexend and Nunito) are under the SIL Open Font License 1.1.

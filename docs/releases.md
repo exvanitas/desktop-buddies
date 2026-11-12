@@ -12,7 +12,7 @@ Only the exe built from this repository's source, by its release workflow on Git
 - **Approvers:** the maintainer, Severian (@severian-dev). Each signing request is approved by hand.
 
 ### Privacy
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Desktop Buddies has no network use at all: see `SECURITY.md`.
+Desktop Buddies' own code makes no network requests and transfers no information to other networked systems unless the person using it asks. Microsoft's WebView2 runtime, which it draws with, has its own diagnostic data, crash reports and updates, and the installer downloads WebView2 if it's missing: see `PRIVACY.md` and `SECURITY.md`.
 
 ## Before the first release
 Protect the release tags, so a tag can't move once it's pushed. In the repo's Settings, under Rules, add a tag ruleset: target tags matching `v*`, turn on **Restrict updates** and **Restrict deletions**, enforce it, and add no bypass. A tag that's wrong is then left as it is, and the fix is a new version. The workflow also refuses to draft if the tag points anywhere but the commit it built.
