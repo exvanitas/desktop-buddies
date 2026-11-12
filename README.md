@@ -9,23 +9,25 @@ No buddies are included. To get one, import a `.buddy` file someone shared, make
 
 Free and open source. See [CHANGELOG.md](CHANGELOG.md) for what's in each version.
 
-## Download and run
-Windows 10 or 11, 64-bit.
+## Install
+Windows 10 or 11, 64-bit. Pick one:
 
-Download the zip from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Releases aren't signed yet; signing through SignPath is applied for (see the code signing policy in [docs/releases.md](docs/releases.md)). You can also build it from source, below.
+- **Microsoft Store** (coming soon). Microsoft signs it, installs it and keeps it up to date.
+- **winget** (coming soon), once it's in the winget catalogue:
+  ```
+  winget install --id exvanitas.DesktopBuddies -e
+  ```
+- **The installer** from [Releases](https://github.com/exvanitas/desktop-buddies/releases): `desktop-buddies-X.Y.Z-setup-x64.exe`. It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu. Remove it from Installed apps in Windows Settings.
+- **The portable zip** from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe. To remove it, quit from the tray and delete the folder.
 
-1. Unzip the whole folder somewhere you'll keep it, like Documents. Keep the `app` folder next to `desktop-buddies.exe`.
-2. Double-click `desktop-buddies.exe`. The Manager opens on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
+The installer and the zip aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. If Smart App Control is on, it may block them outright, with no way past. Please don't turn Smart App Control off for this: use the Store or winget instead, or build the exe yourself from this source.
 
-To remove it, quit from the tray and delete the folder. Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`, which you can delete too.
+The first start opens the Manager on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
 
-### If Windows stops it
-Until releases are signed, Windows may warn you.
-- **"Windows protected your PC":** click More info, then Run anyway.
-- **Smart App Control:** if it's on, it may block the exe outright, and there's no button to get past it. Please don't turn Smart App Control off for this. You can build the exe yourself from this source instead.
+Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`. Removing the app leaves them there, unless you tick the uninstaller's box to delete them, and you can delete the folder yourself. The Store version keeps its own, and removing it removes them. [PRIVACY.md](PRIVACY.md) has the details.
 
 ## Network use
-None. The app, the Maker and exported pages fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. To use your windows as terrain, the app reads which windows are open, where they are and which program each belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [SECURITY.md](SECURITY.md).
+None. The app, the Maker and exported pages fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. To use your windows as terrain, the app reads which windows are open, where they are and which program each belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
 ## Build from source
 You need Node 22 and pnpm 10. The exe also needs Rust and Windows; the app folder builds anywhere.

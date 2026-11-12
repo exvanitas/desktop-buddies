@@ -13,6 +13,11 @@
 - **Hops** onto windows no longer stall.
 - **Frame pacing.** On the desktop, buddies are drawn on the display's beat, so throws, falls and hops no longer hitch.
 
+### Install
+- **Install routes.** The README now lists the Microsoft Store and winget, both coming soon, beside the per-user installer and the portable zip, and says plainly that the installer and the zip aren't signed.
+- **Privacy.** A new PRIVACY.md says what the app reads, keeps and sends (nothing), and where the Store version keeps its data.
+- **Store kit.** docs/store has the Store listing, its screenshots, and the scripts that make them and the sample buddy for a release.
+
 ### Checks
 - A new Windows check drives the local API and the MCP server end to end, through the real consent button.
 - The Windows checks also measure frame pacing on GitHub's runner.
