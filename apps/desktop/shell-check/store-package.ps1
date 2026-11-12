@@ -3,8 +3,8 @@
 # self-signed certificate whose subject is that identity's Publisher, signs with SignTool, trusts the
 # certificate, installs with Add-AppxPackage, and then:
 #   start: through the alias, as other programs must, with the check's own app folder (store/hub.js)
-#   packaged: shell_info says so, and the log and the data are in the package's own folder, not the
-#     real %APPDATA%
+#   packaged: shell_info says so, and the log and the data are in the package's LocalState\data,
+#     with nothing in %APPDATA%, real or virtualized
 #   startup: the startup task round trip, off, on, read, off, read, through the exe
 #   assoc: .buddy is in the installed manifest, and the exe says it's declared and can't be changed
 #   mcp: the real app, started through the alias, answers one request from the MCP server, which
@@ -97,7 +97,7 @@ function Ours {
 }
 
 # What the cleanup reads. Each stays empty until the step that makes it.
-$tmp = ''; $testName = ''; $thumb = ''; $pkgData = ''; $pkgLog = ''; $installDir = ''; $installed = $false
+$tmp = ''; $testName = ''; $thumb = ''; $keyName = ''; $pkgData = ''; $pkgLog = ''; $installDir = ''; $installed = $false
 
 try {
   # ---------- the parameters, and nothing started yet
@@ -146,7 +146,8 @@ try {
     $identity = Join-Path $tmp 'identity.json'
     [IO.File]::WriteAllText($identity, "{ `"name`": `"$testName`", `"publisher`": `"$publisher`", `"publisherDisplayName`": `"exvanitas`" }", (New-Object Text.UTF8Encoding $false))
     $msixFile = Join-Path $tmp 'store-check.msix'
-    & $Python -I $builder --exe $Exe --app $App --identity $identity --out $msixFile | ForEach-Object { Write-Host $_ }
+    # A test package's own version, by the Store's rule, whatever package.json says today.
+    & $Python -I $builder --exe $Exe --app $App --identity $identity --version 1.0.0.0 --out $msixFile | ForEach-Object { Write-Host $_ }
     Expect 'build.msix' ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $msixFile)) "exit $LASTEXITCODE"
     if ($LASTEXITCODE -ne 0) { throw 'msix.py failed' }
     $family = (& $Python -I $builder --family --identity $identity | Select-Object -Last 1).Trim()
@@ -154,8 +155,14 @@ try {
 
     # ---------- sign, and trust the certificate
     $cert = New-SelfSignedCertificate -Type Custom -Subject $publisher -KeyUsage DigitalSignature -FriendlyName 'Desktop Buddies shell check' `
-      -CertStoreLocation 'Cert:\CurrentUser\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}') -NotAfter (Get-Date).AddDays(1)
+      -Provider 'Microsoft Software Key Storage Provider' -CertStoreLocation 'Cert:\CurrentUser\My' `
+      -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}') -NotAfter (Get-Date).AddDays(1)
     $thumb = $cert.Thumbprint
+    # Its private key, by name, so the cleanup can check it went too.
+    $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+    $keyName = $rsa.Key.KeyName
+    $rsa.Dispose()
+    if (-not $keyName) { throw 'the certificate has no private key that can be named' }
     $secret = [guid]::NewGuid().ToString('n')
     $pfx = Join-Path $tmp 'check.pfx'
     $cer = Join-Path $tmp 'check.cer'
@@ -175,7 +182,8 @@ try {
     $installDir = $pkg.InstallLocation
     # The family name msix.py works out is the one Windows gave it, and the one the MCP server needs.
     Expect 'install.family' ($pkg.PackageFamilyName -eq $family) "windows $($pkg.PackageFamilyName), msix.py $family"
-    $pkgData = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalCache\Roaming\$dataName"
+    $pkgData = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalState\data"
+    $virtualData = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalCache\Roaming\$dataName"
     $pkgLog = Join-Path $pkgData 'logs\app.log'
     Expect 'install.alias' (Wait-For 'the alias' { Test-Path -LiteralPath $alias } 20) ''
     $manifest = [xml](Get-AppxPackageManifest -Package $pkg.PackageFullName).OuterXml
@@ -196,11 +204,12 @@ try {
     $said = if ($wrote) { Get-Content -LiteralPath $checkFile -Raw | ConvertFrom-Json } else { $null }
     function Got($step) { if (-not $said -or -not $said.$step) { return 'nothing' } elseif ($null -ne $said.$step.error) { return "error $($said.$step.error)" } else { return ($said.$step.ok | ConvertTo-Json -Compress) } }
     Expect 'packaged.info' ($said -and $said.info.ok.packaged -eq $true) (Got 'info')
-    Note "packaged.data_dir_said $(Got 'info')"
+    Expect 'packaged.data_root' ($said -and $said.info.ok.dataDir -eq $pkgData) "said $(if ($said) { $said.info.ok.dataDir }), expected $pkgData"
     Expect 'packaged.data_in_package' (Test-Path -LiteralPath $checkFile) $pkgData
     Expect 'packaged.log_in_package' ((Read-Log $pkgLog) -match '(?m)^.*start \S+ api \d+ .* packaged\r?$') 'a start line ending in packaged'
     $realAfter = Listing $realData
     Expect 'packaged.real_appdata_untouched' ($realAfter -eq $realBefore) "$(if ($realAfter -eq $realBefore) { 'unchanged' } else { 'changed' })"
+    Expect 'packaged.no_virtual_appdata' (-not (Test-Path -LiteralPath $virtualData)) 'nothing written through %APPDATA%'
     $round = @('startBefore', 'startOn', 'startRead', 'startOff', 'startAfter' | ForEach-Object { Got $_ })
     Expect 'startup.round_trip' (($round -join ' ') -eq 'false true true false false') ($round -join ' ')
     $state = Get-ItemProperty -LiteralPath "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\$($pkg.PackageFamilyName)\DesktopBuddiesStartup" -ErrorAction SilentlyContinue
@@ -258,11 +267,13 @@ try {
   }
   Tidy 'certificate' {
     if ($thumb) {
-      foreach ($store in 'Cert:\LocalMachine\TrustedPeople', 'Cert:\CurrentUser\My') {
-        $c = Join-Path $store $thumb
-        if (Test-Path -LiteralPath $c) { Remove-Item -LiteralPath $c }
-      }
-      Expect 'end.certificate_gone' (-not (Test-Path -LiteralPath (Join-Path 'Cert:\LocalMachine\TrustedPeople' $thumb)) -and -not (Test-Path -LiteralPath (Join-Path 'Cert:\CurrentUser\My' $thumb))) ''
+      $trusted = Join-Path 'Cert:\LocalMachine\TrustedPeople' $thumb
+      $mine = Join-Path 'Cert:\CurrentUser\My' $thumb
+      if (Test-Path -LiteralPath $trusted) { Remove-Item -LiteralPath $trusted }
+      # The one that holds the private key: the key goes with it.
+      if (Test-Path -LiteralPath $mine) { Remove-Item -LiteralPath $mine -DeleteKey }
+      $keyLeft = $keyName -and [System.Security.Cryptography.CngKey]::Exists($keyName)
+      Expect 'end.certificate_gone' (-not (Test-Path -LiteralPath $trusted) -and -not (Test-Path -LiteralPath $mine) -and -not $keyLeft) "$(if ($keyLeft) { 'its private key is still there' } elseif (-not $keyName) { 'its key was never named' })"
     }
   }
   Tidy 'temp' { if ($tmp -and (Test-Path -LiteralPath $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force } }

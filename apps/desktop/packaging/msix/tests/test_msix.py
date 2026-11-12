@@ -78,6 +78,18 @@ class Identity(unittest.TestCase):
             shutil.rmtree(d)
 
 
+class Version(unittest.TestCase):
+    def test_what_the_store_takes(self):
+        for v in ("1.0.0.0", "65535.65535.65535.0", "2.10.0.0"):
+            self.assertEqual(msix.store_version(v), (v, None), v)
+        for v, why in (("0.1.0.0", "starts with 0"), ("1.0.0.1", "doesn't end in 0"), ("65536.0.0.0", "over 65535"), ("1.70000.0.0", "over 65535"),
+                       ("1.0.0", "isn't four numbers"), ("1.0.0.0.0", "isn't four numbers"), ("01.0.0.0", "isn't four numbers"), ("1.a.0.0", "isn't four numbers"),
+                       ("", "isn't four numbers"), ("1.0.0.-0", "isn't four numbers")):
+            ok, said = msix.store_version(v)
+            self.assertIsNone(ok, v)
+            self.assertIn(why, said, v)
+
+
 class Manifest(unittest.TestCase):
     def setUp(self):
         self.text = msix.manifest(IDENTITY, "1.2.3.0")
@@ -207,7 +219,7 @@ class Stage(unittest.TestCase):
         for name in ("msix.py", "icons.py", "AppxManifest.xml", "identity.json"):
             self.put(f"apps/desktop/packaging/msix/{name}", (MSIX / name).read_bytes())
         self.put("apps/desktop/src-tauri/icons/icon.png", png(8, 8, (160, 132, 230, 255)))
-        self.put("package.json", json.dumps({"name": "desktop-buddies", "version": "0.3.1"}).encode())
+        self.put("package.json", json.dumps({"name": "desktop-buddies", "version": "1.0.0"}).encode())
         for name in ("LICENSE", "NOTICE", "TRADEMARKS.md"):
             self.put(name, name.encode())
         self.put("apps/desktop/dist/app/hub.html", b"<p>hub</p>")
@@ -239,7 +251,7 @@ class Stage(unittest.TestCase):
         self.assertEqual(files, sorted(["AppxManifest.xml", "desktop-buddies.exe", "LICENSE", "NOTICE", "TRADEMARKS.md", "THIRD-PARTY-NOTICES.txt", "app/hub.html", "app/fonts/a.woff2", *assets]))
         self.assertEqual((out / "desktop-buddies.exe").read_bytes(), b"MZ a stand-in exe")
         m = ET.fromstring((out / "AppxManifest.xml").read_bytes())
-        self.assertEqual(m.find("m:Identity", NS).get("Version"), "0.3.1.0")
+        self.assertEqual(m.find("m:Identity", NS).get("Version"), "1.0.0.0")
         self.assertEqual(m.find("m:Identity", NS).get("Name"), "Test.DesktopBuddies")
         for name, w, h, _ in icons.plan():
             self.assertEqual(size_of((out / "Assets" / name).read_bytes()), (w, h), name)
@@ -263,6 +275,26 @@ class Stage(unittest.TestCase):
         self.put("package.json", json.dumps({"version": "1.2"}).encode())
         r = self.run_msix("--stage-only")
         self.assertIn("isn't like 1.2.3", r.stderr)
+
+    def test_a_version_the_store_refuses_stages_nothing(self):
+        out = self.dir / "out"
+        for v, why in (("0.1.0", "starts with 0"), ("1.65536.0", "over 65535")):
+            self.put("package.json", json.dumps({"version": v}).encode())
+            r = self.run_msix("--stage-only", "--stage", str(out))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn(f"package.json's version {v} as {v}.0", r.stderr)
+            self.assertIn(why, r.stderr)
+            self.assertIn("Nothing was staged", r.stderr)
+            self.assertFalse(out.exists(), v)
+
+    def test_a_test_package_can_have_its_own_version_by_the_same_rule(self):
+        self.put("package.json", json.dumps({"version": "0.1.0"}).encode())
+        out = self.dir / "out"
+        r = self.run_msix("--stage-only", "--stage", str(out), "--version", "2.3.4.0")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(ET.fromstring((out / "AppxManifest.xml").read_bytes()).find("m:Identity", NS).get("Version"), "2.3.4.0")
+        r = self.run_msix("--stage-only", "--version", "2.3.4.5")
+        self.assertIn("--version: '2.3.4.5' doesn't end in 0", r.stderr)
 
 
 if __name__ == "__main__":

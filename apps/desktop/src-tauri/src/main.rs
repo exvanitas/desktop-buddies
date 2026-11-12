@@ -16,7 +16,7 @@ mod watch;
 
 use assets::FolderAssets;
 use shell::Shell;
-use shell_core::{args::Args, log::Log, opened};
+use shell_core::{args::Args, log::Log, opened, package};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
@@ -56,14 +56,22 @@ fn give_up(log: &Log, text: &str) -> ! {
 }
 
 fn start(app: &AppHandle, args: Args, app_dir: PathBuf, log: Arc<Log>, library: &OnceLock<PathBuf>) -> tauri::Result<()> {
-    let data_root = match &args.data_dir {
-        Some(d) => d.clone(),
-        None => app.path().app_data_dir()?,
+    // The Store's package keeps both in its own LocalState, never in AppData, which Windows
+    // would virtualize. See shell_core::package::roots.
+    let boxed = match (&args.data_dir, platform::package_family()) {
+        (None, Some(family)) => Some(package::roots(&app.path().local_data_dir()?, &family)),
+        _ => None,
+    };
+    let data_root = match (&args.data_dir, &boxed) {
+        (Some(d), _) => d.clone(),
+        (None, Some((data, _))) => data.clone(),
+        (None, None) => app.path().app_data_dir()?,
     };
     // A run with its own data folder gets its own WebView2 folder too, kept out of the library's way.
-    let webview_dir = match &args.data_dir {
-        Some(d) => d.with_file_name(format!("{}-webview", d.file_name().unwrap_or_default().to_string_lossy())),
-        None => app.path().app_local_data_dir()?,
+    let webview_dir = match (&args.data_dir, &boxed) {
+        (Some(d), _) => d.with_file_name(format!("{}-webview", d.file_name().unwrap_or_default().to_string_lossy())),
+        (None, Some((_, webview))) => webview.clone(),
+        (None, None) => app.path().app_local_data_dir()?,
     };
     let _ = std::fs::create_dir_all(&data_root);
     let _ = library.set(data_root.clone());

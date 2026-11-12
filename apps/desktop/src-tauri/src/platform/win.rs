@@ -4,6 +4,7 @@ use super::Filter;
 use shell_core::{
     package,
     system::{full_screen, user_state, System},
+    wait,
     temp::Swap,
     tracker::{Dirty, Entry},
 };
@@ -264,8 +265,32 @@ pub fn package_family() -> Option<String> {
     (e == ERROR_SUCCESS && len > 0).then(|| String::from_utf16_lossy(&buf[..len as usize - 1]))
 }
 
+/// A WinRT operation's result, waited for by its status, at most `wait::LIMIT`, and cancelled
+/// after that. Its own `join` can wait for ever if its completion never signals.
+macro_rules! settle {
+    ($what:expr, $op:expr) => {{
+        let op = $op.map_err(|e| format!("{}: {e}", $what))?;
+        let started = std::time::Instant::now();
+        wait::within(
+            $what,
+            wait::LIMIT,
+            wait::STEP,
+            // AsyncStatus: 0 is Started; Completed, Canceled and Error all give GetResults' answer.
+            || match op.Status().map_err(|e| format!("{}: {e}", $what))?.0 {
+                0 => Ok(None),
+                _ => op.GetResults().map(Some).map_err(|e| format!("{}: {e}", $what)),
+            },
+            || {
+                let _ = op.Cancel();
+            },
+            || started.elapsed(),
+            thread::sleep,
+        )
+    }};
+}
+
 fn startup_task() -> Result<(StartupTask, i32), String> {
-    let task = StartupTask::GetAsync(&HSTRING::from(package::STARTUP_TASK)).and_then(|op| op.join()).map_err(|e| format!("startup task: {e}"))?;
+    let task = settle!("startup task", StartupTask::GetAsync(&HSTRING::from(package::STARTUP_TASK)))?;
     let state = task.State().map_err(|e| format!("startup task state: {e}"))?;
     Ok((task, state.0))
 }
@@ -280,7 +305,7 @@ pub fn set_startup(on: bool) -> Result<(), String> {
     let (task, state) = startup_task()?;
     match package::startup_step(on, state)? {
         package::Step::Nothing => Ok(()),
-        package::Step::Enable => package::enabled(task.RequestEnableAsync().and_then(|op| op.join()).map_err(|e| format!("startup task: {e}"))?.0),
+        package::Step::Enable => package::enabled(settle!("startup task enable", task.RequestEnableAsync())?.0),
         package::Step::Disable => task.Disable().map_err(|e| format!("startup task: {e}")),
     }
 }

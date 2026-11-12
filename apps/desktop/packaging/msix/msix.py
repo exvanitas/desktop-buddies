@@ -3,7 +3,7 @@
 
     python3 -I apps/desktop/packaging/msix/msix.py --exe <desktop-buddies.exe> --out <x.msix>
         [--app <app folder>] [--identity <identity.json>] [--notices <THIRD-PARTY-NOTICES.txt>]
-        [--stage <empty folder>] [--stage-only] [--sdk <folder with makeappx.exe>]
+        [--stage <empty folder>] [--stage-only] [--sdk <folder with makeappx.exe>] [--version <x.y.z.0>]
     python3 -I apps/desktop/packaging/msix/msix.py --family [--identity <identity.json>]
 
 It lays the package out in a fresh folder: the exe, the app folder as app/, LICENSE, NOTICE,
@@ -16,6 +16,11 @@ name the identity gives, which is what the MCP server's PACKAGE_FAMILY must say.
 
 The identity defaults to identity.json beside this script. Until the owner registers the app in
 Partner Center it holds placeholders, and a build says so as a warning.
+
+The Store takes a version of four parts, each at most 65535, the first at least 1 and the last 0
+(Microsoft's "Version numbering for Windows 10 and 11 packages"). Anything else is refused before a
+file is staged: package.json's 0.1.0 is. --version is for a test package only, and follows the same
+rule.
 """
 import argparse
 import hashlib
@@ -81,11 +86,34 @@ def placeholder(identity):
     return identity["name"].startswith(PLACEHOLDER_NAME) or identity["publisher"] == PLACEHOLDER_PUBLISHER
 
 
-def version():
-    v = json.loads((ROOT / "package.json").read_text("utf-8")).get("version", "")
-    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
-        stop(f"package.json's version {v!r} isn't like 1.2.3")
-    return f"{v}.0"
+def store_version(v):
+    """v as the Store takes it, or why not."""
+    parts = v.split(".")
+    if len(parts) != 4 or not all(re.fullmatch(r"0|[1-9]\d{0,4}", p) for p in parts):
+        return None, f"{v!r} isn't four numbers like 1.2.3.0"
+    n = [int(p) for p in parts]
+    if any(x > 65535 for x in n):
+        return None, f"{v!r} has a part over 65535"
+    if n[0] < 1:
+        return None, f"{v!r} starts with 0, and the Store needs 1 or more"
+    if n[3] != 0:
+        return None, f"{v!r} doesn't end in 0, which the Store keeps for itself"
+    return v, None
+
+
+def version(given=None):
+    """The package's version: package.json's x.y.z as x.y.z.0, or a test package's own."""
+    if given is None:
+        v = json.loads((ROOT / "package.json").read_text("utf-8")).get("version", "")
+        if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+            stop(f"package.json's version {v!r} isn't like 1.2.3")
+        given, where = f"{v}.0", f"package.json's version {v} as {v}.0"
+    else:
+        where = "--version"
+    ok, why = store_version(given)
+    if not ok:
+        stop(f"{where}: {why}. Nothing was staged")
+    return ok
 
 
 def manifest(identity, ver):
@@ -111,7 +139,7 @@ def stage(o, identity, into):
         shutil.copyfile(ROOT / name, into / name)
     if o.notices:
         shutil.copyfile(o.notices, into / "THIRD-PARTY-NOTICES.txt")
-    (into / "AppxManifest.xml").write_text(manifest(identity, version()), "utf-8", newline="\r\n")
+    (into / "AppxManifest.xml").write_text(manifest(identity, o.store_version), "utf-8", newline="\r\n")
     (into / "Assets").mkdir()
     for name, png in icons.draw(ICON.read_bytes()).items():
         (into / "Assets" / name).write_bytes(png)
@@ -157,6 +185,7 @@ def main():
     args.add_argument("--stage-only", action="store_true")
     args.add_argument("--sdk", type=pathlib.Path)
     args.add_argument("--family", action="store_true")
+    args.add_argument("--version", help="a test package's own version, x.y.z.0")
     o = args.parse_args()
     identity = read_identity(o.identity)
     if o.family:
@@ -164,6 +193,7 @@ def main():
         return
     if not o.exe or not (o.out or o.stage_only):
         args.error("--exe and --out are needed, or --exe and --stage-only")
+    o.store_version = version(o.version)
     if placeholder(identity):
         print(f"::warning::msix: {o.identity.name} holds placeholders, so the Store won't take this package", flush=True)
     work = pathlib.Path(tempfile.mkdtemp(prefix="buddies-msix-"))
@@ -173,7 +203,7 @@ def main():
             stop(f"{staged} isn't empty")
         staged.mkdir(parents=True, exist_ok=True)
         stage(o, identity, staged)
-        print(f"staged {sum(1 for p in staged.rglob('*') if p.is_file())} files, version {version()}, family {family(identity)}", flush=True)
+        print(f"staged {sum(1 for p in staged.rglob('*') if p.is_file())} files, version {o.store_version}, family {family(identity)}", flush=True)
         if not o.stage_only:
             pack(o, staged, work)
             print(f"{o.out}: {o.out.stat().st_size} bytes, sha256 {hashlib.sha256(o.out.read_bytes()).hexdigest()}")

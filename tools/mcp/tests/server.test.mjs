@@ -9,7 +9,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, test } from 'vitest';
 import { slotOf as hubSlot } from '../../../apps/desktop/src/api-replies';
-import { MAX_FRAME, PACKAGE_FAMILY, TOOLS, VERSIONS, config, createBridge, createTools, installs, serve, slotOf } from '../server.mjs';
+import { MAX_FRAME, PACKAGE_FAMILY, TOOLS, VERSIONS, config, createBridge, createTools, installs, packagedExe, serve, slotOf } from '../server.mjs';
 
 /* Where the app puts the reply to `id`. */
 const slotFile = (dir, id) => path.join(dir, 'api', 'replies', `${slotOf(id)}.json`);
@@ -39,48 +39,92 @@ test('config: flags, then the environment, then Windows defaults', () => {
   assert.strictEqual(d.app, 'AI agent');
   assert.strictEqual(d.timeoutMs, 10000);
   const e = config([], { BUDDIES_EXE: 'E', BUDDIES_DATA: 'D', BUDDIES_APP: 'Claude Code', BUDDIES_TIMEOUT_MS: '500' }, NOTHING);
-  assert.deepStrictEqual(e, { exe: 'E', dataDir: 'D', app: 'Claude Code', timeoutMs: 500 });
+  assert.deepStrictEqual(e, { exe: 'E', dataDir: 'D', dataDirs: ['D'], app: 'Claude Code', timeoutMs: 500 });
   const f = config(['--exe', 'X', '--data', 'Y', '--app', 'Z', '--timeout', '7'], { BUDDIES_EXE: 'E', BUDDIES_DATA: 'D' }, NOTHING);
-  assert.deepStrictEqual(f, { exe: 'X', dataDir: 'Y', app: 'Z', timeoutMs: 7 });
+  assert.deepStrictEqual(f, { exe: 'X', dataDir: 'Y', dataDirs: ['Y'], app: 'Z', timeoutMs: 7 });
 });
 
 /* The pair rule, on made-up paths: an exe and the data folder it writes to are chosen together. */
 const HOME = { APPDATA: 'C:\\Users\\a\\AppData\\Roaming', LOCALAPPDATA: 'C:\\Users\\a\\AppData\\Local' };
 const ZIP = { exe: 'C:\\Users\\a\\AppData\\Local\\Desktop Buddies\\desktop-buddies.exe', dataDir: 'C:\\Users\\a\\AppData\\Roaming\\dev.exvanitas.desktop-buddies' };
 const ALIAS = 'C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps\\desktop-buddies.exe';
-const boxed = (family = PACKAGE_FAMILY) => `C:\\Users\\a\\AppData\\Local\\Packages\\${family}\\LocalCache\\Roaming\\dev.exvanitas.desktop-buddies`;
+const pkgHome = (family = PACKAGE_FAMILY) => `C:\\Users\\a\\AppData\\Local\\Packages\\${family}`;
+const boxed = (family = PACKAGE_FAMILY) => `${pkgHome(family)}\\LocalState\\data`;
 const only = (...paths) => p => paths.includes(p);
 const pair = c => ({ exe: c.exe, dataDir: c.dataDir });
+const STORE = [ALIAS, pkgHome()];
 
-test('config: the zip install pairs with the real AppData, and wins when both are there', () => {
+test('config: the zip install pairs with %APPDATA%, and wins when both are there', () => {
   assert.deepStrictEqual(pair(config([], HOME, only(ZIP.exe))), ZIP);
-  assert.deepStrictEqual(pair(config([], HOME, only(ZIP.exe, ALIAS))), ZIP);
+  assert.deepStrictEqual(pair(config([], HOME, only(ZIP.exe, ...STORE))), ZIP);
   assert.deepStrictEqual(pair(config([], HOME, NOTHING)), ZIP, 'with neither, the zip, as it always was');
 });
 
-test('config: the Store\'s alias pairs with the package\'s own folder', () => {
-  assert.deepStrictEqual(pair(config([], HOME, only(ALIAS))), { exe: ALIAS, dataDir: boxed() });
+test('config: the Store\'s alias pairs with the package\'s LocalState, only with its own package folder there', () => {
+  assert.deepStrictEqual(pair(config([], HOME, only(...STORE))), { exe: ALIAS, dataDir: boxed() });
+  assert.deepStrictEqual(pair(config([], HOME, only(ALIAS))), ZIP, 'an alias with no package folder of ours is someone else\'s, or left over');
+  assert.deepStrictEqual(pair(config([], HOME, only(pkgHome()))), ZIP, 'a package folder with no alias');
   assert.match(PACKAGE_FAMILY, /^[A-Za-z0-9.-]{3,50}_[0-9a-hjkmnp-tv-z]{13}$/);
-  assert.deepStrictEqual(pair(config(['--package-family', 'Fam_x'], HOME, only(ALIAS))), { exe: ALIAS, dataDir: boxed('Fam_x') });
-  assert.deepStrictEqual(pair(config([], { ...HOME, BUDDIES_PACKAGE_FAMILY: 'Fam_y' }, only(ALIAS))), { exe: ALIAS, dataDir: boxed('Fam_y') });
-  assert.deepStrictEqual(pair(config(['--package-family', 'Fam_x'], { ...HOME, BUDDIES_PACKAGE_FAMILY: 'Fam_y' }, only(ALIAS))).dataDir, boxed('Fam_x'));
+  assert.deepStrictEqual(pair(config(['--package-family', 'Fam_x'], HOME, only(ALIAS, pkgHome('Fam_x')))), { exe: ALIAS, dataDir: boxed('Fam_x') });
+  assert.deepStrictEqual(pair(config([], { ...HOME, BUDDIES_PACKAGE_FAMILY: 'Fam_y' }, only(ALIAS, pkgHome('Fam_y')))), { exe: ALIAS, dataDir: boxed('Fam_y') });
+  assert.deepStrictEqual(pair(config(['--package-family', 'Fam_x'], { ...HOME, BUDDIES_PACKAGE_FAMILY: 'Fam_y' }, only(ALIAS, pkgHome('Fam_x')))).dataDir, boxed('Fam_x'));
 });
 
-test('config: a given exe brings its own data folder, and a given data folder wins', () => {
-  assert.deepStrictEqual(pair(config(['--exe', ALIAS.toUpperCase()], HOME, NOTHING)), { exe: ALIAS.toUpperCase(), dataDir: boxed() }, 'any case');
-  assert.deepStrictEqual(pair(config([], { ...HOME, BUDDIES_EXE: 'D:\\Microsoft\\WindowsApps\\desktop-buddies.exe' }, NOTHING)).dataDir, boxed());
-  assert.deepStrictEqual(pair(config(['--exe', 'D:\\tools\\desktop-buddies.exe'], HOME, only(ALIAS))), { exe: 'D:\\tools\\desktop-buddies.exe', dataDir: ZIP.dataDir });
-  assert.deepStrictEqual(pair(config(['--data', 'D:\\data'], HOME, only(ALIAS))), { exe: ALIAS, dataDir: 'D:\\data' });
-  assert.deepStrictEqual(pair(config([], { ...HOME, BUDDIES_DATA: 'D:\\env' }, only(ALIAS))), { exe: ALIAS, dataDir: 'D:\\env' });
+test('config: only the real WindowsApps folders make a given exe the Store\'s', () => {
+  const store = exe => config(['--exe', exe], { ...HOME, ProgramFiles: 'C:\\Program Files' }, NOTHING).dataDir === boxed();
+  assert.ok(store(ALIAS));
+  assert.ok(store(ALIAS.toUpperCase()), 'any case');
+  assert.ok(store('C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps\\..\\WindowsApps\\desktop-buddies.exe'), 'as Windows reads it');
+  assert.ok(store('C:\\Program Files\\WindowsApps\\Pkg_1.0.0.0_x64__abc\\desktop-buddies.exe'));
+  assert.ok(store('c:\\program files\\windowsapps\\pkg\\desktop-buddies.exe'));
+  assert.ok(!store('D:\\Tools\\WindowsApps\\desktop-buddies.exe'), 'any other folder by that name');
+  assert.ok(!store('C:\\Program Files\\WindowsAppsX\\desktop-buddies.exe'), 'whole folder names');
+  assert.ok(!store('C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps\\sub\\desktop-buddies.exe'), 'aliases sit in the folder itself');
+  assert.ok(!store('E:\\Profile\\Microsoft\\WindowsApps\\desktop-buddies.exe'), 'another profile\'s aliases');
+  assert.ok(!store('desktop-buddies.exe'));
+  assert.ok(packagedExe('C:\\Program Files\\WindowsApps\\p\\x.exe', {}), 'with no environment, the usual places');
+});
+
+test('config: a given exe brings its own data folder first, and a given data folder is the only one', () => {
+  assert.deepStrictEqual(pair(config(['--exe', ALIAS], HOME, NOTHING)), { exe: ALIAS, dataDir: boxed() });
+  assert.deepStrictEqual(pair(config(['--exe', 'D:\\tools\\desktop-buddies.exe'], HOME, only(...STORE))), { exe: 'D:\\tools\\desktop-buddies.exe', dataDir: ZIP.dataDir });
+  assert.deepStrictEqual(config(['--data', 'D:\\data'], HOME, only(...STORE)).dataDirs, ['D:\\data']);
+  assert.deepStrictEqual(config([], { ...HOME, BUDDIES_DATA: 'D:\\env' }, only(...STORE)).dataDirs, ['D:\\env']);
+});
+
+test('config: with no data folder given, both are watched, the exe\'s own first', () => {
+  assert.deepStrictEqual(config([], HOME, only(ZIP.exe, ...STORE)).dataDirs, [ZIP.dataDir, boxed()]);
+  assert.deepStrictEqual(config([], HOME, only(...STORE)).dataDirs, [boxed(), ZIP.dataDir]);
 });
 
 test('config: with no environment, the defaults still pair', () => {
   assert.deepStrictEqual(pair(config([], {}, NOTHING)), { exe: 'C:\\Desktop Buddies\\desktop-buddies.exe', dataDir: 'C:\\dev.exvanitas.desktop-buddies' });
-  assert.deepStrictEqual(pair(config([], {}, only('C:\\Microsoft\\WindowsApps\\desktop-buddies.exe'))).dataDir, `C:\\Packages\\${PACKAGE_FAMILY}\\LocalCache\\Roaming\\dev.exvanitas.desktop-buddies`);
+  assert.deepStrictEqual(pair(config([], {}, only('C:\\Microsoft\\WindowsApps\\desktop-buddies.exe', `C:\\Packages\\${PACKAGE_FAMILY}`))).dataDir, `C:\\Packages\\${PACKAGE_FAMILY}\\LocalState\\data`);
 });
 
 test('installs: the two pairs', () => {
-  assert.deepStrictEqual(installs(HOME, 'F_1'), { zip: ZIP, store: { exe: ALIAS, dataDir: boxed('F_1') } });
+  assert.deepStrictEqual(installs(HOME, 'F_1'), { zip: ZIP, store: { exe: ALIAS, dataDir: boxed('F_1'), home: pkgHome('F_1') } });
+});
+
+/* Both builds share one single-instance lock: with the Store app running first, the zip's exe hands
+   the request to it, and the reply lands in the package's folder. */
+test('bridge: with both installed and the Store app running, the reply is found in the package folder', async () => {
+  const zipData = scratch(), storeData = scratch();
+  const c = config([], HOME, only(ZIP.exe, ...STORE));
+  assert.strictEqual(c.exe, ZIP.exe, 'the zip is picked');
+  const launched = [];
+  const launch = async (exe, args) => {
+    launched.push(exe);
+    const req = JSON.parse(args[1]);
+    fs.mkdirSync(path.join(storeData, 'api', 'replies'), { recursive: true });
+    fs.mkdirSync(path.join(zipData, 'api', 'replies'), { recursive: true });
+    fs.writeFileSync(slotFile(zipData, req.id), JSON.stringify({ v: 1, id: 'someone-elses-request', ok: true }));
+    setTimeout(() => fs.writeFileSync(slotFile(storeData, req.id), JSON.stringify({ v: 1, id: req.id, ok: true, buddies: [] })), 20);
+  };
+  const dirs = { [ZIP.dataDir]: zipData, [boxed()]: storeData };
+  const r = await createBridge({ ...c, dataDir: dirs[c.dataDir], dataDirs: c.dataDirs.map(d => dirs[d]), launch, poll: 5 })({ do: 'list' });
+  assert.deepStrictEqual(r && { ok: r.ok, buddies: r.buddies }, { ok: true, buddies: [] });
+  assert.deepStrictEqual(launched, [ZIP.exe]);
 });
 
 test('protocol: initialize, ping, tools/list, and the errors', async () => {

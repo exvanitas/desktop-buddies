@@ -2,14 +2,10 @@
 //! an image doesn't turn into a JSON array on the way.
 
 use crate::{platform, shell::Shell};
-use shell_core::{
-    data::{decode_header, Listed},
-    package,
-};
-use std::path::{Path, PathBuf};
+use shell_core::data::{decode_header, Listed};
 use tauri::{
     ipc::{InvokeBody, Request, Response},
-    AppHandle, Emitter, Manager, State,
+    AppHandle, Emitter, State,
 };
 
 fn changed(app: &AppHandle, path: &str) {
@@ -53,19 +49,6 @@ pub fn data_delete(path: String, app: AppHandle, shell: State<Shell>) -> Result<
 }
 
 #[tauri::command(async)]
-pub fn open_data_folder(app: AppHandle, shell: State<Shell>) -> Result<(), String> {
-    platform::open_folder(&outside(&app, shell.data.root()))
-}
-
-/// In the Store's package, Windows keeps what the app writes in roaming AppData in the package's
-/// own folder, which Explorer, outside the package, doesn't see at the usual path. So Explorer gets
-/// that folder, if it's there. Anywhere else, the folder as it is.
-fn outside(app: &AppHandle, root: &Path) -> PathBuf {
-    let Some(family) = platform::package_family() else { return root.to_path_buf() };
-    let (Ok(roaming), Ok(local)) = (app.path().data_dir(), app.path().local_data_dir()) else { return root.to_path_buf() };
-    let cache = local.join("Packages").join(family).join("LocalCache");
-    match package::outside(&root.display().to_string(), &roaming.display().to_string(), &cache.display().to_string()) {
-        Some(real) if Path::new(&real).is_dir() => real.into(),
-        _ => root.to_path_buf(),
-    }
+pub fn open_data_folder(shell: State<Shell>) -> Result<(), String> {
+    platform::open_folder(shell.data.root())
 }

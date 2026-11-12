@@ -18,4 +18,5 @@ pub mod raise;
 pub mod system;
 pub mod temp;
 pub mod tracker;
+pub mod wait;
 pub mod windows;

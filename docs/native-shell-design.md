@@ -59,7 +59,7 @@ From API 2 a second launch's arguments never reach the log: the exe logs `second
 | | `take_opened()` | Files passed at launch, read once. Each is `{ name, content, error? }` |
 | Windows on screen | `windows_watch({ on })`, `windows_now()` | The tracker, see below |
 | System | `system()` | `{ userState, onBattery, saver }` |
-| Registry | `autostart({ on? })`, `file_assoc({ on? })` | Read, or set then read. Current user only. Packaged, `autostart` is the package's startup task, which the person can also change in Windows Settings, so it's read again each time; turning it on after they turned it off there is refused. `file_assoc` reads true and refuses a set, since the package declares `.buddy` |
+| Registry | `autostart({ on? })`, `file_assoc({ on? })` | Read, or set then read. Current user only. Packaged, `autostart` is the package's startup task, which the person can also change in Windows Settings, so it's read again each time; turning it on after they turned it off there is refused. `file_assoc` reads true and refuses a set, since the package declares `.buddy`. Packaged, the data folder is `%LOCALAPPDATA%\Packages\<family name>\LocalState\data` and WebView2's is `LocalState\webview` beside it, never `%APPDATA%`, which Windows would virtualize |
 
 **Events**
 

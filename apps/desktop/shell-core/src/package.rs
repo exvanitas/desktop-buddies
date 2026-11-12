@@ -1,6 +1,8 @@
 //! The Store build runs as an MSIX package. What changes there is decided here: whether this is
 //! one, the startup task that stands in for the Run key, the file type the package declares, and
-//! where its redirected data folder really is.
+//! where its data lives.
+
+use std::path::{Path, PathBuf};
 
 /// What `GetCurrentPackageFullName` says when asked with no room for the name: a packaged process
 /// gets "insufficient buffer". Anything else, `APPMODEL_ERROR_NO_PACKAGE` (15700) above all, isn't one.
@@ -70,20 +72,13 @@ pub fn file_assoc(on: Option<bool>) -> Result<bool, String> {
     }
 }
 
-/// Where a folder under the roaming AppData folder really is, for programs outside the package
-/// such as Explorer: `<cache>\Roaming\<the rest>`, where `cache` is the package's `LocalCache`.
-/// None for a folder elsewhere. Windows paths, compared without case.
-pub fn outside(path: &str, roaming: &str, cache: &str) -> Option<String> {
-    let trim = |s: &str| s.trim_end_matches(['\\', '/']).to_string();
-    let (path, roaming) = (trim(path), trim(roaming));
-    if roaming.is_empty() || path.len() < roaming.len() || !path.is_char_boundary(roaming.len()) {
-        return None;
-    }
-    let (head, rest) = path.split_at(roaming.len());
-    if !head.eq_ignore_ascii_case(&roaming) || !(rest.is_empty() || rest.starts_with(['\\', '/'])) {
-        return None;
-    }
-    Some(format!("{}\\Roaming{}", trim(cache), rest.replace('/', "\\")))
+/// The package's own folders, both real ones that Explorer sees too: the data folder, and
+/// WebView2's beside it, in `%LOCALAPPDATA%\Packages\<family>\LocalState`, the folder
+/// `ApplicationData.Current.LocalFolder` names. Nothing goes in `%APPDATA%`, which Windows would
+/// virtualize, merging in whatever the zip build left there.
+pub fn roots(local_appdata: &Path, family: &str) -> (PathBuf, PathBuf) {
+    let state = local_appdata.join("Packages").join(family).join("LocalState");
+    (state.join("data"), state.join("webview"))
 }
 
 #[cfg(test)]
@@ -140,28 +135,10 @@ mod tests {
         assert!(file_assoc(Some(false)).is_err());
     }
 
-    const ROAMING: &str = r"C:\Users\pat\AppData\Roaming";
-    const CACHE: &str = r"C:\Users\pat\AppData\Local\Packages\Fam_abc\LocalCache";
-
     #[test]
-    fn the_data_folder_maps_into_the_package_cache() {
-        assert_eq!(
-            outside(r"C:\Users\pat\AppData\Roaming\dev.exvanitas.desktop-buddies", ROAMING, CACHE).as_deref(),
-            Some(r"C:\Users\pat\AppData\Local\Packages\Fam_abc\LocalCache\Roaming\dev.exvanitas.desktop-buddies")
-        );
-        assert_eq!(
-            outside(r"c:\users\PAT\appdata\roaming\x/y\", ROAMING, &format!(r"{CACHE}\")).as_deref(),
-            Some(r"C:\Users\pat\AppData\Local\Packages\Fam_abc\LocalCache\Roaming\x\y")
-        );
-        assert_eq!(outside(ROAMING, ROAMING, CACHE).as_deref(), Some(r"C:\Users\pat\AppData\Local\Packages\Fam_abc\LocalCache\Roaming"));
-    }
-
-    #[test]
-    fn a_folder_elsewhere_stays_put() {
-        assert_eq!(outside(r"D:\buddies", ROAMING, CACHE), None);
-        assert_eq!(outside(r"C:\Users\pat\AppData\RoamingX\b", ROAMING, CACHE), None);
-        assert_eq!(outside(r"C:\Users\pat\AppData", ROAMING, CACHE), None);
-        assert_eq!(outside(r"C:\Users\pat\AppData\Roaminé", ROAMING, CACHE), None);
-        assert_eq!(outside(r"C:\x", "", CACHE), None);
+    fn the_folders_are_the_packages_own_local_state() {
+        let (data, webview) = roots(Path::new("L"), "Fam_abc");
+        assert_eq!(data, Path::new("L").join("Packages").join("Fam_abc").join("LocalState").join("data"));
+        assert_eq!(webview, Path::new("L").join("Packages").join("Fam_abc").join("LocalState").join("webview"));
     }
 }

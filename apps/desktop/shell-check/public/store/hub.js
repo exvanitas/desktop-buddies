@@ -1,7 +1,8 @@
 /* The Store package's check, from inside it. store-package.ps1 starts the installed package through
    its alias with this folder as the app folder, and reads what it wrote from outside. It asks the exe
    what only the package can answer, writes store-check.json in the data folder, and quits. */
-const invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
+/* Every argument goes through: data_write's path travels in the third, as a header. */
+const invoke = (...args) => window.__TAURI__.core.invoke(...args);
 const answer = async f => { try { return { ok: await f() }; } catch (e) { return { error: String(e) }; } };
 
 (async () => {

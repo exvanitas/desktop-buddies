@@ -275,7 +275,7 @@ test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, an
   const ps = read('store-package.ps1'), c = code(ps);
   assert.ok(!/skip/i.test(c), 'nothing is skipped');
   const claims = [...c.matchAll(/Expect '([\w.]+)'/g)].map(m => m[1]);
-  for (const k of ['build.msix', 'build.signed', 'install.ok', 'install.family', 'install.alias', 'assoc.declared', 'startup.declared', 'start.alias', 'packaged.info',
+  for (const k of ['packaged.data_root', 'packaged.no_virtual_appdata', 'build.msix', 'build.signed', 'install.ok', 'install.family', 'install.alias', 'assoc.declared', 'startup.declared', 'start.alias', 'packaged.info',
     'packaged.data_in_package', 'packaged.log_in_package', 'packaged.real_appdata_untouched', 'startup.round_trip', 'assoc.exe_says_declared', 'assoc.exe_refuses_a_change',
     'mcp.app_up', 'mcp.driver', 'end.uninstalled', 'end.alias_gone', 'end.data_gone', 'end.certificate_gone']) assert.ok(claims.includes(k), k);
   /* the certificate's subject is the identity's Publisher, one value for both */
@@ -289,6 +289,10 @@ test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, an
   assert.deepStrictEqual([...c.matchAll(/Start-Process -FilePath (\$\w+)/g)].map(m => m[1]), ['$alias', '$alias']);
   const fin = c.slice(c.lastIndexOf('} finally {'));
   assert.match(fin, /Tidy 'uninstall' \{[\s\S]*?Remove-AppxPackage/);
-  assert.match(fin, /Tidy 'certificate' \{[\s\S]*?'Cert:\\LocalMachine\\TrustedPeople', 'Cert:\\CurrentUser\\My'/);
+  /* both stores, and the one holding the private key loses the key too, which the check looks for */
+  const cert = fin.slice(fin.indexOf("Tidy 'certificate'"), fin.indexOf("Tidy 'temp'"));
+  for (const bit of ["Join-Path 'Cert:\\LocalMachine\\TrustedPeople' $thumb", "Join-Path 'Cert:\\CurrentUser\\My' $thumb", 'Remove-Item -LiteralPath $mine -DeleteKey',
+    '[System.Security.Cryptography.CngKey]::Exists($keyName)', '-not $keyLeft']) assert.ok(cert.includes(bit), bit);
+  assert.ok(c.includes('$keyName = $rsa.Key.KeyName'), 'the key is named before anything can go wrong');
   assert.ok(fin.indexOf("Tidy 'processes'") < fin.indexOf("Tidy 'logs'") && fin.indexOf("Tidy 'logs'") < fin.indexOf("Tidy 'uninstall'"), 'stop, keep the log, then uninstall');
 });

@@ -37,33 +37,49 @@ export const TOOLS = [
 export const PACKAGE_FAMILY = 'PLACEHOLDER.DesktopBuddies_m8z88z54g2w36';
 const DATA = 'dev.exvanitas.desktop-buddies';
 
-/* The two ways it's installed, each an exe and the data folder its replies land in, which go
-   together. The zip, unzipped to its usual place, keeps its data in the real %APPDATA%. The Store's
-   package is started by its alias, and Windows keeps what it writes in %APPDATA% in the package's
-   own folder. */
+/* The two ways it's installed, each an exe and the data folder its replies land in. The zip,
+   unzipped to its usual place, keeps its data in %APPDATA%. The Store's package is started by its
+   alias, and keeps its data in its own LocalState. */
 export function installs(env, family = PACKAGE_FAMILY) {
   const win = path.win32, local = env.LOCALAPPDATA || 'C:\\';
   return {
     zip: { exe: win.join(local, 'Desktop Buddies', 'desktop-buddies.exe'), dataDir: win.join(env.APPDATA || 'C:\\', DATA) },
-    store: { exe: win.join(local, 'Microsoft', 'WindowsApps', 'desktop-buddies.exe'), dataDir: win.join(local, 'Packages', family, 'LocalCache', 'Roaming', DATA) }
+    store: {
+      exe: win.join(local, 'Microsoft', 'WindowsApps', 'desktop-buddies.exe'),
+      dataDir: win.join(local, 'Packages', family, 'LocalState', 'data'),
+      /* There only once this package is installed for this person. */
+      home: win.join(local, 'Packages', family)
+    }
   };
 }
 
-/* An alias lives in a WindowsApps folder. Windows paths, compared without case. */
-const isAlias = exe => path.win32.basename(path.win32.dirname(path.win32.normalize(exe))).toLowerCase() === 'windowsapps';
+/* Whether an exe is a packaged one: an alias in %LOCALAPPDATA%\Microsoft\WindowsApps, or under
+   %ProgramFiles%\WindowsApps. Windows paths, without case, by whole folder names. */
+export function packagedExe(exe, env) {
+  const win = path.win32, low = p => win.normalize(p).toLowerCase().replace(/\\+$/, '');
+  const at = low(exe), aliases = low(win.join(env.LOCALAPPDATA || 'C:\\', 'Microsoft', 'WindowsApps'));
+  const installed = low(win.join(env.ProgramFiles || 'C:\\Program Files', 'WindowsApps'));
+  return win.dirname(at) === aliases || at.startsWith(installed + '\\');
+}
 /* An alias is a reparse point that only Windows can follow, so it's looked at, not through. */
 const there = p => { try { lstatSync(p); return true; } catch { return false; } };
 
-/* Flags first, then the environment, then whichever install is there: the zip, then the Store's.
-   With the exe chosen, the data folder is the one that goes with it, unless one is given. */
+/* Flags first, then the environment, then whichever install is there: the zip, then the Store's,
+   which counts only with its alias and its own package folder both there. The data folder goes
+   with the exe, unless one is given. Both builds share one single-instance lock, so a request can
+   reach whichever is running: with no folder given, both folders are watched, the exe's first. */
 export function config(argv = process.argv.slice(2), env = process.env, exists = there) {
   const flag = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
   const { zip, store } = installs(env, flag('--package-family') ?? env.BUDDIES_PACKAGE_FAMILY ?? PACKAGE_FAMILY);
   const timeout = Number(flag('--timeout') ?? env.BUDDIES_TIMEOUT_MS);
-  const exe = flag('--exe') ?? env.BUDDIES_EXE ?? (exists(zip.exe) || !exists(store.exe) ? zip.exe : store.exe);
+  const stored = exists(store.exe) && exists(store.home);
+  const exe = flag('--exe') ?? env.BUDDIES_EXE ?? (exists(zip.exe) || !stored ? zip.exe : store.exe);
+  const given = flag('--data') ?? env.BUDDIES_DATA;
+  const paired = packagedExe(exe, env) ? [store.dataDir, zip.dataDir] : [zip.dataDir, store.dataDir];
   return {
     exe,
-    dataDir: flag('--data') ?? env.BUDDIES_DATA ?? (isAlias(exe) ? store.dataDir : zip.dataDir),
+    dataDir: given ?? paired[0],
+    dataDirs: given ? [given] : paired,
     app: flag('--app') ?? env.BUDDIES_APP ?? 'AI agent',
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : 10000
   };
@@ -95,19 +111,23 @@ const readSlot = async file => {
 const parsed = text => { try { return JSON.parse(text); } catch { return null; } };
 
 /* One request, and its reply, or null if none came in time. A reply lands in a slot shared with
-   other ids, so only one carrying this id counts. If another request's reply took the slot while
-   this one waited, it's tried once more with a fresh id. The deadline is monotonic. */
-export function createBridge({ exe, dataDir, app, timeoutMs, launch = launchExe, poll = 100 }) {
+   other ids, so only one carrying this id counts, in any of the folders watched. If another
+   request's reply took the slot while this one waited, it's tried once more with a fresh id. The
+   deadline is monotonic. */
+export function createBridge({ exe, dataDir, dataDirs = [dataDir], app, timeoutMs, launch = launchExe, poll = 100 }) {
   async function once(body) {
-    const id = randomUUID(), file = path.join(dataDir, 'api', 'replies', `${slotOf(id)}.json`);
-    const before = await readSlot(file);
+    const id = randomUUID(), files = dataDirs.map(d => path.join(d, 'api', 'replies', `${slotOf(id)}.json`));
+    const before = await Promise.all(files.map(readSlot));
     await launch(exe, ['--api', JSON.stringify({ v: 1, id, app, ...body })]);
     const end = performance.now() + timeoutMs;
     let taken = false;
     for (;;) {
-      const now = await readSlot(file), r = now === null ? null : parsed(now);
-      if (r && r.id === id) return { reply: r };
-      if (now !== null && now !== before && r) taken = true;
+      const now = await Promise.all(files.map(readSlot));
+      for (let i = 0; i < files.length; i++) {
+        const r = now[i] === null ? null : parsed(now[i]);
+        if (r && r.id === id) return { reply: r };
+        if (now[i] !== null && now[i] !== before[i] && r) taken = true;
+      }
       if (performance.now() >= end) return { reply: null, taken };
       await sleep(poll);
     }
