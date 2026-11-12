@@ -18,6 +18,10 @@ packages/
 apps/
   desktop/      Tauri shell, overlays, Manager, tray
   maker/        the Maker UI, for the web today and the desktop app later
+tools/
+  mcp/          the MCP server on the local API
+  release/      the release workflow's checks and notices
+  store/        the Store kit: the sample buddy for a release, and the screenshots
 docs/           see docs/README.md
 ```
 
