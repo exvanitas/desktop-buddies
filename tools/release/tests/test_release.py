@@ -57,6 +57,7 @@ class Repo:
         self.put("NOTICE", b"Credits\n")
         self.put("TRADEMARKS.md", b"# Trademarks\n")
         self.put("package.json", json.dumps({"name": "desktop-buddies", "version": version}).encode())
+        self.put("apps/desktop/src-tauri/tauri.conf.json", json.dumps({"productName": "Desktop Buddies", "version": version}).encode())
         self.put("CHANGELOG.md", CHANGELOG.encode())
         self.put("in/desktop-buddies.exe", EXE)
         self.put("in/THIRD-PARTY-NOTICES.txt", b"Third-party notices\n")
@@ -222,12 +223,20 @@ class Version(Base):
         self.refused(r, "package.json says 0.2.0")
         self.assertIn("CHANGELOG.md's top section says 0.2.0", r.stderr)
         self.assertIn("first line says 0.2.0", r.stderr)
+        self.assertIn("tauri.conf.json says 0.2.0", r.stderr)
 
     def test_refuses_package_json_alone_out_of_step(self):
         self.repo.put("package.json", json.dumps({"version": "0.1.0"}).encode())
         r = self.repo.check()
         self.refused(r, "package.json says 0.1.0")
         self.assertNotIn("CHANGELOG", r.stderr)
+
+    def test_refuses_tauri_conf_alone_out_of_step(self):
+        """The installer takes its version from there, and winget reads it back from Windows."""
+        self.repo.put("apps/desktop/src-tauri/tauri.conf.json", json.dumps({"version": "0.1.0"}).encode())
+        r = self.repo.check()
+        self.refused(r, "tauri.conf.json says 0.1.0")
+        self.assertNotIn("package.json", r.stderr)
 
     def test_refuses_package_json_with_no_version(self):
         self.repo.put("package.json", b"{}")

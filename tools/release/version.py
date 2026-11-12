@@ -4,8 +4,9 @@
     python3 -I tools/release/version.py v1.2.3 [--notes <notes.md>]
 
 The tag must be vX.Y.Z, and X.Y.Z must be the version in package.json, the top section of
-CHANGELOG.md, and the first line of apps/desktop/preview/README.txt. Prints the version. The notes
-are the body of that CHANGELOG section.
+CHANGELOG.md, the first line of apps/desktop/preview/README.txt and apps/desktop/src-tauri/tauri.conf.json,
+which the installer takes its version from. Prints the version. The notes are the body of that
+CHANGELOG section.
 """
 import argparse
 import json
@@ -58,6 +59,7 @@ def main():
     found["CHANGELOG.md's top section"], notes = changelog_top(read("CHANGELOG.md"))
     readme = (read("apps/desktop/preview/README.txt").splitlines() or [""])[0].strip()
     found["preview/README.txt's first line"] = readme.rsplit(" ", 1)[-1]
+    found["tauri.conf.json"] = json.loads(read("apps/desktop/src-tauri/tauri.conf.json")).get("version")
     wrong = [f"{where} says {got}" for where, got in found.items() if got != version]
     if wrong:
         stop(f"the tag {o.tag} doesn't match: " + "; ".join(wrong) + ". Update them and tag again")
