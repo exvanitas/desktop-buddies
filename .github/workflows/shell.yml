@@ -147,6 +147,32 @@ jobs:
           if ($LASTEXITCODE) { throw 'building the installer failed' }
           apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
 
+      # winget's own check of the manifests, written for the installer just built. A runner image with
+      # no winget says so in a warning and the summary: then the schema tests in tools/release are all.
+      - name: winget validate
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          $v = (Get-Content -Raw apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $setup = "installer/desktop-buddies-$v-setup-x64.exe"
+          if (-not (Test-Path $setup)) { throw 'no installer to write the manifests for' }
+          python -I packaging/winget/manifest.py --version $v --sha256 (Get-FileHash $setup -Algorithm SHA256).Hash --out winget-manifests
+          if ($LASTEXITCODE) { throw 'writing the manifests failed' }
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue
+          }
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            "::warning::winget isn't on this runner, so winget validate didn't run"
+            "winget validate: not run, there's no winget on this runner`n" >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          "winget $(winget --version)"
+          $said = winget validate --manifest winget-manifests 2>&1 | Out-String
+          $said
+          # warnings alone end it with a code of their own, after saying it succeeded
+          if ($LASTEXITCODE -and $said -notmatch 'validation succeeded') { throw "winget validate failed, code $LASTEXITCODE" }
+          "winget validate: passed`n" >> $env:GITHUB_STEP_SUMMARY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

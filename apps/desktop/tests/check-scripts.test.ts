@@ -344,4 +344,12 @@ test('shell.yml: the installer step builds as the release does, then runs the ch
   assert.match(step, /cargo install tauri-cli --version \$env:TAURI_CLI --locked/);
   assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --exe exe\/desktop-buddies\.exe --notices \S+ --out-dir installer/);
   assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
+  /* winget validate: on manifests for the installer just built, failing on any error */
+  const at2 = yml.indexOf('- name: winget validate');
+  assert.ok(at2 > at, 'after the installer step');
+  const wv = yml.slice(at2, yml.indexOf('\n\n', at2) < 0 ? yml.length : yml.indexOf('\n\n', at2));
+  assert.match(wv, /packaging\/winget\/manifest\.py --version \$v --sha256 \(Get-FileHash \$setup -Algorithm SHA256\)\.Hash --out winget-manifests/);
+  assert.match(wv, /winget validate --manifest winget-manifests/);
+  assert.match(wv, /if \(\$LASTEXITCODE -and \$said -notmatch 'validation succeeded'\) \{ throw/);
+  assert.match(wv, /::warning::winget isn't on this runner/);
 });
