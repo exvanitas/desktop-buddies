@@ -4,9 +4,9 @@
     python3 -I tools/release/version.py v1.2.3 [--notes <notes.md>]
 
 The tag must be vX.Y.Z, and X.Y.Z must be the version in package.json, the top section of
-CHANGELOG.md, the first line of apps/desktop/preview/README.txt and apps/desktop/src-tauri/tauri.conf.json,
-which the installer takes its version from. Prints the version. The notes are the body of that
-CHANGELOG section.
+CHANGELOG.md, the first line of apps/desktop/preview/README.txt, apps/desktop/src-tauri/tauri.conf.json,
+which the installer takes its version from, and the desktop-buddies crate in Cargo.toml and Cargo.lock,
+which the exe reports. Prints the version. The notes are the body of that CHANGELOG section.
 """
 import argparse
 import json
@@ -44,6 +44,19 @@ def changelog_top(text):
     return SECTION.match(lines[first]).group(1), body + "\n"
 
 
+def crate_version(toml):
+    """The version in Cargo.toml's [package] section, or None."""
+    section = re.search(r"(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)", toml)
+    found = section and re.search(r'(?m)^version\s*=\s*"([^"]*)"', section.group(1))
+    return found.group(1) if found else None
+
+
+def locked_version(lock, name):
+    """The version of the package named name in Cargo.lock, or None."""
+    found = re.search(r'(?m)^\[\[package\]\]\nname = "' + re.escape(name) + r'"\nversion = "([^"]*)"', lock)
+    return found.group(1) if found else None
+
+
 def main():
     args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     args.add_argument("tag")
@@ -60,6 +73,8 @@ def main():
     readme = (read("apps/desktop/preview/README.txt").splitlines() or [""])[0].strip()
     found["preview/README.txt's first line"] = readme.rsplit(" ", 1)[-1]
     found["tauri.conf.json"] = json.loads(read("apps/desktop/src-tauri/tauri.conf.json")).get("version")
+    found["Cargo.toml"] = crate_version(read("apps/desktop/src-tauri/Cargo.toml"))
+    found["Cargo.lock's desktop-buddies"] = locked_version(read("apps/desktop/src-tauri/Cargo.lock"), "desktop-buddies")
     wrong = [f"{where} says {got}" for where, got in found.items() if got != version]
     if wrong:
         stop(f"the tag {o.tag} doesn't match: " + "; ".join(wrong) + ". Update them and tag again")

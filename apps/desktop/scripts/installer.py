@@ -12,9 +12,9 @@ installs and uninstalls silently.
 Everything goes in from the zip, byte for byte: the zip is unpacked into a staging folder beside
 src-tauri, the bundler takes the exe and the files from there, and is told not to patch or sign the
 exe. The build's own target folder is never touched. The version is tauri.conf.json's, which is the
-exe's own, and must be <X.Y.Z>. installer-hooks.nsh makes an install over an older one replace the app
-folder whole. Once it's built, 7-Zip opens the installer again to check it holds the zip's files, the
-same bytes, and nothing but NSIS's own files beside them.
+exe's own, and must be <X.Y.Z>. Every name in the zip must be a plain relative path to one of the
+release's files, checked before anything is written. Once it's built, 7-Zip opens the installer again
+to check it holds the zip's files, the same bytes, and nothing else but NSIS's own named files.
 
 It writes desktop-buddies-<X.Y.Z>-setup-x64.exe into <dir> and its line into SHA256SUMS.txt there,
 beside the zip's. --tauri is the Tauri CLI (cargo-tauri, from `cargo install tauri-cli`) and
@@ -38,11 +38,13 @@ TAURI_DIR = DESKTOP / "src-tauri"
 EXE_NAME = "desktop-buddies.exe"
 PRODUCT = "Desktop Buddies"
 NOTICES = "THIRD-PARTY-NOTICES.txt"
-# Replaces the app folder whole on an install over an older one. Its own comments say why.
-HOOKS = DESKTOP / "scripts" / "installer-hooks.nsh"
-# What NSIS itself puts in an installer, beside the files: its plugins, which unpack to a temporary
-# folder and are never installed, the script, as 7-Zip shows it, and the uninstaller.
-NSIS_OWN = ("[NSIS].nsi", "uninstall.exe")
+# What NSIS itself puts in an installer, beside the files, as 7-Zip shows them: the plugins Tauri's
+# script uses, which unpack to a temporary folder and are never installed, the wizard's picture, the
+# script, and the uninstaller. Anything else in the installer is refused.
+NSIS_OWN = {"[NSIS].nsi", "uninstall.exe", *(f"$PLUGINSDIR/{n}" for n in (
+    "System.dll", "nsDialogs.dll", "StartMenu.dll", "NSISdl.dll", "nsis_tauri_utils.dll", "modern-wizard.bmp"))}
+# Characters a Windows file name can't hold, or holds as something else: a drive or stream, a folder.
+NOT_IN_NAMES = set('\\:<>"|?*') | {chr(c) for c in range(32)}
 BUNDLE = {
     "active": True,
     "targets": ["nsis"],
@@ -91,6 +93,7 @@ def from_zip(o, pack):
         names = [n for n in z.namelist() if not n.endswith("/")]
         if not names or any(not n.startswith(top) for n in names):
             stop(f"{o.zip} should hold everything under '{top}'")
+        check_names([n[len(top):] for n in names], pack)
         want = {n[len(top):]: z.read(n) for n in names if n != top + "README.txt"}
     if EXE_NAME not in want:
         stop(f"{o.zip} has no {EXE_NAME}")
@@ -105,6 +108,27 @@ def from_zip(o, pack):
     return want
 
 
+def plain(rel):
+    """Whether a zip name is a plain relative path that stays where it says, on Windows too."""
+    parts = rel.split("/")
+    return all(part not in ("", ".", "..") and not part.endswith((".", " ")) and not set(part) & NOT_IN_NAMES for part in parts)
+
+
+def check_names(rels, pack):
+    """Stops at a zip name that isn't plain, isn't one of the release's files, or is another's name in
+    another case, before anything is written."""
+    tops = {EXE_NAME, "README.txt", NOTICES, *pack.RELEASE_FILES}
+    seen = {}
+    for rel in rels:
+        if not plain(rel):
+            stop(f"{rel!r} in the zip isn't a plain relative path")
+        if rel not in tops and not rel.startswith("app/"):
+            stop(f"{rel} isn't one of the release's files")
+        other = seen.setdefault(rel.casefold(), rel)
+        if other != rel:
+            stop(f"{' and '.join(sorted((other, rel)))} are the same file on Windows")
+
+
 def stage_files(want, stage):
     """The zip's files in the staging folder, and the bundle settings that name them, merged over
     tauri.conf.json for this build only. They stay out of tauri.conf.json, which is built into the exe."""
@@ -113,8 +137,7 @@ def stage_files(want, stage):
         (files / name).parent.mkdir(parents=True, exist_ok=True)
         (files / name).write_bytes(data)
     tops = sorted({name.split("/")[0] for name in want if name != EXE_NAME})
-    nsis = {**BUNDLE["windows"]["nsis"], "installerHooks": str(HOOKS)}
-    return {"bundle": {**BUNDLE, "windows": {"nsis": nsis}, "resources": {rel(files / t): t for t in tops}}}
+    return {"bundle": {**BUNDLE, "resources": {rel(files / t): t for t in tops}}}
 
 
 def build(o, stage, exe, cfg):
@@ -137,7 +160,8 @@ def build(o, stage, exe, cfg):
 
 
 def opened(o, setup, stage):
-    """The installer's install folder, as 7-Zip opens it: by path, the bytes."""
+    """Every file in the installer, as 7-Zip opens it, by path, and the folder the install folder's files
+    are in: the exe's."""
     into = stage / "opened"
     r = subprocess.run([o.sevenzip, "x", str(setup), f"-o{into}", "-y"], capture_output=True, text=True)
     if r.returncode != 0:
@@ -145,19 +169,27 @@ def opened(o, setup, stage):
     exes = [p for p in into.rglob(EXE_NAME) if p.is_file()]
     if len(exes) != 1:
         stop(f"the installer holds {len(exes)} copies of the exe, not one")
-    root = exes[0].parent
-    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    inside = exes[0].parent.relative_to(into).as_posix()
+    files = {p.relative_to(into).as_posix(): p.read_bytes() for p in into.rglob("*") if p.is_file()}
+    return files, "" if inside == "." else inside + "/"
 
 
-def compare(want, got):
-    """What's wrong with the installer, against the zip: anything missing or changed, and anything that's
-    neither the zip's nor NSIS's own. A bundler that patches the exe puts its own copy back after, so
-    only the installer shows it."""
+
+
+def compare(want, opened_files):
+    """What's wrong with the installer, against the zip: anything missing or changed, and any file,
+    anywhere in it, that's neither the zip's nor one of NSIS's own. A bundler that patches the exe puts its
+    own copy back after, so only the installer shows it."""
+    files, inside = opened_files
+    got = {n[len(inside):]: d for n, d in files.items() if n.startswith(inside)}
     if EXE_NAME in got and got[EXE_NAME] != want[EXE_NAME]:
         return ["the bundler changed the exe"]
     out = [f"{n} is missing" for n in want if n not in got]
     out += [f"{n} isn't the same" for n in want if n in got and got[n] != want[n]]
-    out += [f"{n} shouldn't be there" for n in got if n not in want and n not in NSIS_OWN and not n.startswith("$PLUGINSDIR/")]
+    for n in files:
+        name = n[len(inside):] if n.startswith(inside) else None
+        if name not in want and name not in NSIS_OWN and n not in NSIS_OWN:
+            out.append(f"{n} shouldn't be there")
     return out
 
 

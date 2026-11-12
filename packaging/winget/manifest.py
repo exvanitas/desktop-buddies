@@ -51,7 +51,7 @@ def manifests(version, url, sha256):
             "InstallerType": "nullsoft",
             "Scope": "user",
             "InstallModes": ["interactive", "silent", "silentWithProgress"],
-            "UpgradeBehavior": "install",  # over the old one: installer-hooks.nsh replaces the app folder whole
+            "UpgradeBehavior": "install",  # the new setup over the old one, which keeps the data and Start with Windows
             "ProductCode": NAME,
             "AppsAndFeaturesEntries": [{"DisplayName": NAME, "Publisher": PUBLISHER, "ProductCode": NAME}],
             "InstallationMetadata": {"DefaultInstallLocation": f"%LocalAppData%\\{NAME}"},

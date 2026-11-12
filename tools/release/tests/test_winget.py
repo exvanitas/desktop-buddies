@@ -127,8 +127,8 @@ class Writer(unittest.TestCase):
     def test_the_installer_entry(self):
         self.assertEqual(self.run_it("--version", "0.2.0", "--sums", "SHA256SUMS.txt").returncode, 0)
         data = read_yaml(self.written()["exvanitas.DesktopBuddies.installer.yaml"])
-        # the new setup runs over the old install, which keeps the Run value and data, and replaces the
-        # app folder whole itself (installer-hooks.nsh)
+        # the new setup runs over the old install, with nothing uninstalled first, which keeps the data
+        # and Start with Windows
         self.assertEqual((data["InstallerType"], data["Scope"], data["UpgradeBehavior"]), ("nullsoft", "user", "install"))
         self.assertEqual(data["Installers"], [{"Architecture": "x64", "InstallerSha256": SHA.upper(),
                                                "InstallerUrl": f"https://github.com/exvanitas/desktop-buddies/releases/download/v0.2.0/{SETUP}"}])
