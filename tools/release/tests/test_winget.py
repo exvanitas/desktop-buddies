@@ -235,8 +235,12 @@ class Agrees(unittest.TestCase):
         self.assertEqual(M.SHORT, INSTALLER.BUNDLE["shortDescription"])
 
     def test_with_the_mcp_servers_default(self):
+        """The MCP server's first choice, the zip's place, is where the installer puts the exe, with the
+        data in %APPDATA% as the installed app keeps it."""
         server = (REPO / "tools/mcp/server.mjs").read_text()
-        self.assertIn("win.join(env.LOCALAPPDATA || 'C:\\\\', 'Desktop Buddies', 'desktop-buddies.exe')", server)
+        self.assertIn("local = env.LOCALAPPDATA || 'C:\\\\'", server)
+        self.assertIn("zip: { exe: win.join(local, 'Desktop Buddies', 'desktop-buddies.exe'), dataDir: win.join(env.APPDATA || 'C:\\\\', DATA) }", server)
+        self.assertIn("'dev.exvanitas.desktop-buddies'", server)
 
 
 if __name__ == "__main__":
