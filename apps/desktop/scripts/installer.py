@@ -51,6 +51,7 @@ def stop(why):
 
 def packer():
     """preview.py, for the checks the zip gets."""
+    sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("preview", DESKTOP / "scripts" / "preview.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -113,8 +114,7 @@ def build(o, stage, cfg):
     """Runs the bundler on a copy of the exe, and returns the setup it made."""
     release = stage / "target" / (o.target or "") / "release"
     release.mkdir(parents=True)
-    staged = release / EXE_NAME
-    shutil.copyfile(o.exe, staged)
+    shutil.copyfile(o.exe, release / EXE_NAME)
     (stage / "bundle.json").write_text(json.dumps(cfg, indent=2), "utf-8")
     cmd = [o.tauri, "bundle", "--bundles", "nsis", "--no-binary-patching", "--no-sign", "--ci", "--config", str(stage / "bundle.json")]
     if o.target:
@@ -122,8 +122,6 @@ def build(o, stage, cfg):
     env = dict(os.environ, CARGO_TARGET_DIR=str(stage / "target"), CI="true")
     if subprocess.run(cmd, cwd=TAURI_DIR, env=env).returncode != 0:
         stop("the bundler failed")
-    if staged.read_bytes() != o.exe.read_bytes():
-        stop("the bundler changed the exe it was given")
     name = f"{PRODUCT}_{o.release}_x64-setup.exe"
     made = sorted(p.name for p in (release / "bundle" / "nsis").glob("*.exe")) if (release / "bundle" / "nsis").is_dir() else []
     if made != [name]:
@@ -146,7 +144,10 @@ def opened(o, setup, stage):
 
 def compare(want, got):
     """What's wrong with the installer, against what it must hold. Outside app, the bundler's own files
-    (its uninstaller and plugins) can sit beside these."""
+    (its plugins) can sit beside these. A bundler that patches the exe puts its own copy back after,
+    so only the installer shows it."""
+    if EXE_NAME in got and got[EXE_NAME] != want[EXE_NAME]:
+        return ["the bundler changed the exe"]
     out = [f"{n} is missing" for n in want if n not in got]
     out += [f"{n} isn't the same" for n in want if n in got and got[n] != want[n]]
     out += [f"{n} shouldn't be there" for n in got if n.startswith("app/") and n not in want]

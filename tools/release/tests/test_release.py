@@ -109,10 +109,9 @@ release = target / (args[args.index("--target") + 1] if "--target" in args else 
 pathlib.Path(os.environ["FAKE_RECORD"]).write_text(json.dumps({"args": args, "cwd": os.getcwd(), "config": cfg, "target": str(target)}))
 if mode == "fail":
     sys.exit("bundler: it went wrong")
-exe = release / "desktop-buddies.exe"
-if mode == "patch":
-    exe.write_bytes(exe.read_bytes().replace(b"a stand-in exe", b"a patched! exe"))
-parts = {"desktop-buddies.exe": exe.read_bytes()}
+# Tauri patches the exe for the installer, then puts the one it was given back.
+exe = (release / "desktop-buddies.exe").read_bytes()
+parts = {"desktop-buddies.exe": exe.replace(b"a stand-in exe", b"a patched! exe") if mode == "patch" else exe}
 for src, dest in cfg["bundle"]["resources"].items():
     src = pathlib.Path(src)
     if src.is_dir():
