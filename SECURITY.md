@@ -1,7 +1,7 @@
 # Security
 
 ## What runs on your PC
-- **No network.** The desktop app, the Maker and an exported page fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Fonts and images are bundled or come from your own files.
+- **No network from its own code.** The desktop app's own code, the Maker and an exported page fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. Desktop Buddies' own code will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The desktop app draws in Microsoft Edge WebView2, which updates itself and sends Microsoft diagnostic data and crash reports by Windows' settings: see Microsoft's [WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy). Fonts and images are bundled or come from your own files.
 - **Your windows.** To let buddies walk on your windows, the app reads which windows are open, where they are, their order and states (maximized, always on top, tool or layered, and which is in front), each one's class, and which program each belongs to. It never reads titles or what's in them, and none of it leaves your PC. [PRIVACY.md](PRIVACY.md) has the details.
 - **Buddy files** are data only: JSON with raster images inside. The reader refuses unknown fields, SVG, external URLs and anything over its size limits, and text in a buddy is always shown as text. `docs/buddy-format-safety.md` has the rules, and `pnpm validate-buddy <file>` checks a file the same way.
 

@@ -30,6 +30,7 @@ describe('the Store listing', () => {
     expect(chars(box('Additional license terms'))).toBeLessThanOrEqual(10000);
     expect(chars(box('Developed by'))).toBeLessThanOrEqual(255);
     expect(chars(box("What's new in this version"))).toBeLessThanOrEqual(1500);
+    for (const l of lines(box('Additional system requirements'))) expect(chars(l)).toBeLessThanOrEqual(200);
   });
 
   it('keeps links out of the description, as Microsoft asks', () => {

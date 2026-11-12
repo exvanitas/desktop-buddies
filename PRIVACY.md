@@ -1,6 +1,6 @@
 # Privacy
 
-Desktop Buddies runs on your PC and keeps everything there. It has no accounts, analytics, ads, purchases, update checks or telemetry, and it sends nothing anywhere. This page covers the desktop app, from the Microsoft Store, winget or GitHub, and the web Maker.
+Desktop Buddies runs on your PC and keeps everything there. It has no accounts, analytics, ads, purchases, update checks or telemetry, and its own code sends nothing anywhere. The one part that talks to Microsoft is WebView2, Windows' own web view, which the app draws in: see What it sends. This page covers the desktop app, from the Microsoft Store, winget or GitHub, and the web Maker.
 
 ## What it reads
 - **Your windows.** So buddies can walk on your windows, the app reads which windows are open, where they are, their order front to back, which one is in front, whether each is maximized, always on top, a tool window or layered, and which program each belongs to: the program's file name, like `notepad.exe`, and the window's class, a type name its program gives it. It uses the class and those states to leave out the taskbar, menus, tooltips and overlays. It never reads a window's title or what's in it. It reads them only while buddies are out and Walk on windows is on, and Settings can turn this off or keep buddies off one program.
@@ -19,10 +19,12 @@ In its data folder, `%APPDATA%\dev.exvanitas.desktop-buddies`:
 
 WebView2, which draws the app's pages, keeps its own data in `%LOCALAPPDATA%\dev.exvanitas.desktop-buddies`, including the Manager's theme.
 
-Start with Windows, off until you turn it on, has Windows start the app when you sign in. In the installer and zip versions it adds a value named `Desktop Buddies`, holding the exe's full path, under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`. Turning it off removes it.
+Start with Windows, off until you turn it on, has Windows start the app when you sign in. In the installer and zip versions it adds a value named `Desktop Buddies`, holding the exe's full path, under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, and turning it off removes it. The Store version uses its package's startup task instead, named Desktop Buddies, which you can also turn on or off in Windows Settings, Apps, Startup.
 
 ## What it sends
-Nothing. The app, the Maker and pages exported from the Maker fetch nothing and send nothing. This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+Nothing from Desktop Buddies' own code. The app, the Maker and pages exported from the Maker fetch nothing and send nothing, and Desktop Buddies' own code will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+The desktop app draws its windows with Microsoft Edge WebView2, a Windows component that Microsoft runs and updates. WebView2 keeps itself up to date, sends Microsoft diagnostic data as Windows' Diagnostic data setting allows (Settings, Privacy & security, Diagnostics & feedback), and sends a crash report to Microsoft if one of its processes crashes. Microsoft describes this in [WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy). If WebView2 is missing, the installer downloads it from Microsoft.
 
 ## The local API
 Other programs on your PC can ask buddies to wave or say a line. It's **off by default**: Settings turns it on, and Pause in the tray stops requests.
@@ -39,7 +41,7 @@ The Store version keeps the same files in its own folder, never in `%APPDATA%`: 
 The web Maker keeps your buddies in your browser's storage for its page (IndexedDB), and sends nothing. An exported page holds the buddies you chose and fetches nothing.
 
 ## Removing your data
-Delete the data folders above. The Store and winget versions, and the installer, are removed from Windows' Installed apps. The zip version is removed by deleting its folder: first turn Start with Windows off, from the tray or the Manager, so its startup entry goes too, then quit from the tray.
+Delete the data folders above. The Store and winget versions, and the installer, are removed from Windows' Installed apps. The zip version is removed by deleting its folder: first turn Start with Windows off, from the tray or the Manager, so its startup entry goes too, then quit from the tray. The web Maker's buddies and theme are in your browser's storage for its page: clear that site's data in the browser to remove them.
 
 ## Questions
 Open an issue on [GitHub](https://github.com/exvanitas/desktop-buddies/issues). For a security problem, use private vulnerability reporting instead: see [SECURITY.md](SECURITY.md).
@@ -47,8 +49,8 @@ Open an issue on [GitHub](https://github.com/exvanitas/desktop-buddies/issues). 
 ## Where each claim comes from
 - Windows read, never titles: `apps/desktop/shell-core/src/tracker.rs` (`Entry`, `Snapshot`), `apps/desktop/src-tauri/src/platform/win.rs` (`windows_now`). What the class and states leave out: `REAL` in `apps/desktop/src/window-terrain.ts`. Only while out and walking: `wantWindows` in `apps/desktop/src/hub-core.ts`. Turning it off and staying off a program: `apps/desktop/src/manager/settings.ts`, `apps/desktop/src/window-terrain.ts`.
 - The mouse: `apps/desktop/src-tauri/src/watch.rs`. Away, full screen and battery: `apps/desktop/shell-core/src/system.rs`, `apps/desktop/src/shell.ts` (`System`).
-- The data folder, settings and log: [apps/desktop/README.md](apps/desktop/README.md) (its flags, and The library), `Settings` in `apps/desktop/src/hub-core.ts`, `apps/desktop/shell-core/src/log.rs` (`CAP`). The paths in the log: the `start` line in `apps/desktop/src-tauri/src/main.rs`. WebView2's folder: `start` in `apps/desktop/src-tauri/src/main.rs`. Theme: The Manager in [apps/desktop/README.md](apps/desktop/README.md). Start with Windows: `RUN_KEY`, `RUN_VALUE` and `set_autostart` in `apps/desktop/src-tauri/src/platform/win.rs`, changed only by the `autostart` command in `apps/desktop/src/hub-core.ts`, from the tray or the Manager's switch.
-- Nothing sent: README's Network use and [SECURITY.md](SECURITY.md). Each app page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`).
+- The data folder, settings and log: [apps/desktop/README.md](apps/desktop/README.md) (its flags, and The library), `Settings` in `apps/desktop/src/hub-core.ts`, `apps/desktop/shell-core/src/log.rs` (`CAP`). The paths in the log: the `start` line in `apps/desktop/src-tauri/src/main.rs`. WebView2's folder: `start` in `apps/desktop/src-tauri/src/main.rs`. Theme: The Manager in [apps/desktop/README.md](apps/desktop/README.md). Start with Windows: `RUN_KEY`, `RUN_VALUE` and `set_autostart` in `apps/desktop/src-tauri/src/platform/win.rs`, the Store's `windows.startupTask` in `apps/desktop/packaging/msix/AppxManifest.xml` and its row in [docs/native-shell-design.md](docs/native-shell-design.md), changed only by the `autostart` command in `apps/desktop/src/hub-core.ts`, from the tray or the Manager's switch.
+- Nothing sent by its own code: README's Network use and [SECURITY.md](SECURITY.md). WebView2's own data: Microsoft's [WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy). Each app page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`).
 - The local API: [docs/local-api.md](docs/local-api.md), `apps/desktop/src/local-api.ts` (the `off` and `not-running` replies), `apps/desktop/src/api-replies.ts`, `apiLaunch` in `apps/desktop/src/hub-core.ts`.
 - The Store version's folder: set by the Store package, which gives the app `LocalState\data` as its data folder and `LocalState\webview` for WebView2, and Microsoft's [How packaged desktop apps run on Windows](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes) (Uninstallation).
 - The web Maker: `indexedDbStore` in `apps/maker/src/app.ts` and `packages/maker-core/src/stores.ts`; exported pages: README's Network use.

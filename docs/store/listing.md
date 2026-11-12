@@ -21,7 +21,7 @@ Entertainment. It has no subcategories. No secondary category.
 Entertainment is "apps which entertain and/or provide information through audio, visual or other content types". Personalization was the other candidate, but its subcategories are ringtones, themes and wallpapers.
 
 ### Privacy policy
-Answer **Yes** to "does it access, collect or transmit personal information". The question covers access, not only sending. The app transmits nothing and keeps everything on the PC (README, Network use; [PRIVACY.md](../../PRIVACY.md)), but it does access some: the pictures and files the person picks, the list of open windows with each one's program, and its log records the app's and data folder's full paths, which usually hold the Windows user name (the `start` line in `apps/desktop/src-tauri/src/main.rs`). Store Policy 10.5.1 also says Win32 products inherently have access to personal information and "must always have privacy policies".
+Answer **Yes** to "does it access, collect or transmit personal information". The question covers access, not only sending. Desktop Buddies' own code transmits nothing and keeps everything on the PC (README, Network use; [PRIVACY.md](../../PRIVACY.md)), but it does access some: the pictures and files the person picks, the list of open windows with each one's program, and its log records the app's and data folder's full paths, which usually hold the Windows user name (the `start` line in `apps/desktop/src-tauri/src/main.rs`). Store Policy 10.5.1 also says Win32 products inherently have access to personal information and "must always have privacy policies". And the app draws in Microsoft Edge WebView2, which sends Microsoft diagnostic data by Windows' setting and crash reports ([WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy)); PRIVACY.md says so.
 
 ```text
 https://github.com/exvanitas/desktop-buddies/blob/main/PRIVACY.md
@@ -52,6 +52,8 @@ Leave the hardware table empty. The app needs nothing beyond a PC: buddies get a
 
 The OS and architecture come from the package: Windows 10 or 11, 64-bit (README, Install).
 
+**WebView2.** The app draws its windows with the Microsoft Edge WebView2 Runtime, and the MSIX doesn't carry it. It comes with Windows 11 and most up-to-date Windows 10 PCs. On a Windows 10 PC without it, the app can't open its windows. The fix is to install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) from Microsoft, then start the app again. It's stated in the description and under Additional system requirements below.
+
 ## Age ratings
 Partner Center asks the International Age Rating Coalition's (IARC) questionnaire, and the questions themselves aren't published: Microsoft's page describes only how it works. The answers below are for the topics IARC asks about. Pick the matching option for each question as it's worded on the day, and read its info icon.
 
@@ -66,12 +68,12 @@ The first question is the kind of product. Choose the app type that fits an ente
 | Drugs, alcohol, tobacco | No | Nothing in the app's own content. |
 | Gambling, simulated gambling | No | None. |
 | Crude humour | No | None. |
-| Users interact or exchange content with other users | No | The app has no network use of any kind: no accounts, chat, sharing or uploads (README, Network use; SECURITY.md). A `.buddy` file only moves between people outside the app, as any file does. |
+| Users interact or exchange content with other users | No | The app's own code makes no network requests: no accounts, chat, sharing or uploads (README, Network use; SECURITY.md). A `.buddy` file only moves between people outside the app, as any file does. |
 | Shares the user's location | No | It never reads location. It reads where windows are on the screen, which isn't a place (PRIVACY.md). |
-| Shares personal information with third parties | No | It sends nothing anywhere (README, Network use; PRIVACY.md). |
+| Shares personal information with third parties | No | Its own code sends nothing anywhere (README, Network use; PRIVACY.md). WebView2, the Windows component it draws in, sends Microsoft diagnostic data and crash reports under Windows' own settings, which the app doesn't share or control. |
 | Digital purchases | No | It sells nothing and has no store or add-ons. |
 | Ads | No | None. |
-| Unrestricted internet or web browser | No | It shows no web pages and fetches nothing. Each page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`). |
+| Unrestricted internet or web browser | No | It shows no web pages, and its own code fetches nothing. Each page's Content-Security-Policy lets it connect only to the app itself (`apps/desktop/public/*.html`). |
 | User-generated content | No, in IARC's and the Store's sense | Store Policy 11.12 defines it as content "viewed or accessed by other users in an online state". Buddies people make or import stay on their own PC: the library is a folder in the app's data folder (`apps/desktop/README.md`, The library). |
 
 Two facts to keep in mind while answering, so nothing is missed:
@@ -105,7 +107,7 @@ The Maker
 Make a buddy from one image or a full set of poses. Write what she says for each mood and moment, set how she sits on floors, walls and ceilings, and try her out on your screen. A prompt kit helps you ask an image AI for matching poses.
 
 Yours, and on your PC
-No accounts, ads, purchases, analytics, update checks or telemetry. The app sends nothing anywhere. To use your windows as terrain it reads which windows are open, where they are, their order and states, and which program each belongs to, never their titles or contents, and none of it leaves your PC.
+No accounts, ads, purchases, analytics, update checks or telemetry: Desktop Buddies' own code sends nothing anywhere. It draws its windows with Microsoft Edge WebView2, which comes with Windows 11 and most up-to-date Windows 10 PCs and, like other Windows components, follows Windows' own diagnostic data and update settings. To use your windows as terrain it reads which windows are open, where they are, their order and states, and which program each belongs to, never their titles or contents, and none of it leaves your PC.
 
 For tinkerers
 A local API, off by default, lets apps and AI agents on your PC ask buddies to wave or say a line, after you allow each app. An MCP server for it is in the source repository.
@@ -139,7 +141,7 @@ Share a buddy as one .buddy file
 Keep buddies off any program, or off windows altogether
 Dark and light themes
 A local API for apps and AI agents on your PC, off by default
-No accounts, ads or purchases, and no network use
+No accounts, ads or purchases, and nothing sent by its own code
 Free and open source (MIT)
 ```
 
@@ -196,7 +198,11 @@ Little characters that live on your desktop. They walk on your windows, climb, n
 ```
 
 ### Additional system requirements
-Leave empty. Nothing beyond the PC is needed.
+One item under Minimum hardware, up to 200 characters. It isn't hardware, but it's the one thing beyond Windows the app needs, and this is where Microsoft shows such needs.
+
+```text
+Microsoft Edge WebView2 Runtime, included in Windows 11 and most up-to-date Windows 10 PCs
+```
 
 ### Keywords
 Up to 7, each up to 40 characters (Microsoft's FAQ elsewhere says 30, so each stays under 30), and no more than 21 words across all of them.
@@ -242,7 +248,7 @@ exvanitas
 
 ### Notes for certification
 ```text
-Desktop Buddies 1.0.0.0. It has no sign-in, no accounts and no network use. It ships with no characters ("buddies"), so the Manager opens on an empty library. To try it:
+Desktop Buddies 1.0.0.0. It has no sign-in and no accounts, and its own code makes no network requests (WebView2, which it draws in, keeps its usual Windows behaviour). It ships with no characters ("buddies"), so the Manager opens on an empty library. To try it:
 
 1. Download the sample buddy, a .buddy file made from the app's own code-drawn test sample:
 https://github.com/exvanitas/desktop-buddies/releases/download/v1.0.0/desktop-buddies-sample.buddy
@@ -250,6 +256,8 @@ https://github.com/exvanitas/desktop-buddies/releases/download/v1.0.0/desktop-bu
 3. She walks along open windows, climbs their sides and naps. Drag her and throw her. Right-click her for her actions (give a treat, chase the mouse, call another, dismiss).
 4. In the Manager, New buddy opens the Maker, which makes a buddy from any picture. Settings is at the bottom right.
 5. Closing the Manager leaves the app running in the notification area. Its tray icon opens the Manager again, and Quit is in the tray menu.
+
+It needs the Microsoft Edge WebView2 Runtime, which the package doesn't carry. If the app doesn't open on a Windows 10 test PC, install the runtime from https://developer.microsoft.com/microsoft-edge/webview2/ and start it again.
 
 The local API is off by default. When turned on in Settings, other programs on the same PC can ask buddies to wave or say a line, after the user allows each one in the Manager. Nothing listens on any network address.
 
@@ -262,7 +270,7 @@ If Partner Center asks why the package declares `runFullTrust`, paste the last p
 ## Decisions for the owner
 - **Violence in the age questionnaire.** Throwing a buddy, with her dizzy or knocked-out pose and an "Ouch!", may count as mild cartoon or comic violence. Answering yes to the mildest option is the safe reading. IARC sets the rating from the answers.
 - **"shimeji" as a keyword.** The app imports Shimeji folders, so it's accurate, but Microsoft asks to avoid others' brand names. It's a project and genre name rather than a company's brand; drop it if you'd rather not.
-- **The empty first run.** Store Policy 10.1.1 asks that "the value proposition of your product must be clear during the first run experience". The Manager opens empty, with Import and New buddy. The notes point testers to the sample. If certification still calls it incomplete, a Store build could seed the sample on first run: `apps/desktop/public/seed.json` exists for that, but the release packer refuses an app folder with a seed today.
+- **The empty first run.** Store Policy 10.1.1 asks that "the value proposition of your product must be clear during the first run experience". The Manager opens empty, with Import and New buddy. The notes point testers to the sample. If certification still calls it incomplete, a Store build could seed the sample on first run, by creating `apps/desktop/public/seed.json` with her file in it: the hub seeds a first run from that file when it's there (`hub.ts`). No build has one, and the release packer refuses an app folder with a seed today.
 - **Generative AI declaration.** Left unticked above, because the app runs and calls no model. Tick it only if you read the local API's lines from AI agents as the app's own.
 - **The sample's name in the notes.** The notes never name her, so swapping the sample changes nothing in them.
 - **Markets and price.** Free, and every market, unless you choose otherwise.

@@ -23,6 +23,6 @@ This build isn't signed, so Windows may warn you.
   Please don't turn Smart App Control off for this. You can build the exe
   yourself from the source instead.
 
-To remove it, quit from the tray and delete the folder. Your buddies and
-settings are in %APPDATA%\dev.exvanitas.desktop-buddies, which you can delete
-too.
+To remove it, turn Start with Windows off first if you turned it on, then quit
+from the tray and delete the folder. Your buddies and settings are in
+%APPDATA%\dev.exvanitas.desktop-buddies, which you can delete too.

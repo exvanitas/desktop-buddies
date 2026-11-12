@@ -10,24 +10,24 @@ No buddies are included. To get one, import a `.buddy` file someone shared, make
 Free and open source. See [CHANGELOG.md](CHANGELOG.md) for what's in each version.
 
 ## Install
-Windows 10 or 11, 64-bit. Pick one:
+Windows 10 or 11, 64-bit, with Microsoft Edge WebView2, which draws the app's windows. It comes with Windows 11 and most up-to-date Windows 10 PCs, and the installer downloads it from Microsoft if it's missing. If the Store or zip version won't open on Windows 10, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) from Microsoft, then start it again. Pick one:
 
 - **Microsoft Store** (coming soon). Microsoft signs it, installs it and keeps it up to date.
 - **winget** (coming soon), once it's in the winget catalogue:
   ```
   winget install --id exvanitas.DesktopBuddies -e
   ```
-- **The installer** from [Releases](https://github.com/exvanitas/desktop-buddies/releases): `desktop-buddies-X.Y.Z-setup-x64.exe`. It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu. A newer installer, or a winget upgrade, replaces the program and its `app` folder and keeps your buddies and Start with Windows as they were. Remove it from Installed apps in Windows Settings.
+- **The installer** from [Releases](https://github.com/exvanitas/desktop-buddies/releases): `desktop-buddies-X.Y.Z-setup-x64.exe`. It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu. A winget upgrade, or a newer setup run with `/S`, installs over the old version and keeps your buddies and Start with Windows. A newer setup run by hand removes the old version first: your buddies stay, but Start with Windows goes off, so turn it back on in the app. Files the new version no longer has may stay in the program folder, which does no harm. Remove it from Installed apps in Windows Settings.
 - **The portable zip** from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe. To remove it, turn Start with Windows off if you turned it on, quit from the tray and delete the folder.
 
-The installer and the zip aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. If Smart App Control is on, it may block them outright, with no way past. Please don't turn Smart App Control off for this: use the Store or winget instead, or build the exe yourself from this source.
+The installer and the zip aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. If Smart App Control is on, it may block them outright, with no way past. Please don't turn Smart App Control off for this. winget installs the same unsigned installer, so it doesn't help here: only the Store version, which Microsoft signs, gets past Smart App Control. Or build the exe yourself from this source.
 
 The first start opens the Manager on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
 
 Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`. Removing the app leaves them there, unless you tick the uninstaller's box to delete them, and you can delete the folder yourself. Before you delete the zip version's folder, turn Start with Windows off, so its startup entry goes too. The Store version keeps its own library in `%LOCALAPPDATA%\Packages\<its package family name>\LocalState\data`, and WebView2's files in `LocalState\webview` beside it, apart from the zip's and the installer's: Export and Import move buddies between them. Removing the Store version removes its library, so export any buddies you want to keep first. [PRIVACY.md](PRIVACY.md) has the details.
 
 ## Network use
-None. The app, the Maker and exported pages fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. To use your windows as terrain, the app reads which windows are open, where they are, their order and states (maximized, always on top and the like), each one's class and which program it belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+None from Desktop Buddies itself. Its own code, in the app, the Maker and exported pages, fetches nothing and sends nothing: no accounts, analytics, update checks or telemetry. The desktop app draws its windows with Microsoft Edge WebView2, a Windows component Microsoft runs: it updates itself, sends Microsoft diagnostic data as Windows' Diagnostic data setting allows, and sends a crash report if it crashes. See Microsoft's [WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy). To use your windows as terrain, the app reads which windows are open, where they are, their order and states (maximized, always on top and the like), each one's class and which program it belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
 ## Build from source
 You need Node 22 and pnpm 10. The exe also needs Rust and Windows; the app folder builds anywhere.
