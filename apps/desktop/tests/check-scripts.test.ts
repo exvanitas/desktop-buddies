@@ -295,6 +295,7 @@ test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, an
     '[System.Security.Cryptography.CngKey]::Exists($keyName)', '-not $keyLeft']) assert.ok(cert.includes(bit), bit);
   assert.ok(c.includes('$keyName = $rsa.Key.KeyName'), 'the key is named before anything can go wrong');
   assert.ok(fin.indexOf("Tidy 'processes'") < fin.indexOf("Tidy 'logs'") && fin.indexOf("Tidy 'logs'") < fin.indexOf("Tidy 'uninstall'"), 'stop, keep the log, then uninstall');
+});
 
 /* The installer check installs into the real profile, so it runs on the Actions runner only. */
 test('installer-check.ps1: it runs only on the Actions runner, before anything else happens', () => {
