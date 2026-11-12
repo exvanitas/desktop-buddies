@@ -60,6 +60,18 @@ pub fn autostart() -> Result<bool, String> {
 pub fn set_autostart(_: bool) -> Result<(), String> {
     Err(NO.into())
 }
+pub fn packaged() -> bool {
+    false
+}
+pub fn package_family() -> Option<String> {
+    None
+}
+pub fn startup() -> Result<bool, String> {
+    Err(NO.into())
+}
+pub fn set_startup(_: bool) -> Result<(), String> {
+    Err(NO.into())
+}
 pub fn file_assoc() -> Result<bool, String> {
     Ok(false)
 }

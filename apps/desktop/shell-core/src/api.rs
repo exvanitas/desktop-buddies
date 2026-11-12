@@ -26,10 +26,18 @@ pub struct Info {
     pub args: Vec<String>,
     pub data_dir: String,
     pub can: Vec<&'static str>,
+    /// Running as the Store's MSIX package. Left out when it isn't, so that exe says what it always
+    /// did, and an app reads a missing field as not packaged.
+    #[serde(skip_serializing_if = "is_false")]
+    pub packaged: bool,
 }
 
-pub fn info(version: &'static str, platform: &'static str, args: Vec<String>, data_dir: String) -> Info {
-    Info { api: API, version, platform, args, data_dir, can: CAN.to_vec() }
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+pub fn info(version: &'static str, platform: &'static str, args: Vec<String>, data_dir: String, packaged: bool) -> Info {
+    Info { api: API, version, platform, args, data_dir, can: CAN.to_vec(), packaged }
 }
 
 #[cfg(test)]
@@ -39,7 +47,7 @@ mod tests {
 
     #[test]
     fn info_says_api_2_and_what_it_can_do() {
-        let i = info("0.2.0", "windows", vec!["--x".into()], "D".into());
+        let i = info("0.2.0", "windows", vec!["--x".into()], "D".into(), false);
         assert_eq!(
             serde_json::to_value(&i).unwrap(),
             json!({
@@ -47,6 +55,16 @@ mod tests {
                 "can": ["raise", "tool-overlays", "window-focus-spec", "window-closed", "focus-restores", "save-atomic", "save-owner", "quit-wait"]
             })
         );
+    }
+
+    #[test]
+    fn a_package_says_so_and_nothing_else_changes() {
+        let plain = serde_json::to_value(info("0.2.0", "windows", vec![], "D".into(), false)).unwrap();
+        let mut boxed = serde_json::to_value(info("0.2.0", "windows", vec![], "D".into(), true)).unwrap();
+        assert_eq!(plain.get("packaged"), None);
+        assert_eq!(boxed["packaged"], json!(true));
+        boxed.as_object_mut().unwrap().remove("packaged");
+        assert_eq!(boxed, plain);
     }
 
     #[test]

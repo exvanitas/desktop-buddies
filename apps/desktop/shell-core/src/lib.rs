@@ -11,6 +11,7 @@ pub mod menu;
 pub mod monitors;
 pub mod nav;
 pub mod opened;
+pub mod package;
 pub mod paths;
 pub mod quit;
 pub mod raise;

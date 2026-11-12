@@ -2,6 +2,7 @@
 
 use super::Filter;
 use shell_core::{
+    package,
     system::{full_screen, user_state, System},
     temp::Swap,
     tracker::{Dirty, Entry},
@@ -16,12 +17,16 @@ use std::{
 };
 use windows::{
     core::{HSTRING, PCWSTR, PWSTR},
+    ApplicationModel::StartupTask,
     Win32::{
         Foundation::{
             CloseHandle, ERROR_CANCELLED, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HWND, LPARAM, LRESULT, POINT, RECT, WIN32_ERROR, WPARAM,
         },
         Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS},
-        Storage::FileSystem::{MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACE_FILE_FLAGS},
+        Storage::{
+            FileSystem::{MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACE_FILE_FLAGS},
+            Packaging::Appx::{GetCurrentPackageFamilyName, GetCurrentPackageFullName},
+        },
         System::{
             Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED},
             Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS},
@@ -238,6 +243,46 @@ pub fn set_file_assoc(on: bool) -> Result<(), String> {
     }
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
     Ok(())
+}
+
+/* ---------- the Store's package ---------- */
+
+/// Whether this process runs as an MSIX package, asked once.
+pub fn packaged() -> bool {
+    static PACKAGED: OnceLock<bool> = OnceLock::new();
+    *PACKAGED.get_or_init(|| {
+        let mut len = 0u32;
+        package::packaged(unsafe { GetCurrentPackageFullName(&mut len, None) }.0)
+    })
+}
+
+/// The package's family name, or None outside one.
+pub fn package_family() -> Option<String> {
+    let mut buf = [0u16; 256];
+    let mut len = buf.len() as u32;
+    let e = unsafe { GetCurrentPackageFamilyName(&mut len, Some(PWSTR(buf.as_mut_ptr()))) };
+    (e == ERROR_SUCCESS && len > 0).then(|| String::from_utf16_lossy(&buf[..len as usize - 1]))
+}
+
+fn startup_task() -> Result<(StartupTask, i32), String> {
+    let task = StartupTask::GetAsync(&HSTRING::from(package::STARTUP_TASK)).and_then(|op| op.join()).map_err(|e| format!("startup task: {e}"))?;
+    let state = task.State().map_err(|e| format!("startup task state: {e}"))?;
+    Ok((task, state.0))
+}
+
+/// Whether the package's startup task runs at sign-in. The person can change it in Windows
+/// Settings at any time, so it's read each time.
+pub fn startup() -> Result<bool, String> {
+    Ok(package::task_on(startup_task()?.1))
+}
+
+pub fn set_startup(on: bool) -> Result<(), String> {
+    let (task, state) = startup_task()?;
+    match package::startup_step(on, state)? {
+        package::Step::Nothing => Ok(()),
+        package::Step::Enable => package::enabled(task.RequestEnableAsync().and_then(|op| op.join()).map_err(|e| format!("startup task: {e}"))?.0),
+        package::Step::Disable => task.Disable().map_err(|e| format!("startup task: {e}")),
+    }
 }
 
 /* ---------- windows on screen ---------- */

@@ -71,7 +71,8 @@ fn start(app: &AppHandle, args: Args, app_dir: PathBuf, log: Arc<Log>, library: 
         Some(p) => log.attach(p, None),
         None => log.attach(&data_root.join("logs/app.log"), Some(shell_core::log::CAP)),
     }
-    log.line(&format!("start {} api {} app {} data {}", env!("CARGO_PKG_VERSION"), shell::API, app_dir.display(), data_root.display()));
+    let packaged = if platform::packaged() { " packaged" } else { "" };
+    log.line(&format!("start {} api {} app {} data {}{packaged}", env!("CARGO_PKG_VERSION"), shell::API, app_dir.display(), data_root.display()));
 
     if !app_dir.join("hub.html").is_file() {
         give_up(&log, &format!("The app folder is missing or broken. It should sit beside the exe.\n\nLooked in: {}", app_dir.display()));

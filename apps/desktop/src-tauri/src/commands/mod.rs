@@ -15,7 +15,7 @@ use tauri::{ipc::Invoke, AppHandle, State, WebviewWindow, Wry};
 
 #[tauri::command]
 fn shell_info(shell: State<Shell>) -> api::Info {
-    api::info(env!("CARGO_PKG_VERSION"), std::env::consts::OS, shell.args.clone(), shell.data.root().display().to_string())
+    api::info(env!("CARGO_PKG_VERSION"), std::env::consts::OS, shell.args.clone(), shell.data.root().display().to_string(), platform::packaged())
 }
 
 #[tauri::command]
