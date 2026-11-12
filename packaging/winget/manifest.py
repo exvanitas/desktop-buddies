@@ -51,7 +51,7 @@ def manifests(version, url, sha256):
             "InstallerType": "nullsoft",
             "Scope": "user",
             "InstallModes": ["interactive", "silent", "silentWithProgress"],
-            "UpgradeBehavior": "uninstallPrevious",  # a silent install over the old one keeps files it dropped
+            "UpgradeBehavior": "install",  # over the old one: installer-hooks.nsh replaces the app folder whole
             "ProductCode": NAME,
             "AppsAndFeaturesEntries": [{"DisplayName": NAME, "Publisher": PUBLISHER, "ProductCode": NAME}],
             "InstallationMetadata": {"DefaultInstallLocation": f"%LocalAppData%\\{NAME}"},

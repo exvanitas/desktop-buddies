@@ -12,8 +12,9 @@ installs and uninstalls silently.
 Everything goes in from the zip, byte for byte: the zip is unpacked into a staging folder beside
 src-tauri, the bundler takes the exe and the files from there, and is told not to patch or sign the
 exe. The build's own target folder is never touched. The version is tauri.conf.json's, which is the
-exe's own, and must be <X.Y.Z>. Once it's built, 7-Zip opens the installer again to check it holds
-the zip's files, the same bytes, and nothing else in app.
+exe's own, and must be <X.Y.Z>. installer-hooks.nsh makes an install over an older one replace the app
+folder whole. Once it's built, 7-Zip opens the installer again to check it holds the zip's files, the
+same bytes, and nothing but NSIS's own files beside them.
 
 It writes desktop-buddies-<X.Y.Z>-setup-x64.exe into <dir> and its line into SHA256SUMS.txt there,
 beside the zip's. --tauri is the Tauri CLI (cargo-tauri, from `cargo install tauri-cli`) and
@@ -37,6 +38,11 @@ TAURI_DIR = DESKTOP / "src-tauri"
 EXE_NAME = "desktop-buddies.exe"
 PRODUCT = "Desktop Buddies"
 NOTICES = "THIRD-PARTY-NOTICES.txt"
+# Replaces the app folder whole on an install over an older one. Its own comments say why.
+HOOKS = DESKTOP / "scripts" / "installer-hooks.nsh"
+# What NSIS itself puts in an installer, beside the files: its plugins, which unpack to a temporary
+# folder and are never installed, the script, as 7-Zip shows it, and the uninstaller.
+NSIS_OWN = ("[NSIS].nsi", "uninstall.exe")
 BUNDLE = {
     "active": True,
     "targets": ["nsis"],
@@ -107,7 +113,8 @@ def stage_files(want, stage):
         (files / name).parent.mkdir(parents=True, exist_ok=True)
         (files / name).write_bytes(data)
     tops = sorted({name.split("/")[0] for name in want if name != EXE_NAME})
-    return {"bundle": {**BUNDLE, "resources": {rel(files / t): t for t in tops}}}
+    nsis = {**BUNDLE["windows"]["nsis"], "installerHooks": str(HOOKS)}
+    return {"bundle": {**BUNDLE, "windows": {"nsis": nsis}, "resources": {rel(files / t): t for t in tops}}}
 
 
 def build(o, stage, exe, cfg):
@@ -143,14 +150,14 @@ def opened(o, setup, stage):
 
 
 def compare(want, got):
-    """What's wrong with the installer, against the zip. Outside app, the bundler's own files (its
-    plugins) can sit beside these. A bundler that patches the exe puts its own copy back after, so only
-    the installer shows it."""
+    """What's wrong with the installer, against the zip: anything missing or changed, and anything that's
+    neither the zip's nor NSIS's own. A bundler that patches the exe puts its own copy back after, so
+    only the installer shows it."""
     if EXE_NAME in got and got[EXE_NAME] != want[EXE_NAME]:
         return ["the bundler changed the exe"]
     out = [f"{n} is missing" for n in want if n not in got]
     out += [f"{n} isn't the same" for n in want if n in got and got[n] != want[n]]
-    out += [f"{n} shouldn't be there" for n in got if n.startswith("app/") and n not in want]
+    out += [f"{n} shouldn't be there" for n in got if n not in want and n not in NSIS_OWN and not n.startswith("$PLUGINSDIR/")]
     return out
 
 

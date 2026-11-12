@@ -4,7 +4,7 @@ Desktop Buddies goes into the Windows Package Manager as `exvanitas.DesktopBuddi
 
     winget install --id exvanitas.DesktopBuddies -e
 
-winget checks the installer's SHA-256 against the manifest before it runs it. An upgrade uninstalls the old version first (`UpgradeBehavior: uninstallPrevious`), as a silent install over it would keep files the new version dropped; the buddies in `%APPDATA%` stay. A download through winget carries no mark of the web, so SmartScreen doesn't ask. Smart App Control still judges an unsigned exe by itself, wherever it came from.
+winget checks the installer's SHA-256 against the manifest before it runs it. An upgrade runs the new setup over the old install (`UpgradeBehavior: install`), which replaces the app folder whole and leaves the rest as it was: the buddies in `%APPDATA%`, and Start with Windows. A download through winget carries no mark of the web, so SmartScreen doesn't ask. Smart App Control still judges an unsigned exe by itself, wherever it came from.
 
 - `manifest.py` writes the three manifests for a version: `exvanitas.DesktopBuddies.yaml` (version), `.installer.yaml` and `.locale.en-US.yaml` (defaultLocale), in schema 1.28.0. Each is checked against the schema before anything is written.
 - `schema/1.28.0/` holds winget's own schemas for that version, from [microsoft/winget-cli](https://github.com/microsoft/winget-cli/tree/master/schemas/JSON/manifests/v1.28.0), under its MIT licence in `schema/LICENSE`. The tests in `tools/release/tests/test_winget.py` check the manifests against them.

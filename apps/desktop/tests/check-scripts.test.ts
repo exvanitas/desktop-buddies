@@ -312,19 +312,23 @@ test('installer-check.ps1: silent both ways, and the uninstall is waited for, no
   assert.match(ps, /Run-Silent \$uninstaller '\/S'/);
   /* the uninstaller copies itself away and returns at once: its files are what say it's done */
   assert.match(ps, /function Uninstall-Done \{ return -not \(Test-Path -LiteralPath \$uninstaller\) -and -not \(Test-Path -LiteralPath \$arpKey\) \}/);
-  assert.equal([...ps.matchAll(/Wait-For 'the (old )?uninstall' \{ Uninstall-Done \}/g)].length, 2);
+  assert.equal([...ps.matchAll(/Wait-For 'the uninstall' \{ Uninstall-Done \}/g)].length, 1);
 });
 
-test("installer-check.ps1: an upgrade goes as winget's uninstallPrevious takes it: the old uninstaller, waited for, then the new setup", () => {
+test("installer-check.ps1: an upgrade is the new setup run over the old install, as winget's UpgradeBehavior install runs it", () => {
   const ps = body(read('installer-check.ps1'));
   const old = ps.indexOf("Run-Silent $OldSetup '/S'");
-  const fromArp = ps.indexOf("$oldUninstall = ([string](Get-ItemProperty -LiteralPath $arpKey).UninstallString).Trim('\"')");
-  const runOld = ps.indexOf("Run-Silent $oldUninstall '/S'");
-  const wait = ps.indexOf("Wait-For 'the old uninstall' { Uninstall-Done }");
+  const seed = ps.indexOf('New-ItemProperty -LiteralPath $runKey -Name $product -Value $runValue -PropertyType String | Out-Null');
   const fresh = ps.indexOf("Run-Silent $Setup '/S'");
-  assert.ok(old > 0 && old < fromArp && fromArp < runOld && runOld < wait && wait < fresh, `${old} ${fromArp} ${runOld} ${wait} ${fresh}`);
+  assert.ok(old > 0 && old < seed && seed < fresh, `${old} ${seed} ${fresh}`);
+  /* nothing is uninstalled before it, and nothing reads the old uninstall command */
+  assert.ok(!/UninstallString\)|oldUninstall/.test(ps.slice(old, fresh)), 'no uninstall before the upgrade');
+  assert.equal([...ps.slice(0, ps.lastIndexOf('} finally {')).matchAll(/Run-Silent \$uninstaller '\/S'/g)].length, 1, 'the one uninstall, at the end');
+  assert.match(ps, /\$runValue = '"' \+ \$installedExe \+ '"'/);
   assert.match(ps, /Expect 'old\.has_its_file' \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\) -PathType Leaf\)/);
   assert.match(ps, /Expect 'upgrade\.old_file_gone' \(-not \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\)\)\)/);
+  assert.match(ps, /Expect 'upgrade\.run_value_kept' \(\(Run-Value\) -eq \$runValue\)/);
+  assert.match(ps, /function Run-Value \{ return \(Get-ItemProperty -LiteralPath \$runKey -Name \$product -ErrorAction SilentlyContinue\)\.\$product \}/);
 });
 
 test('installer-check.ps1: the data is kept whole, every file by its hash, through the upgrade and the uninstall', () => {
@@ -351,15 +355,19 @@ test('installer-check.ps1: the cleanup touches only what this run made, and only
   /* what a passing run leaves for the next: nothing */
   for (const gone of ["Tidy 'data' { if ($owned -and (Test-Path -LiteralPath $userData)) { Remove-Item -LiteralPath $userData -Recurse -Force } }",
     "Tidy 'webview-data' { if ($owned -and (Test-Path -LiteralPath $webData)) { Remove-Item -LiteralPath $webData -Recurse -Force } }",
-    "Tidy 'registry' { if ($owned -and (Test-Path -LiteralPath $productKey)) { Remove-Item -LiteralPath $productKey -Recurse -Force } }"]) {
+    "Tidy 'registry' { if ($owned -and (Test-Path -LiteralPath $productKey)) { Remove-Item -LiteralPath $productKey -Recurse -Force } }",
+    "Tidy 'run-value' { if ($owned -and $seededRun -and $null -ne (Run-Value)) { Remove-ItemProperty -LiteralPath $runKey -Name $product -Force } }"]) {
     assert.ok(fin.includes(gone), gone);
   }
   assert.match(ps, /foreach \(\$place in \$installDir, \$menuLink, \$deskLink, \$arpKey, \$productKey, \$userData, \$webData\)/);
+  /* a Start with Windows value this run didn't seed is never touched, and stops the run first */
+  assert.match(ps, /if \(\$null -ne \(Get-ItemProperty -LiteralPath \$runKey -Name \$product -ErrorAction SilentlyContinue\)\) \{ throw /);
+  assert.ok(ps.indexOf('$seededRun = $true') > ps.indexOf('$owned = $true'));
 });
 
 test('installer-check.ps1: every check it promises is made, and none passes by being skipped', () => {
   const ps = body(read('installer-check.ps1'));
-  for (const name of ['old.exit', 'old.has_its_file', 'upgrade.uninstall_exit', 'upgrade.uninstall_done', 'upgrade.old_file_gone', 'upgrade.data_kept',
+  for (const name of ['old.exit', 'old.has_its_file', 'upgrade.old_file_gone', 'upgrade.run_value_kept', 'upgrade.data_kept',
     'install.exit', 'install.exe_same', 'install.app_same', 'install.top_files', 'install.start_menu', 'install.arp',
     'run.exit', 'run.no_strays', 'run.log_no_errors', 'run.log_app_folder', 'run.log_hub_up', 'run.log_clean_quit', 'run.buddy_saved', 'run.data_written',
     'second.exit', 'second.no_strays', 'second.log_no_errors', 'second.log_app_folder',

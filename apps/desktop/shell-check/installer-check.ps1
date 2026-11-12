@@ -3,8 +3,9 @@
 #   old: -OldSetup, the same build with one app file more (-OldOnly), installs with that file
 #   run: the installed exe finds the installed app folder, takes the test buddy (first-buddy.ps1),
 #     quits by itself, leaves no process behind, and writes its settings and library
-#   upgrade: winget's uninstallPrevious: the old build's own uninstaller, from Installed apps, waited
-#     for, then -Setup. The old file is gone, and every data file is kept, by its hash
+#   upgrade: as winget's UpgradeBehavior install does it, -Setup with /S straight over the old install,
+#     with Start with Windows on. The old file is gone, the Run value is as it was, and every data file
+#     is kept, by its hash
 #   install: the exe is -Exe byte for byte, the app folder is -App file for file, the licence files are
 #     there and nothing else, the Start menu entry points at the exe, and Installed apps has it at -Version
 #   second: the upgraded install runs, on the data the first run left
@@ -71,12 +72,14 @@ function Files-In($dir) {
 # Every file below a folder by its relative path and hash, one per line, sorted: equal only if all are.
 function Snapshot($dir) { if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return '' }; return (@(Get-ChildItem -LiteralPath $dir -Recurse -File -Force | ForEach-Object { "$($_.FullName.Substring($dir.Length + 1)) $(Hash-Of $_.FullName)" } | Sort-Object) -join "`n") }
 # A path inside a folder, by whole folder names: C:\a\Desktop Buddies2 isn't inside C:\a\Desktop Buddies.
+# Start with Windows: the value under Run named for the product, or $null.
+function Run-Value { return (Get-ItemProperty -LiteralPath $runKey -Name $product -ErrorAction SilentlyContinue).$product }
 function Under($path, $dir) { return [bool]$path -and $path.StartsWith($dir.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) }
 
 # What the cleanup reads. Each stays empty until the step that makes it. Nothing is this run's to clean
 # up until $owned, set once the profile is known to have had none of it.
 $owned = $false; $appProc = $null; $installed = $false; $installDir = ''; $uninstaller = ''; $work = ''; $log = ''; $exeName = ''
-$userData = ''; $webData = ''; $productKey = ''; $makerKey = ''; $makerKeyWas = $true
+$userData = ''; $webData = ''; $productKey = ''; $makerKey = ''; $makerKeyWas = $true; $runKey = ''; $product = ''; $seededRun = $false
 
 try {
   # ---------- the parameters, and nothing started yet
@@ -109,6 +112,7 @@ try {
   # where the installer keeps its install folder, which its uninstaller leaves
   $makerKey = 'HKCU:\Software\exvanitas'
   $productKey = "$makerKey\$product"
+  $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   $menuLink = Join-Path ([Environment]::GetFolderPath('Programs')) "$product.lnk"
   $deskLink = Join-Path ([Environment]::GetFolderPath('Desktop')) "$product.lnk"
   # The app's own folders: the library and settings, and WebView2's.
@@ -121,6 +125,7 @@ try {
   foreach ($place in $installDir, $menuLink, $deskLink, $arpKey, $productKey, $userData, $webData) {
     if (Test-Path -LiteralPath $place) { throw "$place is there already: this needs a runner that has never had the app" }
   }
+  if ($null -ne (Get-ItemProperty -LiteralPath $runKey -Name $product -ErrorAction SilentlyContinue)) { throw "Start with Windows is on already: this needs a runner that has never had the app" }
   $makerKeyWas = Test-Path -LiteralPath $makerKey
   $wantApp = Files-In $App
   if ($wantApp.Count -eq 0) { throw "-App '$App' is empty" }
@@ -197,17 +202,16 @@ try {
     $beforeUpgrade = Snapshot $userData
     Expect 'run.data_written' ($beforeUpgrade -match '(?m)^settings\.json ' -and $beforeUpgrade -match '(?m)^library\\[^\r\n]*\\buddy\.json ') "$(@($beforeUpgrade -split "`n").Count) files in %APPDATA%"
 
-    # ---------- upgrade, as winget's uninstallPrevious does it: the old build's own uninstaller first.
-    # It copies itself away and returns at once, so its files say when it's done.
-    $oldUninstall = ([string](Get-ItemProperty -LiteralPath $arpKey).UninstallString).Trim('"')
-    $code = Run-Silent $oldUninstall '/S' 'the old uninstall'
-    Expect 'upgrade.uninstall_exit' ($code -eq 0) "code $code"
-    $t = [Diagnostics.Stopwatch]::StartNew()
-    Expect 'upgrade.uninstall_done' (Wait-For 'the old uninstall' { Uninstall-Done }) "after $($t.ElapsedMilliseconds) ms"
+    # ---------- upgrade, as winget's UpgradeBehavior install does it: the new setup straight over the
+    # old install, with nothing uninstalled first. Start with Windows is on, as a user may have it.
+    $runValue = '"' + $installedExe + '"'
+    New-ItemProperty -LiteralPath $runKey -Name $product -Value $runValue -PropertyType String | Out-Null
+    $seededRun = $true
     $t = [Diagnostics.Stopwatch]::StartNew()
     $code = Run-Silent $Setup '/S' 'the install'
     Expect 'install.exit' ($code -eq 0) "code $code after $($t.ElapsedMilliseconds) ms"
     Expect 'upgrade.old_file_gone' (-not (Test-Path -LiteralPath (Join-Path $installDir $OldOnly))) "$OldOnly"
+    Expect 'upgrade.run_value_kept' ((Run-Value) -eq $runValue) "Start with Windows: $(if ($null -eq (Run-Value)) { 'gone' } else { 'as it was' })"
     Expect 'upgrade.data_kept' ((Snapshot $userData) -eq $beforeUpgrade) 'every file in %APPDATA%, by its hash'
 
     # ---------- this build, installed
@@ -271,6 +275,7 @@ try {
   Tidy 'data' { if ($owned -and (Test-Path -LiteralPath $userData)) { Remove-Item -LiteralPath $userData -Recurse -Force } }
   Tidy 'webview-data' { if ($owned -and (Test-Path -LiteralPath $webData)) { Remove-Item -LiteralPath $webData -Recurse -Force } }
   Tidy 'registry' { if ($owned -and (Test-Path -LiteralPath $productKey)) { Remove-Item -LiteralPath $productKey -Recurse -Force } }
+  Tidy 'run-value' { if ($owned -and $seededRun -and $null -ne (Run-Value)) { Remove-ItemProperty -LiteralPath $runKey -Name $product -Force } }
   Tidy 'registry-maker' { if ($owned -and -not $makerKeyWas -and (Test-Path -LiteralPath $makerKey) -and -not (Get-ChildItem -LiteralPath $makerKey) -and -not (Get-Item -LiteralPath $makerKey).Property) { Remove-Item -LiteralPath $makerKey -Force } }
   Tidy 'links' { if ($owned -and -not $installed) { foreach ($lnk in $menuLink, $deskLink) { if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Note "a shortcut the uninstall left was removed" } } } }
   Save-Results

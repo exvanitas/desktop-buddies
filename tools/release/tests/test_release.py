@@ -49,7 +49,7 @@ class Repo:
     def __init__(self, version="0.2.0"):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix="buddies-release-"))
         d = self.dir
-        for rel in ("apps/desktop/scripts/preview.py", "apps/desktop/scripts/installer.py", "tools/release/version.py"):
+        for rel in ("apps/desktop/scripts/preview.py", "apps/desktop/scripts/installer.py", "apps/desktop/scripts/installer-hooks.nsh", "tools/release/version.py"):
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, d / rel)
         for rel, data in APP.items():
@@ -136,6 +136,8 @@ if mode == "drop":
     del parts["app/world.js"]
 if mode == "extra":
     parts["app/stray.js"] = b"stray()"
+if mode.startswith("beside:"):
+    parts[mode[len("beside:"):]] = b"not ours"
 if mode == "changed":
     parts["LICENSE"] = b"Another licence\n"
 version = json.loads(pathlib.Path("tauri.conf.json").read_text())["version"]
@@ -370,6 +372,35 @@ class Installer(Base):
 
     def test_refuses_a_setup_with_a_file_too_many(self):
         self.refused_setup(self.repo.setup(mode="extra"), "app/stray.js shouldn't be there")
+
+    def test_refuses_any_file_that_isnt_on_the_list_anywhere(self):
+        """Beside the exe too: only the zip's files and NSIS's own (its plugins, script and uninstaller)."""
+        for name in ("private.json", "debug.pdb", "README.txt", "sub/x.dll", "$PLUGINSDIRX/a.dll"):
+            with self.subTest(name):
+                self.refused_setup(self.repo.setup(mode=f"beside:{name}"), f"{name} shouldn't be there")
+
+    def test_takes_nsis_own_files(self):
+        for name in ("$PLUGINSDIR/nsDialogs.dll", "[NSIS].nsi", "uninstall.exe"):
+            with self.subTest(name):
+                r = self.repo.setup(mode=f"beside:{name}")
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_hooks_replace_the_app_folder_whole_and_nothing_else(self):
+        r = self.repo.setup()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        hooks = pathlib.Path(self.record()["config"]["bundle"]["windows"]["nsis"]["installerHooks"])
+        self.assertEqual(hooks, self.repo.dir / "apps/desktop/scripts/installer-hooks.nsh")
+        nsh = (REPO / "apps/desktop/scripts/installer-hooks.nsh").read_text()
+        code = "\n".join(l for l in nsh.splitlines() if not l.lstrip().startswith(";"))
+        self.assertEqual(re.findall(r"!macro (\w+)", code), ["NSIS_HOOK_PREINSTALL"])
+        # only over what's plainly an install of ours, after the app is closed as the template closes it
+        self.assertIn('${If} ${FileExists} "$INSTDIR\\${MAINBINARYNAME}.exe"\n  ${AndIf} ${FileExists} "$INSTDIR\\uninstall.exe"\n'
+                      '  ${AndIf} ${FileExists} "$INSTDIR\\app\\hub.html"\n'
+                      '    !insertmacro CheckIfAppIsRunning "$INSTDIR\\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"\n'
+                      '    RMDir /r "$INSTDIR\\app"\n  ${EndIf}', code)
+        self.assertEqual(re.findall(r"\b(RMDir|Delete|DeleteReg\w*|WriteReg\w*|Exec\w*)\b", code), ["RMDir"])
+        for never in ("APPDATA", "CurrentVersion", "uninstall.exe\" /", "LOCALAPPDATA"):
+            self.assertNotIn(never, code)
 
     def test_refuses_a_setup_with_a_file_changed(self):
         self.refused_setup(self.repo.setup(mode="changed"), "LICENSE isn't the same")
