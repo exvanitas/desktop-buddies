@@ -79,7 +79,7 @@ function Under($path, $dir) { return [bool]$path -and $path.StartsWith($dir.Trim
 # What the cleanup reads. Each stays empty until the step that makes it. Nothing is this run's to clean
 # up until $owned, set once the profile is known to have had none of it.
 $owned = $false; $appProc = $null; $installed = $false; $installDir = ''; $uninstaller = ''; $work = ''; $log = ''; $exeName = ''
-$userData = ''; $webData = ''; $productKey = ''; $makerKey = ''; $makerKeyWas = $true; $runKey = ''; $product = ''; $seededRun = $false
+$userData = ''; $webData = ''; $productKey = ''; $makerKey = ''; $makerKeyWas = $true; $runKey = ''; $product = ''; $seededRun = $false; $runKeyMade = $false
 
 try {
   # ---------- the parameters, and nothing started yet
@@ -206,6 +206,8 @@ try {
     # ---------- upgrade, as winget's UpgradeBehavior install does it: the new setup straight over the
     # old install, with nothing uninstalled first. Start with Windows is on, as a user may have it.
     $runValue = '"' + $installedExe + '"'
+    # A fresh profile may not have the Run key at all: make it, and take it away again at the end.
+    if (-not (Test-Path -LiteralPath $runKey)) { New-Item -Path $runKey -Force | Out-Null; $runKeyMade = $true }
     New-ItemProperty -LiteralPath $runKey -Name $product -Value $runValue -PropertyType String | Out-Null
     $seededRun = $true
     $t = [Diagnostics.Stopwatch]::StartNew()
@@ -276,6 +278,7 @@ try {
   Tidy 'webview-data' { if ($owned -and (Test-Path -LiteralPath $webData)) { Remove-Item -LiteralPath $webData -Recurse -Force } }
   Tidy 'registry' { if ($owned -and (Test-Path -LiteralPath $productKey)) { Remove-Item -LiteralPath $productKey -Recurse -Force } }
   Tidy 'run-value' { if ($owned -and $seededRun -and $null -ne (Run-Value)) { Remove-ItemProperty -LiteralPath $runKey -Name $product -Force } }
+  Tidy 'run-key' { if ($owned -and $runKeyMade -and (Test-Path -LiteralPath $runKey) -and -not (Get-Item -LiteralPath $runKey).Property -and -not (Get-ChildItem -LiteralPath $runKey)) { Remove-Item -LiteralPath $runKey -Force } }
   Tidy 'registry-maker' { if ($owned -and -not $makerKeyWas -and (Test-Path -LiteralPath $makerKey) -and -not (Get-ChildItem -LiteralPath $makerKey) -and -not (Get-Item -LiteralPath $makerKey).Property) { Remove-Item -LiteralPath $makerKey -Force } }
   Tidy 'links' { if ($owned -and -not $installed) { foreach ($lnk in $menuLink, $deskLink) { if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Note "a shortcut the uninstall left was removed" } } } }
   Save-Results

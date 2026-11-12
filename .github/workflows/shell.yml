@@ -230,7 +230,9 @@ jobs:
       # Once a release's manifests are committed, install that published release through them the way
       # `winget install` will, then uninstall it. Skipped until they exist for package.json's version.
       - name: winget install from the committed manifest
+        id: winget_install
         if: success() || failure()
+        timeout-minutes: 12
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -246,7 +248,7 @@ jobs:
           if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "no winget on this runner" }
           "winget $(winget --version)"
           winget settings --enable LocalManifestFiles | Out-Host
-          winget install --manifest $manifests --silent --accept-package-agreements --disable-interactivity | Out-Host
+          winget install --manifest $manifests --silent --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Host
           if ($LASTEXITCODE) { throw "winget install failed, code $LASTEXITCODE" }
           $installed = Join-Path $env:LOCALAPPDATA 'Desktop Buddies\desktop-buddies.exe'
           if (-not (Test-Path $installed)) { throw "nothing installed where the manifest says" }
@@ -260,6 +262,15 @@ jobs:
           "PASS winget.uninstalled"
           "winget install and uninstall of $version through its manifests: passed`n" >> $env:GITHUB_STEP_SUMMARY
           exit 0
+
+      # If that step failed or ran out of time, winget's own log says where it stopped.
+      - name: winget log
+        if: failure() && steps.winget_install.conclusion != 'skipped'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+          Get-ChildItem $dir -Filter *.log -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1 |
+            ForEach-Object { "== $($_.Name)"; Get-Content $_.FullName -Tail 60 }
 
       - uses: actions/upload-artifact@v4
         if: always()
