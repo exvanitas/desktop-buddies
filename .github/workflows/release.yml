@@ -159,6 +159,19 @@ jobs:
           python -I apps/desktop/scripts/preview.py --release "$VERSION" --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out-dir out
           cat out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
+      # The Microsoft Store's package, from the same exe and app folder, unsigned: the Store signs
+      # what it publishes. Uploaded to Partner Center by hand. apps/desktop/packaging/msix has the rest.
+      - name: MSIX
+        shell: bash
+        env:
+          EXE: exe/desktop-buddies.exe  # signed/desktop-buddies.exe once signing is on
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          msix="desktop-buddies-$VERSION-x64.msix"
+          python -I apps/desktop/packaging/msix/msix.py --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out "out/$msix"
+          printf '%s  %s\n' "$(sha256sum < "out/$msix" | cut -d' ' -f1)" "$msix" >> out/SHA256SUMS.txt
+          tail -n 1 out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release
@@ -189,6 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           zip="out/desktop-buddies-$VERSION-windows-x64.zip"
+          msix="out/desktop-buddies-$VERSION-x64.msix"
           (cd out && sha256sum -c SHA256SUMS.txt)
 
           # The tag must still point at the commit that was built. An annotated tag is peeled.
@@ -206,4 +220,4 @@ jobs:
           if grep -Fxq -- "$TAG" <<< "$tags"; then
             echo "::error::A release for $TAG exists already, and this workflow never changes one. Delete the draft first, then run it again"; exit 1
           fi
-          gh release create "$TAG" --draft --verify-tag --title "Desktop Buddies $VERSION" --notes-file out/notes.md "$zip" out/SHA256SUMS.txt
+          gh release create "$TAG" --draft --verify-tag --title "Desktop Buddies $VERSION" --notes-file out/notes.md "$zip" "$msix" out/SHA256SUMS.txt

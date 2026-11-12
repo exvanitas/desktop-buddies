@@ -20,7 +20,7 @@ Protect the release tags, so a tag can't move once it's pushed. In the repo's Se
 ## Making a release
 1. **Bump the version** in three places, in one commit: `version` in `package.json`, a new top section `## X.Y.Z (date)` in `CHANGELOG.md`, and the first line of `apps/desktop/preview/README.txt`, `Desktop Buddies X.Y.Z`. The CHANGELOG section becomes the release notes.
 2. **Tag it** `vX.Y.Z` and push the tag. The workflow refuses a tag that doesn't match all three.
-3. **Review the draft.** The workflow makes a draft release for the tag, with the zip, `SHA256SUMS.txt` and the notes. Download the zip, check it, and publish the draft by hand. Nothing is public until then.
+3. **Review the draft.** The workflow makes a draft release for the tag, with the zip, the MSIX, `SHA256SUMS.txt` and the notes. Download the zip, check it, and publish the draft by hand. Nothing is public until then.
 
 To build a tag again, after a failed run, start the workflow by hand with the tag. The workflow never changes a release that exists, draft or published: if the tag has a draft, delete the draft first. A published release stays as it is, and the fix is a new version.
 
@@ -35,9 +35,19 @@ It runs on GitHub-hosted runners only, as SignPath requires. Every action is pin
 6. **Upload** the unsigned exe as a workflow artifact.
 7. **Sign:** not yet. See below.
 8. **Pack** with `preview.py --release`. The zip `desktop-buddies-X.Y.Z-windows-x64.zip` holds one folder with the exe, the `app` folder, `README.txt`, `LICENSE`, `NOTICE`, `TRADEMARKS.md` and `THIRD-PARTY-NOTICES.txt`. The fonts' licences are in `app/fonts`. The packer refuses an exe that isn't an x64 Windows executable, an app folder with a buddy to seed, a font file (`.woff2`, `.woff`, `.ttf` or `.otf`) without an OFL text beside it, and a README for another version. `SHA256SUMS.txt` goes beside the zip.
-9. **Draft** the GitHub release, after checking the tag still points at the commit that was built and that no release exists for it. Only this job can write to the repo (`contents: write`, with the workflow's own token).
+9. **MSIX** with `apps/desktop/packaging/msix/msix.py`: the Microsoft Store's package, `desktop-buddies-X.Y.Z-x64.msix`, from the same exe and app folder, with `LICENSE`, `NOTICE`, `TRADEMARKS.md`, `THIRD-PARTY-NOTICES.txt` and icons drawn from the app's icon. Version `X.Y.Z.0`. MakePri and MakeAppx come from the runner's Windows SDK. It's unsigned, since the Store signs what it publishes, and its line goes in `SHA256SUMS.txt`. Until `apps/desktop/packaging/msix/identity.json` holds the Partner Center values, it warns that the identity is a placeholder, and the Store won't take it.
+10. **Draft** the GitHub release, after checking the tag still points at the commit that was built and that no release exists for it. Only this job can write to the repo (`contents: write`, with the workflow's own token).
 
 Release mode takes the exe the workflow built. Previews still take only the frozen exe in `apps/desktop/preview/exe.sha256`, so a preview never ships a new exe by accident.
+
+## The Microsoft Store
+The Store version is the MSIX from the draft, uploaded to Partner Center by hand as a new submission's package. Once the app is registered there, its Product identity page gives four values:
+- **Package/Identity/Name** goes in `identity.json` as `name`.
+- **Package/Identity/Publisher**, `CN=` and a GUID, goes in `identity.json` as `publisher`.
+- **Package/Properties/PublisherDisplayName** goes in `identity.json` as `publisherDisplayName`. It's `exvanitas` now.
+- **Package Family Name** goes in `tools/mcp/server.mjs` as `PACKAGE_FAMILY`. `msix.py --family` prints what the identity gives, and a test fails until the two agree.
+
+`shell.yml` builds the same package from each run's exe with a test identity, signs it with a certificate it makes and throws away, installs it, and checks it (`apps/desktop/shell-check/store-package.ps1`).
 
 ## Turning on signing
 The signing step is in the workflow, commented out, between the upload and the packing. Once SignPath has accepted the project:
