@@ -168,6 +168,13 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           msix="desktop-buddies-$VERSION-x64.msix"
+          # Until the Partner Center identity is in identity.json, a package couldn't be uploaded to the
+          # Store, so none is built or published. The release goes out with the zip and the installer.
+          if grep -q -e PLACEHOLDER -e 'CN=00000000-0000-0000-0000-000000000000' apps/desktop/packaging/msix/identity.json; then
+            echo "::notice::No MSIX: the Store identity in identity.json is still a placeholder"
+            echo "MSIX: none, the Store identity is still a placeholder" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           python -I apps/desktop/packaging/msix/msix.py --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out "out/$msix"
           printf '%s  %s\n' "$(sha256sum < "out/$msix" | cut -d' ' -f1)" "$msix" >> out/SHA256SUMS.txt
           tail -n 1 out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
@@ -214,7 +221,9 @@ jobs:
           SHA: ${{ needs.build.outputs.sha }}
         run: |
           set -euo pipefail
-          assets=("out/desktop-buddies-$VERSION-windows-x64.zip" "out/desktop-buddies-$VERSION-setup-x64.exe" "out/desktop-buddies-$VERSION-x64.msix")
+          assets=("out/desktop-buddies-$VERSION-windows-x64.zip" "out/desktop-buddies-$VERSION-setup-x64.exe")
+          # The MSIX only exists once the Store identity is in (see the MSIX step).
+          if [ -f "out/desktop-buddies-$VERSION-x64.msix" ]; then assets+=("out/desktop-buddies-$VERSION-x64.msix"); fi
           (cd out && sha256sum -c SHA256SUMS.txt)
           # and each asset has its line there, so the check above covered it
           for f in "${assets[@]}"; do

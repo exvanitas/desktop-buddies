@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const SERVER = { name: 'desktop-buddies', version: '0.1.0' };
+const SERVER = { name: 'desktop-buddies', version: '1.0.0' };
 const BUDDY = { type: 'string', description: 'Her id, from list_buddies.' };
 export const TOOLS = [
   {
