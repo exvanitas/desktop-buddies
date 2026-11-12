@@ -1,4 +1,4 @@
-Desktop Buddies 0.1.0
+Desktop Buddies 1.0.0
 
 To run it
 1. If an earlier version is still running, quit it from its tray icon.

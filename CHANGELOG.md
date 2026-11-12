@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 (2026-11-12)
 
 ### Smoother buddies
 - **Corners.** Over a window's corner she's drawn turning round it, not jumping across. Screen corners, catching a wall or ceiling, and leaving one turn over a few frames too.
