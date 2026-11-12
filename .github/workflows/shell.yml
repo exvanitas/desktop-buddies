@@ -18,6 +18,7 @@ on:
     paths:
       - apps/desktop/src-tauri/**
       - apps/desktop/shell-core/**
+      - apps/desktop/packaging/**
       - .github/workflows/shell.yml
 
 permissions:
@@ -118,6 +119,13 @@ jobs:
         if: success() || failure()
         shell: pwsh
         run: apps/desktop/shell-check/pacing.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
+
+      # The Store's MSIX from this run's exe and app folder, with a test identity, signed with a
+      # throwaway certificate, installed, checked through its alias, and uninstalled.
+      - name: Store package
+        if: success() || failure()
+        shell: pwsh
+        run: apps/desktop/shell-check/store-package.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 
       - uses: actions/upload-artifact@v4
         if: always()

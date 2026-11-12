@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { test } from 'vitest';
 
-const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1'] as const;
+const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1', 'store-package.ps1'] as const;
 const DIR = new URL('../shell-check/', import.meta.url);
 const ALL = fs.readdirSync(DIR).filter(f => f.endsWith('.ps1')).sort();
 const read = (name: string) => fs.readFileSync(new URL(name, DIR), 'utf8');
@@ -84,17 +84,18 @@ for (const name of ALL) {
   });
 }
 
-for (const name of ['smoke.ps1', 'api-e2e.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
+for (const name of ['smoke.ps1', 'api-e2e.ps1', 'store-package.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
   test(`${name}: an error anywhere says FAIL run.error with its line and keeps the results`, () => {
     const ps = read(name);
     assert.match(ps, /function Error-Line\(\$e\) \{[\s\S]*?" at line \$\(\$i\.ScriptLineNumber\)/);
     const trap = ps.match(/^trap \{\n([\s\S]*?)\n\}/m);
     assert.ok(trap, 'a trap at the top');
     assert.match(trap[1]!, /\$msg = "FAIL run\.error \$\(Error-Line \$_\)"/);
-    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e)\.txt'\)/);
+    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e|store-package)\.txt'\)/);
     assert.match(trap[1]!, /\n  break$/);
     /* defined before anything that can throw */
-    assert.ok(ps.indexOf('function Error-Line') < ps.indexOf('. (Join-Path'), 'Error-Line comes first');
+    const helpers = ps.indexOf('. (Join-Path');
+    assert.ok(helpers < 0 || ps.indexOf('function Error-Line') < helpers, 'Error-Line comes first');
   });
 }
 
@@ -268,4 +269,26 @@ test('pacing.ps1: its own processes, and only those, are stopped in a finally, w
   assert.ok(c.includes('$_.ProcessId -eq $run.Id -or ($_.CommandLine -and $_.CommandLine.Contains($tmp))'));
   assert.ok(!c.includes("$_.Name -eq 'desktop-buddies.exe'"), 'never every copy of the exe on the machine');
   assert.ok(c.includes('Stop-Process -Id $_.ProcessId'), 'stopped by their own ids');
+});
+
+test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, and the cleanup undoes the install and the trust', () => {
+  const ps = read('store-package.ps1'), c = code(ps);
+  assert.ok(!/skip/i.test(c), 'nothing is skipped');
+  const claims = [...c.matchAll(/Expect '([\w.]+)'/g)].map(m => m[1]);
+  for (const k of ['build.msix', 'build.signed', 'install.ok', 'install.family', 'install.alias', 'assoc.declared', 'startup.declared', 'start.alias', 'packaged.info',
+    'packaged.data_in_package', 'packaged.log_in_package', 'packaged.real_appdata_untouched', 'startup.round_trip', 'assoc.exe_says_declared', 'assoc.exe_refuses_a_change',
+    'mcp.app_up', 'mcp.driver', 'end.uninstalled', 'end.alias_gone', 'end.data_gone', 'end.certificate_gone']) assert.ok(claims.includes(k), k);
+  /* the certificate's subject is the identity's Publisher, one value for both */
+  assert.match(c, /"publisher`": `"\$publisher`"/);
+  assert.match(c, /New-SelfSignedCertificate -Type Custom -Subject \$publisher /);
+  /* the MCP server picks the exe and the data folder itself */
+  const drive = c.match(/& \$Node \$drive ([^\n]*)/);
+  assert.ok(drive && !/--exe|--data/.test(drive[1]!), drive?.[0]);
+  assert.match(c, /Remove-Item Env:BUDDIES_EXE, Env:BUDDIES_DATA/);
+  /* the alias, never the exe by its path inside the package */
+  assert.deepStrictEqual([...c.matchAll(/Start-Process -FilePath (\$\w+)/g)].map(m => m[1]), ['$alias', '$alias']);
+  const fin = c.slice(c.lastIndexOf('} finally {'));
+  assert.match(fin, /Tidy 'uninstall' \{[\s\S]*?Remove-AppxPackage/);
+  assert.match(fin, /Tidy 'certificate' \{[\s\S]*?'Cert:\\LocalMachine\\TrustedPeople', 'Cert:\\CurrentUser\\My'/);
+  assert.ok(fin.indexOf("Tidy 'processes'") < fin.indexOf("Tidy 'logs'") && fin.indexOf("Tidy 'logs'") < fin.indexOf("Tidy 'uninstall'"), 'stop, keep the log, then uninstall');
 });
