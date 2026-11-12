@@ -5,6 +5,7 @@
    docs/local-api.md. */
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { lstatSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,14 +31,39 @@ export const TOOLS = [
   }
 ];
 
-/* Flags first, then the environment, then Windows' usual places. */
-export function config(argv = process.argv.slice(2), env = process.env) {
-  const flag = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
-  const win = path.win32;
-  const timeout = Number(flag('--timeout') ?? env.BUDDIES_TIMEOUT_MS);
+/* The Store package's family name: its Name, an underscore, and an id Windows derives from its
+   Publisher. `apps/desktop/packaging/msix/msix.py --family` prints it, and a test there checks this
+   line against identity.json. A placeholder until the app is registered in Partner Center. */
+export const PACKAGE_FAMILY = 'PLACEHOLDER.DesktopBuddies_m8z88z54g2w36';
+const DATA = 'dev.exvanitas.desktop-buddies';
+
+/* The two ways it's installed, each an exe and the data folder its replies land in, which go
+   together. The zip, unzipped to its usual place, keeps its data in the real %APPDATA%. The Store's
+   package is started by its alias, and Windows keeps what it writes in %APPDATA% in the package's
+   own folder. */
+export function installs(env, family = PACKAGE_FAMILY) {
+  const win = path.win32, local = env.LOCALAPPDATA || 'C:\\';
   return {
-    exe: flag('--exe') ?? env.BUDDIES_EXE ?? win.join(env.LOCALAPPDATA || 'C:\\', 'Desktop Buddies', 'desktop-buddies.exe'),
-    dataDir: flag('--data') ?? env.BUDDIES_DATA ?? win.join(env.APPDATA || 'C:\\', 'dev.exvanitas.desktop-buddies'),
+    zip: { exe: win.join(local, 'Desktop Buddies', 'desktop-buddies.exe'), dataDir: win.join(env.APPDATA || 'C:\\', DATA) },
+    store: { exe: win.join(local, 'Microsoft', 'WindowsApps', 'desktop-buddies.exe'), dataDir: win.join(local, 'Packages', family, 'LocalCache', 'Roaming', DATA) }
+  };
+}
+
+/* An alias lives in a WindowsApps folder. Windows paths, compared without case. */
+const isAlias = exe => path.win32.basename(path.win32.dirname(path.win32.normalize(exe))).toLowerCase() === 'windowsapps';
+/* An alias is a reparse point that only Windows can follow, so it's looked at, not through. */
+const there = p => { try { lstatSync(p); return true; } catch { return false; } };
+
+/* Flags first, then the environment, then whichever install is there: the zip, then the Store's.
+   With the exe chosen, the data folder is the one that goes with it, unless one is given. */
+export function config(argv = process.argv.slice(2), env = process.env, exists = there) {
+  const flag = name => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+  const { zip, store } = installs(env, flag('--package-family') ?? env.BUDDIES_PACKAGE_FAMILY ?? PACKAGE_FAMILY);
+  const timeout = Number(flag('--timeout') ?? env.BUDDIES_TIMEOUT_MS);
+  const exe = flag('--exe') ?? env.BUDDIES_EXE ?? (exists(zip.exe) || !exists(store.exe) ? zip.exe : store.exe);
+  return {
+    exe,
+    dataDir: flag('--data') ?? env.BUDDIES_DATA ?? (isAlias(exe) ? store.dataDir : zip.dataDir),
     app: flag('--app') ?? env.BUDDIES_APP ?? 'AI agent',
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : 10000
   };

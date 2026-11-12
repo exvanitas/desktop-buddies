@@ -3,8 +3,10 @@
    then tools/call. Prints PASS, FAIL and INFO lines in plain ASCII, and exits 1 on any FAIL.
    apps/desktop/shell-check/api-e2e.ps1 runs it against the real exe; drive.test.mjs against the
    stand-in.
-     node drive.mjs --exe <exe> --data <data folder> --app <name> --phase waiting|run [--text <line>] [--timeout <ms>]
-   waiting: the app isn't allowed yet, so list_buddies says so. run: list_buddies, wave and say. */
+     node drive.mjs [--exe <exe>] [--data <data folder>] --app <name> --phase off|waiting|run [--text <line>] [--timeout <ms>]
+   off: other apps aren't let in, so list_buddies says so. waiting: the app isn't allowed yet, so
+   list_buddies says so. run: list_buddies, wave and say. Without --exe and --data the server picks
+   them as it would for a person: shell-check/store-package.ps1 runs it that way. */
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +19,8 @@ export async function drive({ exe, data, app, phase, text = 'Hello from MCP', ti
   const lines = [];
   const note = (state, name, detail = '') => lines.push(`${state} mcp.${name} ${ascii(detail)}`.trimEnd());
   const expect = (ok, name, detail) => note(ok ? 'PASS' : 'FAIL', name, detail);
-  const child = spawn(node, [SERVER, '--exe', exe, '--data', data, '--app', app, '--timeout', String(timeoutMs)], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const given = [...(exe ? ['--exe', exe] : []), ...(data ? ['--data', data] : [])];
+  const child = spawn(node, [SERVER, ...given, '--app', app, '--timeout', String(timeoutMs)], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   const got = [];
   let buf = '', err = '', wake = () => {}, code = null;
   child.stdout.setEncoding('utf8');
@@ -60,9 +63,9 @@ export async function drive({ exe, data, app, phase, text = 'Hello from MCP', ti
   const names = (listed?.result?.tools ?? []).map(t => t.name).join(',');
   expect(names === TOOLS, 'tools_list', names || 'no tools');
 
-  if (phase === 'waiting') {
+  if (phase === 'waiting' || phase === 'off') {
     const t = await tool('list_buddies', {});
-    expect(t.isError && /\(waiting\)$/.test(t.words ?? ''), 'waiting', said(t));
+    expect(t.isError && new RegExp(`\\(${phase}\\)$`).test(t.words ?? ''), phase, said(t));
   } else {
     const t = await tool('list_buddies', {});
     let buddies = null;
@@ -92,9 +95,9 @@ const flag = (argv, name) => { const i = argv.indexOf(name); return i >= 0 ? arg
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2);
   const o = { exe: flag(argv, '--exe'), data: flag(argv, '--data'), app: flag(argv, '--app'), phase: flag(argv, '--phase') };
-  const missing = Object.entries(o).filter(([, v]) => !v).map(([k]) => `--${k}`);
-  if (missing.length || !['waiting', 'run'].includes(o.phase)) {
-    console.log(`FAIL mcp.usage needs ${missing.join(' ') || '--phase waiting|run'}`);
+  const missing = ['app', 'phase'].filter(k => !o[k]).map(k => `--${k}`);
+  if (missing.length || !['off', 'waiting', 'run'].includes(o.phase)) {
+    console.log(`FAIL mcp.usage needs ${missing.join(' ') || '--phase off|waiting|run'}`);
     process.exit(1);
   }
   const timeout = Number(flag(argv, '--timeout'));

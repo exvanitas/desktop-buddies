@@ -12,6 +12,7 @@ const dir = path.join(process.env.BUDDIES_DATA, 'api', 'replies');
 if (process.env.FAKE_LOG) fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify(args) + '\n');
 const mode = process.env.FAKE_MODE || 'ok';
 const reply = mode === 'waiting' ? { v: 1, id: req.id, ok: false, error: 'waiting', message: 'Waiting for the person to allow this app in the Manager.' }
+  : mode === 'off' ? { v: 1, id: req.id, ok: false, error: 'off', message: 'Other apps aren\'t let in.' }
   : mode === 'not-running' ? { v: 1, id: req.id, ok: false, error: 'not-running', message: 'Desktop Buddies wasn\'t running. Start it, then ask again.' }
   : req.do === 'list' ? { v: 1, id: req.id, ok: true, buddies: [{ id: 'olive', name: 'Olive', out: true, copies: 1, can: ['wave'] }] }
   : { v: 1, id: req.id, ok: true };

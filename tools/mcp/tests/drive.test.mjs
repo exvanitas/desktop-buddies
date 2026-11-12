@@ -65,5 +65,16 @@ test('as a command: its lines, exit 1 on a FAIL, and its flags checked', { timeo
   assert.strictEqual(fine.status, 0, fine.stdout);
   const bad = spawnSync(process.execPath, [DRIVE, '--exe', FAKE], { encoding: 'utf8' });
   assert.strictEqual(bad.status, 1);
-  assert.ok(/^FAIL mcp\.usage needs --data --app --phase/.test(bad.stdout), bad.stdout);
+  assert.ok(/^FAIL mcp\.usage needs --app --phase/.test(bad.stdout), bad.stdout);
+  const odd = spawnSync(process.execPath, [DRIVE, '--app', 'E2E MCP', '--phase', 'later'], { encoding: 'utf8' });
+  assert.ok(/^FAIL mcp\.usage needs --phase off\|waiting\|run/.test(odd.stdout), odd.stdout);
+});
+
+test('off, with no --exe or --data: the server picks them, here from the environment', { timeout: 30000 }, async () => {
+  const s = scratch('off');
+  const lines = await drive({ app: 'E2E MCP', phase: 'off', timeoutMs: 3000, env: { ...s.env, BUDDIES_EXE: FAKE } });
+  assert.deepStrictEqual(states(lines), ['PASS mcp.initialize', 'PASS mcp.tools_list', 'PASS mcp.off', 'PASS mcp.exit'], lines.join('\n'));
+  assert.strictEqual(asked(s.log).length, 1);
+  const wrong = await drive({ app: 'E2E MCP', phase: 'off', timeoutMs: 3000, env: { ...scratch('waiting').env, BUDDIES_EXE: FAKE } });
+  assert.ok(wrong.some(l => /^FAIL mcp\.off .*\(waiting\)$/.test(l)), wrong.join('\n'));
 });
