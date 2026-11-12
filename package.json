@@ -13,7 +13,9 @@
     "test:manager": "pnpm --filter @buddies/desktop build && node apps/desktop/tests/browser/run.mjs && node apps/desktop/tests/browser/probe-overlay.mjs",
     "test:maker-view": "node packages/maker-view/tests/browser/run.mjs",
     "typecheck": "pnpm -r typecheck",
-    "validate-buddy": "node packages/validate-buddy/bin/validate-buddy.mjs"
+    "validate-buddy": "node packages/validate-buddy/bin/validate-buddy.mjs",
+    "store:shots": "pnpm --filter @buddies/desktop build && node tools/store/screenshots.mjs",
+    "store:sample": "node tools/store/sample-buddy.mjs"
   },
   "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
   "devDependencies": {
