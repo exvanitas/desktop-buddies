@@ -16,3 +16,6 @@ dist/
 
 # tauri generated schemas
 apps/desktop/src-tauri/gen/
+
+# installer.py staging, if a run was killed
+apps/desktop/.installer-*/

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import struct
 import subprocess
@@ -86,13 +87,24 @@ class Repo:
         path.chmod(0o755)
         return path
 
-    def setup(self, *extra, version="0.2.0", exe="in/desktop-buddies.exe", mode="", notices="in/THIRD-PARTY-NOTICES.txt"):
+    ZIP = "out/desktop-buddies-0.2.0-windows-x64.zip"
+
+    def setup(self, *extra, version="0.2.0", zip=ZIP, mode=""):
         tauri = self.tool("tauri", FAKE_TAURI)
         sevenzip = self.tool("7z", FAKE_7Z)
         env = dict(os.environ, FAKE_MODE=mode, FAKE_RECORD=str(self.dir / "record.json"))
         return subprocess.run([sys.executable, "-I", str(self.dir / "apps/desktop/scripts/installer.py"), "--release", version,
-                               "--exe", exe, "--notices", notices, "--out-dir", "out", "--tauri", str(tauri), "--sevenzip", str(sevenzip),
+                               "--zip", zip, "--out-dir", "out", "--tauri", str(tauri), "--sevenzip", str(sevenzip),
                                *extra], cwd=self.dir, capture_output=True, text=True, env=env)
+
+    def zip_parts(self, zip=ZIP):
+        with zipfile.ZipFile(self.dir / zip) as z:
+            return {n: z.read(n) for n in z.namelist()}
+
+    def rezip(self, parts, zip=ZIP):
+        with zipfile.ZipFile(self.dir / zip, "w") as z:
+            for n, d in parts.items():
+                z.writestr(n, d)
 
 
 # Tauri's bundler, as far as the builder sees it: it reads the merged config, takes the exe from
@@ -261,6 +273,11 @@ class Release(Base):
 
 class Installer(Base):
     SETUP = "desktop-buddies-0.2.0-setup-x64.exe"
+    TOP = "Desktop Buddies 0.2.0/"
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.repo.pack().returncode, 0)
 
     def record(self):
         return json.loads((self.repo.dir / "record.json").read_text())
@@ -269,13 +286,17 @@ class Installer(Base):
         with zipfile.ZipFile(self.repo.dir / "out" / self.SETUP) as z:
             return {n[len("$INSTDIR/"):]: z.read(n) for n in z.namelist() if n.startswith("$INSTDIR/")}
 
-    def test_builds_the_setup_with_the_exe_as_it_is(self):
-        self.assertEqual(self.repo.pack().returncode, 0)
+    def zipped(self):
+        """The zip's files, as the installer must hold them: all but its README."""
+        return {n[len(self.TOP):]: d for n, d in self.repo.zip_parts().items() if n != self.TOP + "README.txt"}
+
+    def test_builds_the_setup_from_the_zip(self):
         r = self.repo.setup()
         self.assertEqual(r.returncode, 0, r.stderr)
         want = {"desktop-buddies.exe": EXE, "LICENSE": b"MIT License\n", "NOTICE": b"Credits\n", "TRADEMARKS.md": b"# Trademarks\n",
                 "THIRD-PARTY-NOTICES.txt": b"Third-party notices\n"}
         want.update({f"app/{rel}": data for rel, data in APP.items()})
+        self.assertEqual(self.zipped(), want)
         got = self.opened()
         self.assertEqual(sorted(got), sorted(want))
         for n, data in want.items():
@@ -288,6 +309,15 @@ class Installer(Base):
         self.assertEqual(sums[1], f"{hashlib.sha256((out / self.SETUP).read_bytes()).hexdigest()}  {self.SETUP}")
         self.assertIn(hashlib.sha256(EXE).hexdigest(), r.stdout)
 
+    def test_holds_the_zips_files_whatever_changed_since(self):
+        """The repro: the exe and the app folder change between Pack and Installer."""
+        self.repo.put("in/desktop-buddies.exe", pe() + b"another exe")
+        self.repo.put("apps/desktop/dist/app/world.js", b"world2()")
+        self.repo.put("apps/desktop/dist/app/new.js", b"new()")
+        r = self.repo.setup()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.opened(), self.zipped())
+
     def test_tells_the_bundler_to_leave_the_exe_alone_and_install_for_this_user(self):
         r = self.repo.setup()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -299,13 +329,15 @@ class Installer(Base):
         b = rec["config"]["bundle"]
         self.assertEqual(b["windows"]["nsis"]["installMode"], "currentUser")
         self.assertEqual((b["active"], b["targets"], b["publisher"]), (True, ["nsis"], "exvanitas"))
-        # relative to src-tauri, as Tauri reads them
-        self.assertEqual(b["resources"], {"../dist/app": "app", "../../../LICENSE": "LICENSE", "../../../NOTICE": "NOTICE",
-                                          "../../../TRADEMARKS.md": "TRADEMARKS.md", "../../../in/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"})
+        # the zip's files, staged beside src-tauri, on its drive, and named relative to it as Tauri reads them
+        self.assertEqual(sorted(b["resources"].values()), ["LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.txt", "TRADEMARKS.md", "app"])
+        for src, dest in b["resources"].items():
+            self.assertRegex(src, r"^\.\./\.installer-[^/]+/files/" + re.escape(dest) + "$")
         self.assertNotIn("version", rec["config"], "the version is tauri.conf.json's, the exe's own")
         # the build's own target folder is never touched, and the staging folder is gone
         self.assertFalse((self.repo.dir / "apps/desktop/src-tauri/target").exists())
         self.assertFalse(pathlib.Path(rec["target"]).exists())
+        self.assertEqual(list((self.repo.dir / "apps/desktop").glob(".installer-*")), [])
 
     def test_passes_a_target_on(self):
         r = self.repo.setup("--target", "x86_64-pc-windows-msvc")
@@ -313,7 +345,6 @@ class Installer(Base):
         self.assertEqual(self.record()["args"][-2:], ["--target", "x86_64-pc-windows-msvc"])
 
     def test_a_rerun_replaces_its_own_line(self):
-        self.assertEqual(self.repo.pack().returncode, 0)
         self.assertEqual(self.repo.setup().returncode, 0)
         r = self.repo.setup()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -321,6 +352,7 @@ class Installer(Base):
         self.assertEqual([line.split("  ")[1] for line in sums], ["desktop-buddies-0.2.0-windows-x64.zip", self.SETUP])
 
     def test_starts_the_sums_when_there_are_none(self):
+        (self.repo.dir / "out/SHA256SUMS.txt").unlink()
         r = self.repo.setup()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len((self.repo.dir / "out/SHA256SUMS.txt").read_text().splitlines()), 1)
@@ -328,6 +360,7 @@ class Installer(Base):
     def refused_setup(self, r, words):
         self.refused(r, words)
         self.assertFalse((self.repo.dir / "out" / self.SETUP).exists(), "no setup left behind")
+        self.assertEqual(list((self.repo.dir / "apps/desktop").glob(".installer-*")), [], "no staging left behind")
 
     def test_refuses_a_patched_exe(self):
         self.refused_setup(self.repo.setup(mode="patch"), "the bundler changed the exe")
@@ -356,21 +389,28 @@ class Installer(Base):
         self.repo.put("apps/desktop/src-tauri/tauri.conf.json", json.dumps({"version": "0.1.0"}).encode())
         self.refused_setup(self.repo.setup(), "tauri.conf.json's version is 0.1.0, not 0.2.0")
 
-    def test_refuses_what_the_zip_refuses(self):
-        self.repo.put("in/x86.exe", pe(machine=0x14C))
-        self.refused_setup(self.repo.setup(exe="in/x86.exe"), "isn't an x64 exe")
+    def test_refuses_a_zip_that_isnt_this_release(self):
         self.refused_setup(self.repo.setup(version="0.2"), "isn't a version")
-        self.repo.put("in/empty.txt", b"")
-        self.refused_setup(self.repo.setup(notices="in/empty.txt"), "is empty")
-        app = self.repo.dir / "apps/desktop/dist/app"
-        self.repo.put("apps/desktop/dist/app/fonts/new.woff2", b"wOF2 x")
-        self.refused_setup(self.repo.setup(), "fonts/new.woff2 has no licence")
-        (app / "fonts/new.woff2").unlink()
-        self.repo.put("apps/desktop/dist/app/seed.json", b"{}")
-        self.refused_setup(self.repo.setup(), "seed.json")
-        (app / "seed.json").unlink()
-        (app / "world.js").unlink()
-        self.refused_setup(self.repo.setup(), "missing world.js")
+        self.refused_setup(self.repo.setup(zip="out/none.zip"), "there's no out/none.zip")
+        self.repo.put("out/text.zip", b"not a zip")
+        self.refused_setup(self.repo.setup(zip="out/text.zip"), "isn't a zip")
+        parts = self.repo.zip_parts()
+        cases = {
+            "other-version": {n.replace(self.TOP, "Desktop Buddies 0.1.0/"): d for n, d in parts.items()},
+            "two-tops": {**parts, "elsewhere/x.txt": b"x"},
+            "no-exe": {n: d for n, d in parts.items() if not n.endswith("desktop-buddies.exe")},
+            "x86-exe": {**parts, self.TOP + "desktop-buddies.exe": pe(machine=0x14C)},
+            "seed": {**parts, self.TOP + "app/seed.json": b"{}"},
+            "no-world": {n: d for n, d in parts.items() if not n.endswith("app/world.js")},
+            "no-notices": {n: d for n, d in parts.items() if not n.endswith("THIRD-PARTY-NOTICES.txt")},
+        }
+        words = {"other-version": "everything under 'Desktop Buddies 0.2.0/'", "two-tops": "everything under 'Desktop Buddies 0.2.0/'",
+                 "no-exe": "has no desktop-buddies.exe", "x86-exe": "isn't an x64 exe", "seed": "seed.json",
+                 "no-world": "missing app/world.js", "no-notices": "missing THIRD-PARTY-NOTICES.txt"}
+        for name, changed in cases.items():
+            with self.subTest(name):
+                self.repo.rezip(changed, f"out/{name}.zip")
+                self.refused_setup(self.repo.setup(zip=f"out/{name}.zip"), words[name])
 
 
 class Preview(Base):

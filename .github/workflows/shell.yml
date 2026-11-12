@@ -131,8 +131,9 @@ jobs:
         shell: pwsh
         run: apps/desktop/shell-check/store-package.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 
-      # The per-user installer, built from this exe as the release builds it, with a stand-in for the
-      # crates' notices, which only the release writes. Installed silently, run once, uninstalled silently.
+      # The per-user installer, built from this exe as the release builds it: the zip, then the
+      # installer from the zip, with a stand-in for the crates' notices, which only the release writes.
+      # An older build, the same with one more app file, is installed first, then upgraded to this one.
       - name: Installer
         if: success() || failure()
         shell: pwsh
@@ -143,9 +144,17 @@ jobs:
           if ($LASTEXITCODE) { throw 'installing tauri-cli failed' }
           $v = (Get-Content -Raw apps/desktop/src-tauri/tauri.conf.json | ConvertFrom-Json).version
           'Third-party notices: a stand-in. The release build writes the real ones.' | Set-Content notices.txt
-          python -I apps/desktop/scripts/installer.py --release $v --exe exe/desktop-buddies.exe --notices notices.txt --out-dir installer
+          python -I apps/desktop/scripts/preview.py --release $v --exe exe/desktop-buddies.exe --notices notices.txt --out-dir installer
+          if ($LASTEXITCODE) { throw 'packing the zip failed' }
+          python -I apps/desktop/scripts/installer.py --release $v --zip installer/desktop-buddies-$v-windows-x64.zip --out-dir installer
           if ($LASTEXITCODE) { throw 'building the installer failed' }
-          apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
+          New-Item -ItemType Directory -Force installer-old | Out-Null
+          Copy-Item installer/desktop-buddies-$v-windows-x64.zip installer-old/old.zip
+          python -I -c "import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], 'a'); z.writestr(sys.argv[2], 'old()'); z.close()" installer-old/old.zip "Desktop Buddies $v/app/old-only.js"
+          if ($LASTEXITCODE) { throw 'making the older zip failed' }
+          python -I apps/desktop/scripts/installer.py --release $v --zip installer-old/old.zip --out-dir installer-old
+          if ($LASTEXITCODE) { throw 'building the older installer failed' }
+          apps/desktop/shell-check/installer-check.ps1 -Setup installer/desktop-buddies-$v-setup-x64.exe -OldSetup installer-old/desktop-buddies-$v-setup-x64.exe -OldOnly app\old-only.js -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Version $v -Out results
 
       # winget's own check of the manifests, written for the installer just built. A runner image with
       # no winget says so in a warning and the summary: then the schema tests in tools/release are all.

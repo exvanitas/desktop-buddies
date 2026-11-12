@@ -171,17 +171,18 @@ jobs:
           python -I apps/desktop/packaging/msix/msix.py --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out "out/$msix"
           printf '%s  %s\n' "$(sha256sum < "out/$msix" | cut -d' ' -f1)" "$msix" >> out/SHA256SUMS.txt
           tail -n 1 out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
-      # The per-user installer, around the same exe as the zip. Tauri's bundler is told not to patch or
-      # sign it, and installer.py opens the installer with 7-Zip to check it holds that exe byte for byte.
+
+      # The per-user installer, built from the zip Pack made: its exe and files go in as they are. Tauri's
+      # bundler is told not to patch or sign the exe, and installer.py opens the installer with 7-Zip to
+      # check it holds the zip's files byte for byte.
       - name: Installer
         shell: bash
         env:
-          EXE: exe/desktop-buddies.exe  # signed/desktop-buddies.exe once signing is on, as in Pack
           VERSION: ${{ steps.version.outputs.version }}
           TAURI_CLI: 2.12.4
         run: |
           cargo install tauri-cli --version "$TAURI_CLI" --locked
-          python -I apps/desktop/scripts/installer.py --release "$VERSION" --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out-dir out
+          python -I apps/desktop/scripts/installer.py --release "$VERSION" --zip "out/desktop-buddies-$VERSION-windows-x64.zip" --out-dir out
           grep -- "-setup-x64.exe$" out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

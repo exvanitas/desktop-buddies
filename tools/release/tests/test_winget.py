@@ -127,7 +127,8 @@ class Writer(unittest.TestCase):
     def test_the_installer_entry(self):
         self.assertEqual(self.run_it("--version", "0.2.0", "--sums", "SHA256SUMS.txt").returncode, 0)
         data = read_yaml(self.written()["exvanitas.DesktopBuddies.installer.yaml"])
-        self.assertEqual((data["InstallerType"], data["Scope"], data["UpgradeBehavior"]), ("nullsoft", "user", "install"))
+        # the old version is uninstalled first: a silent NSIS install over it leaves files the new one dropped
+        self.assertEqual((data["InstallerType"], data["Scope"], data["UpgradeBehavior"]), ("nullsoft", "user", "uninstallPrevious"))
         self.assertEqual(data["Installers"], [{"Architecture": "x64", "InstallerSha256": SHA.upper(),
                                                "InstallerUrl": f"https://github.com/exvanitas/desktop-buddies/releases/download/v0.2.0/{SETUP}"}])
         self.assertEqual(data["AppsAndFeaturesEntries"], [{"DisplayName": "Desktop Buddies", "Publisher": "exvanitas", "ProductCode": "Desktop Buddies"}])

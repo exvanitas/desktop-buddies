@@ -307,16 +307,62 @@ test('installer-check.ps1: it runs only on the Actions runner, before anything e
 
 test('installer-check.ps1: silent both ways, and the uninstall is waited for, not taken at its word', () => {
   const ps = body(read('installer-check.ps1'));
+  assert.match(ps, /Run-Silent \$OldSetup '\/S'/);
   assert.match(ps, /Run-Silent \$Setup '\/S'/);
   assert.match(ps, /Run-Silent \$uninstaller '\/S'/);
   /* the uninstaller copies itself away and returns at once: its files are what say it's done */
-  assert.match(ps, /Wait-For 'the uninstall' \{ -not \(Test-Path -LiteralPath \$uninstaller\) -and -not \(Test-Path -LiteralPath \$arpKey\) \}/);
+  assert.match(ps, /function Uninstall-Done \{ return -not \(Test-Path -LiteralPath \$uninstaller\) -and -not \(Test-Path -LiteralPath \$arpKey\) \}/);
+  assert.equal([...ps.matchAll(/Wait-For 'the (old )?uninstall' \{ Uninstall-Done \}/g)].length, 2);
+});
+
+test("installer-check.ps1: an upgrade goes as winget's uninstallPrevious takes it: the old uninstaller, waited for, then the new setup", () => {
+  const ps = body(read('installer-check.ps1'));
+  const old = ps.indexOf("Run-Silent $OldSetup '/S'");
+  const fromArp = ps.indexOf("$oldUninstall = ([string](Get-ItemProperty -LiteralPath $arpKey).UninstallString).Trim('\"')");
+  const runOld = ps.indexOf("Run-Silent $oldUninstall '/S'");
+  const wait = ps.indexOf("Wait-For 'the old uninstall' { Uninstall-Done }");
+  const fresh = ps.indexOf("Run-Silent $Setup '/S'");
+  assert.ok(old > 0 && old < fromArp && fromArp < runOld && runOld < wait && wait < fresh, `${old} ${fromArp} ${runOld} ${wait} ${fresh}`);
+  assert.match(ps, /Expect 'old\.has_its_file' \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\) -PathType Leaf\)/);
+  assert.match(ps, /Expect 'upgrade\.old_file_gone' \(-not \(Test-Path -LiteralPath \(Join-Path \$installDir \$OldOnly\)\)\)/);
+});
+
+test('installer-check.ps1: the data is kept whole, every file by its hash, through the upgrade and the uninstall', () => {
+  const ps = body(read('installer-check.ps1'));
+  assert.match(ps, /function Snapshot\(\$dir\) \{[^\n]*Get-ChildItem -LiteralPath \$dir -Recurse -File -Force[^\n]*Hash-Of \$_\.FullName/);
+  assert.match(ps, /Expect 'upgrade\.data_kept' \(\(Snapshot \$userData\) -eq \$beforeUpgrade\)/);
+  assert.match(ps, /Expect 'uninstall\.data_kept' \(\(Snapshot \$userData\) -eq \$beforeUninstall\)/);
+  /* and the snapshot holds the settings and the library, so an empty one can't pass */
+  assert.match(ps, /Expect 'run\.data_written' \(\$beforeUpgrade -match '\(\?m\)\^settings\\\.json ' -and \$beforeUpgrade -match '\(\?m\)\^library\\\\\[\^\\r\\n\]\*\\\\buddy\\\.json '\)/);
+});
+
+test('installer-check.ps1: the cleanup touches only what this run made, and only once it got past its checks', () => {
+  const ps = body(read('installer-check.ps1'));
+  const owned = ps.indexOf('$owned = $true');
+  assert.ok(owned > ps.indexOf("is there already: this needs a runner that has never had the app"), 'after the clean-profile checks');
+  assert.ok(owned > ps.indexOf('if ($SetupOnly) {'), 'never on a -SetupOnly run');
+  const fin = ps.slice(ps.lastIndexOf('} finally {'));
+  const tidies = fin.split('\n').filter(l => /^\s*Tidy /.test(l));
+  assert.ok(tidies.length >= 6, tidies.join('\n'));
+  for (const t of tidies) assert.match(t, /^\s*Tidy '[\w-]+' \{ if \(\$owned -and /, t);
+  /* a process is ours by a whole folder, not a name that starts the same */
+  assert.match(ps, /function Under\(\$path, \$dir\) \{ return \[bool\]\$path -and \$path\.StartsWith\(\$dir\.TrimEnd\('\\'\) \+ '\\', \[StringComparison\]::OrdinalIgnoreCase\) \}/);
+  assert.ok(!/ExecutablePath\.StartsWith\(/.test(ps), 'no bare prefix match');
+  /* what a passing run leaves for the next: nothing */
+  for (const gone of ["Tidy 'data' { if ($owned -and (Test-Path -LiteralPath $userData)) { Remove-Item -LiteralPath $userData -Recurse -Force } }",
+    "Tidy 'webview-data' { if ($owned -and (Test-Path -LiteralPath $webData)) { Remove-Item -LiteralPath $webData -Recurse -Force } }",
+    "Tidy 'registry' { if ($owned -and (Test-Path -LiteralPath $productKey)) { Remove-Item -LiteralPath $productKey -Recurse -Force } }"]) {
+    assert.ok(fin.includes(gone), gone);
+  }
+  assert.match(ps, /foreach \(\$place in \$installDir, \$menuLink, \$deskLink, \$arpKey, \$productKey, \$userData, \$webData\)/);
 });
 
 test('installer-check.ps1: every check it promises is made, and none passes by being skipped', () => {
   const ps = body(read('installer-check.ps1'));
-  for (const name of ['install.exit', 'install.exe_same', 'install.app_same', 'install.top_files', 'install.start_menu', 'install.arp',
-    'run.exit', 'run.no_strays', 'run.log_no_errors', 'run.log_app_folder', 'run.log_hub_up', 'run.log_clean_quit', 'run.buddy_saved',
+  for (const name of ['old.exit', 'old.has_its_file', 'upgrade.uninstall_exit', 'upgrade.uninstall_done', 'upgrade.old_file_gone', 'upgrade.data_kept',
+    'install.exit', 'install.exe_same', 'install.app_same', 'install.top_files', 'install.start_menu', 'install.arp',
+    'run.exit', 'run.no_strays', 'run.log_no_errors', 'run.log_app_folder', 'run.log_hub_up', 'run.log_clean_quit', 'run.buddy_saved', 'run.data_written',
+    'second.exit', 'second.no_strays', 'second.log_no_errors', 'second.log_app_folder',
     'uninstall.exit', 'uninstall.done', 'uninstall.files_gone', 'uninstall.start_menu_gone', 'uninstall.desktop_gone', 'uninstall.arp_gone',
     'uninstall.data_kept']) {
     assert.ok(ps.includes(`Expect '${name}'`), name);
@@ -342,8 +388,18 @@ test('shell.yml: the installer step builds as the release does, then runs the ch
   const cli = (s: string) => s.match(/TAURI_CLI: ([\d.]+)/)?.[1];
   assert.ok(cli(step) && cli(step) === cli(release), 'the same tauri-cli as the release');
   assert.match(step, /cargo install tauri-cli --version \$env:TAURI_CLI --locked/);
-  assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --exe exe\/desktop-buddies\.exe --notices \S+ --out-dir installer/);
-  assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
+  /* the zip first, as the release packs it, then the installer from that zip */
+  assert.match(step, /python -I apps\/desktop\/scripts\/preview\.py --release \$v --exe exe\/desktop-buddies\.exe --notices \S+ --out-dir installer\n/);
+  assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --zip installer\/desktop-buddies-\$v-windows-x64\.zip --out-dir installer\n/);
+  /* the older build: that zip with one more app file, built the same way */
+  assert.match(step, /Copy-Item installer\/desktop-buddies-\$v-windows-x64\.zip installer-old\/old\.zip/);
+  assert.match(step, /z\.writestr\(sys\.argv\[2\], 'old\(\)'\)[^\n]*installer-old\/old\.zip "Desktop Buddies \$v\/app\/old-only\.js"/);
+  assert.match(step, /python -I apps\/desktop\/scripts\/installer\.py --release \$v --zip installer-old\/old\.zip --out-dir installer-old\n/);
+  assert.match(step, /apps\/desktop\/shell-check\/installer-check\.ps1 -Setup installer\/desktop-buddies-\$v-setup-x64\.exe -OldSetup installer-old\/desktop-buddies-\$v-setup-x64\.exe -OldOnly app\\old-only\.js -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Version \$v -Out results/);
+  for (const line of step.split('\n').filter(l => /^\s*python /.test(l))) {
+    const next = step.split('\n')[step.split('\n').indexOf(line) + 1] ?? '';
+    assert.match(next, /^\s*if \(\$LASTEXITCODE\) \{ throw /, `a failed ${line.trim()} stops the step`);
+  }
   /* winget validate: on manifests for the installer just built, failing on any error */
   const at2 = yml.indexOf('- name: winget validate');
   assert.ok(at2 > at, 'after the installer step');
