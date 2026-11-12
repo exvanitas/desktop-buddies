@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Store package's manifest. msix.py fills in the values in double braces: the identity from
+     identity.json, and the version from package.json as x.y.z.0. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity Name="{{NAME}}" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Desktop Buddies</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="DesktopBuddies" Executable="desktop-buddies.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Desktop Buddies" Description="Little characters that live on your Windows desktop."
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square71x71Logo="Assets\Square71x71Logo.png" Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- Start with Windows. The exe turns it on and off by this id, and it starts off. -->
+        <desktop:Extension Category="windows.startupTask" Executable="desktop-buddies.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="DesktopBuddiesStartup" Enabled="false" DisplayName="Desktop Buddies" />
+        </desktop:Extension>
+        <!-- How other programs start it, the MCP server among them: by name, from %LOCALAPPDATA%\Microsoft\WindowsApps. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="desktop-buddies.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="desktop-buddies.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+        <!-- A double-clicked .buddy file reaches the exe as its first argument. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="buddy">
+            <uap:DisplayName>Desktop Buddy</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.buddy</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
