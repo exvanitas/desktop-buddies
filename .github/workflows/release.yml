@@ -1,9 +1,9 @@
 name: release
 
 # Builds a release from a version tag on GitHub-hosted runners, and drafts a GitHub release with the
-# zip and its SHA256SUMS.txt. The maintainer reviews the draft and publishes it by hand. Signing
-# through SignPath goes in once its project is set up: the step is below, commented out, and
-# docs/releases.md has the rest. Nothing here needs a secret until then.
+# zip, the installer, the MSIX and their SHA256SUMS.txt. The maintainer reviews the draft and
+# publishes it by hand. Signing through SignPath goes in once its project is set up: the step is
+# below, commented out, and docs/releases.md has the rest. Nothing here needs a secret until then.
 on:
   push:
     tags: ['v*.*.*']
@@ -171,6 +171,18 @@ jobs:
           python -I apps/desktop/packaging/msix/msix.py --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out "out/$msix"
           printf '%s  %s\n' "$(sha256sum < "out/$msix" | cut -d' ' -f1)" "$msix" >> out/SHA256SUMS.txt
           tail -n 1 out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+      # The per-user installer, around the same exe as the zip. Tauri's bundler is told not to patch or
+      # sign it, and installer.py opens the installer with 7-Zip to check it holds that exe byte for byte.
+      - name: Installer
+        shell: bash
+        env:
+          EXE: exe/desktop-buddies.exe  # signed/desktop-buddies.exe once signing is on, as in Pack
+          VERSION: ${{ steps.version.outputs.version }}
+          TAURI_CLI: 2.12.4
+        run: |
+          cargo install tauri-cli --version "$TAURI_CLI" --locked
+          python -I apps/desktop/scripts/installer.py --release "$VERSION" --exe "$EXE" --notices THIRD-PARTY-NOTICES.txt --out-dir out
+          grep -- "-setup-x64.exe$" out/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -201,9 +213,12 @@ jobs:
           SHA: ${{ needs.build.outputs.sha }}
         run: |
           set -euo pipefail
-          zip="out/desktop-buddies-$VERSION-windows-x64.zip"
-          msix="out/desktop-buddies-$VERSION-x64.msix"
+          assets=("out/desktop-buddies-$VERSION-windows-x64.zip" "out/desktop-buddies-$VERSION-setup-x64.exe" "out/desktop-buddies-$VERSION-x64.msix")
           (cd out && sha256sum -c SHA256SUMS.txt)
+          # and each asset has its line there, so the check above covered it
+          for f in "${assets[@]}"; do
+            grep -Fxq -- "$(cd out && sha256sum "${f#out/}")" out/SHA256SUMS.txt || { echo "::error::${f#out/} has no line in SHA256SUMS.txt"; exit 1; }
+          done
 
           # The tag must still point at the commit that was built. An annotated tag is peeled.
           found=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha')
@@ -220,4 +235,4 @@ jobs:
           if grep -Fxq -- "$TAG" <<< "$tags"; then
             echo "::error::A release for $TAG exists already, and this workflow never changes one. Delete the draft first, then run it again"; exit 1
           fi
-          gh release create "$TAG" --draft --verify-tag --title "Desktop Buddies $VERSION" --notes-file out/notes.md "$zip" "$msix" out/SHA256SUMS.txt
+          gh release create "$TAG" --draft --verify-tag --title "Desktop Buddies $VERSION" --notes-file out/notes.md "${assets[@]}" out/SHA256SUMS.txt
