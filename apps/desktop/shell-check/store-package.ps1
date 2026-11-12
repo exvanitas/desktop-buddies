@@ -73,9 +73,16 @@ function Wait-For($what, [scriptblock]$test, $seconds = 30) {
 }
 # The newest Windows 10 SDK tool of this name, for x64.
 function Sdk-Tool($name) {
-  $found = @(Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64' -Filter $name -ErrorAction SilentlyContinue |
+  $kits = 'C:\Program Files (x86)\Windows Kits\10'
+  $found = @(Get-ChildItem "$kits\bin\10.*\x64" -Filter $name -ErrorAction SilentlyContinue |
     Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1)
+  # Some runner images keep a tool outside the versioned bin folders: look anywhere in the kit, x64 first.
+  if (-not $found.Count) {
+    $found = @(Get-ChildItem $kits -Recurse -Filter $name -ErrorAction SilentlyContinue |
+      Sort-Object { if ($_.FullName -match '\\x64\\') { 0 } else { 1 } } | Select-Object -First 1)
+  }
   if (-not $found.Count) { throw "no Windows SDK has $name" }
+  Write-Host "SDK tool: $($found[0].FullName)"
   return $found[0].FullName
 }
 # The files under a folder, with their sizes and times, or '' if there's no folder.

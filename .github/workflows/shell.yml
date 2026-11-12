@@ -223,6 +223,9 @@ jobs:
           # warnings alone end it with a code of their own, after saying it succeeded
           if ($LASTEXITCODE -and $said -notmatch 'validation succeeded') { throw "winget validate failed, code $LASTEXITCODE" }
           "winget validate: passed`n" >> $env:GITHUB_STEP_SUMMARY
+          # The runner ends a PowerShell step with the last native command's code, and winget's
+          # code for "succeeded with warnings" isn't 0, so a pass has to end the step itself.
+          exit 0
 
       - uses: actions/upload-artifact@v4
         if: always()
