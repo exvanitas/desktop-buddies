@@ -18,16 +18,16 @@ Windows 10 or 11, 64-bit. Pick one:
   winget install --id exvanitas.DesktopBuddies -e
   ```
 - **The installer** from [Releases](https://github.com/exvanitas/desktop-buddies/releases): `desktop-buddies-X.Y.Z-setup-x64.exe`. It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu. Remove it from Installed apps in Windows Settings.
-- **The portable zip** from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe. To remove it, quit from the tray and delete the folder.
+- **The portable zip** from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe. To remove it, turn Start with Windows off if you turned it on, quit from the tray and delete the folder.
 
 The installer and the zip aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. If Smart App Control is on, it may block them outright, with no way past. Please don't turn Smart App Control off for this: use the Store or winget instead, or build the exe yourself from this source.
 
 The first start opens the Manager on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
 
-Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`. Removing the app leaves them there, unless you tick the uninstaller's box to delete them, and you can delete the folder yourself. The Store version keeps its own, and removing it removes them. [PRIVACY.md](PRIVACY.md) has the details.
+Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`. Removing the app leaves them there, unless you tick the uninstaller's box to delete them, and you can delete the folder yourself. Before you delete the zip version's folder, turn Start with Windows off, so its startup entry goes too. The Store version keeps its own library in its own folder, apart from the zip's and the installer's: Export and Import move buddies between them. Removing the Store version removes its library, so export any buddies you want to keep first. [PRIVACY.md](PRIVACY.md) has the details.
 
 ## Network use
-None. The app, the Maker and exported pages fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. To use your windows as terrain, the app reads which windows are open, where they are and which program each belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+None. The app, the Maker and exported pages fetch nothing and send nothing: no accounts, analytics, update checks or telemetry. To use your windows as terrain, the app reads which windows are open, where they are, their order and states (maximized, always on top and the like), each one's class and which program it belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
 ## Build from source
 You need Node 22 and pnpm 10. The exe also needs Rust and Windows; the app folder builds anywhere.

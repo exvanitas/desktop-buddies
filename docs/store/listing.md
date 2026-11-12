@@ -6,11 +6,11 @@ The owner fills Partner Center in by hand. Nothing here is submitted by a script
 
 ## Before the first submission
 1. Reserve the name **Desktop Buddies** in Partner Center. The package's identity (name, publisher) comes from there and goes into the package.
-2. Make the sample buddy and attach it to the GitHub release the testers will use:
+2. Make the sample buddy and attach it to the v1.0.0 GitHub release, which the notes for certification link to:
    ```
    pnpm store:sample
    ```
-   This writes `desktop-buddies-sample.buddy`, the repo's code-drawn sample (Olive), checked as the app checks a file. `--from <file>` exports another buddy instead, so the sample can be swapped without changing anything else here. Upload it to the release as `desktop-buddies-sample.buddy`, so the link in the notes for certification works.
+   This writes `desktop-buddies-sample.buddy`, the repo's code-drawn sample (Olive), checked as the app checks a file. `--from <file>` exports another buddy instead, so the sample can be swapped without changing anything else here. Upload it to the release as `desktop-buddies-sample.buddy`, so the link in the notes for certification works. For a later version, change `v1.0.0` in that link to its tag.
 3. Make the screenshots if anything in the app's look changed: `pnpm store:shots`. See [Screenshots](#screenshots).
 
 ## Properties
@@ -21,7 +21,7 @@ Entertainment. It has no subcategories. No secondary category.
 Entertainment is "apps which entertain and/or provide information through audio, visual or other content types". Personalization was the other candidate, but its subcategories are ringtones, themes and wallpapers.
 
 ### Privacy policy
-Answer **No** to "does it access, collect or transmit personal information": the app sends nothing and collects nothing (README, Network use; [PRIVACY.md](../../PRIVACY.md)). Give the URL anyway. Store Policy 10.5.1 says Win32 products "must always have privacy policies", and this is one.
+Answer **Yes** to "does it access, collect or transmit personal information". The question covers access, not only sending. The app transmits nothing and keeps everything on the PC (README, Network use; [PRIVACY.md](../../PRIVACY.md)), but it does access some: the pictures and files the person picks, the list of open windows with each one's program, and its log records the app's and data folder's full paths, which usually hold the Windows user name (the `start` line in `apps/desktop/src-tauri/src/main.rs`). Store Policy 10.5.1 also says Win32 products inherently have access to personal information and "must always have privacy policies".
 
 ```text
 https://github.com/exvanitas/desktop-buddies/blob/main/PRIVACY.md
@@ -105,7 +105,7 @@ The Maker
 Make a buddy from one image or a full set of poses. Write what she says for each mood and moment, set how she sits on floors, walls and ceilings, and try her out on your screen. A prompt kit helps you ask an image AI for matching poses.
 
 Yours, and on your PC
-No accounts, ads, purchases, analytics, update checks or telemetry. The app sends nothing anywhere. To use your windows as terrain it reads which windows are open, where they are and which program each belongs to, never their titles or contents, and none of it leaves your PC.
+No accounts, ads, purchases, analytics, update checks or telemetry. The app sends nothing anywhere. To use your windows as terrain it reads which windows are open, where they are, their order and states, and which program each belongs to, never their titles or contents, and none of it leaves your PC.
 
 For tinkerers
 A local API, off by default, lets apps and AI agents on your PC ask buddies to wave or say a line, after you allow each app. An MCP server for it is in the source repository.
@@ -114,7 +114,15 @@ Free and open source, under the MIT licence.
 ```
 
 ### What's new in this version
-Leave it empty for the first submission, as Microsoft asks. For an update, paste that version's CHANGELOG section, trimmed to fit 1,500 characters.
+Up to 1,500 characters. This is 1.0.0, the first Store release, and the package's version is 1.0.0.0. Microsoft asks that a first submission leave this field empty, so leaving it empty is the safe choice; the text below is ready if you'd rather fill it, and for the 1.0.0 release notes. For a later update, paste that version's CHANGELOG section, trimmed to fit.
+
+```text
+Version 1.0.0, the first release in the Microsoft Store.
+
+Buddies move more smoothly: she turns round a window's corner instead of jumping across it, slides into your hand when you pick her up, rises onto the floor if you drop her below it, and ends a roll upright. Personality poses (excited, laughing, surprised, staring) now play on their own now and then, if she has the art. On the desktop, buddies are drawn on the display's beat, so throws, falls and hops no longer hitch.
+
+A new privacy page says what the app reads, keeps and sends: nothing leaves your PC.
+```
 
 ### Product features
 Up to 20, each up to 200 characters. One per line here: paste each into its own box, with no bullet.
@@ -144,7 +152,7 @@ Desktop, 1920x1080 PNG, in this order. Each caption is up to 200 characters.
 | `screenshots/03-desktop.png` | Buddies walk on your windows, climb the sides and chat. |
 | `screenshots/02-maker.png` | The Maker: her poses, and what she says when. |
 | `screenshots/04-settings.png` | Settings: keep buddies off a program, and let other apps ask them to wave, only if you allow it. |
-| `screenshots/05-maker-light.png` | The Maker in the light theme. |
+| `screenshots/05-maker-light.png` | The Maker in the light theme: everything she says, in one place. |
 
 The captions in a box, in the same order, for pasting:
 
@@ -153,7 +161,7 @@ The Manager: call buddies out, send them home, and bring in new ones.
 Buddies walk on your windows, climb the sides and chat.
 The Maker: her poses, and what she says when.
 Settings: keep buddies off a program, and let other apps ask them to wave, only if you allow it.
-The Maker in the light theme.
+The Maker in the light theme: everything she says, in one place.
 ```
 
 What they show:
@@ -161,7 +169,7 @@ What they show:
 - **02-maker:** the real Maker page, editing her on the Feelings sheet.
 - **03-desktop:** three copies of her, drawn by the real view from the real world, on a drawn desktop: one on a window, one climbing a window's side, one thinking aloud.
 - **04-settings:** the Manager's Settings, with Walk on windows, three programs to stay off, and the local API on with one app allowed.
-- **05-maker-light:** the Maker in the light theme, on the Hanging around sheet.
+- **05-maker-light:** the Maker in the light theme, on the All words sheet, writing one of her lines.
 
 `pnpm store:shots` makes them again (`tools/store/screenshots.mjs`). The desktop and its windows are drawn: a plain wallpaper, a taskbar and boxes with no words in them, never anyone's real desktop. The buddy is one input, `--sample <file>`, the repo's code-drawn sample by default. The same buddy gives the same pictures, byte for byte. On Windows, speech bubbles use Windows' own font; these show the Linux one they were made on.
 
@@ -234,10 +242,10 @@ exvanitas
 
 ### Notes for certification
 ```text
-Desktop Buddies has no sign-in, no accounts and no network use. It ships with no characters ("buddies"), so the Manager opens on an empty library. To try it:
+Desktop Buddies 1.0.0.0. It has no sign-in, no accounts and no network use. It ships with no characters ("buddies"), so the Manager opens on an empty library. To try it:
 
 1. Download the sample buddy, a .buddy file made from the app's own code-drawn test sample:
-https://github.com/exvanitas/desktop-buddies/releases/latest/download/desktop-buddies-sample.buddy
+https://github.com/exvanitas/desktop-buddies/releases/download/v1.0.0/desktop-buddies-sample.buddy
 2. Double-click the file: the app adds her and calls her out onto the desktop. Or, in the Manager, click Import, choose the file, then click her picture to call her out.
 3. She walks along open windows, climbs their sides and naps. Drag her and throw her. Right-click her for her actions (give a treat, chase the mouse, call another, dismiss).
 4. In the Manager, New buddy opens the Maker, which makes a buddy from any picture. Settings is at the bottom right.
@@ -245,7 +253,7 @@ https://github.com/exvanitas/desktop-buddies/releases/latest/download/desktop-bu
 
 The local API is off by default. When turned on in Settings, other programs on the same PC can ask buddies to wave or say a line, after the user allows each one in the Manager. Nothing listens on any network address.
 
-runFullTrust: Desktop Buddies is a desktop app (Tauri, on WebView2). It draws transparent, always-on-top overlay windows across monitors that take the mouse only over a character, reads the list of open windows (position and owning program only, never titles or contents) so characters can walk on them, and keeps a tray icon. These need a full-trust desktop process.
+runFullTrust: Desktop Buddies is a desktop app (Tauri, on WebView2). It draws transparent, always-on-top overlay windows across monitors that take the mouse only over a character, reads the list of open windows so characters can walk on them: each window's position, front-to-back order, which one is in front, whether it is maximized, topmost, a tool window or layered, its class name and its owning program's file name, never titles or contents. Class and state leave out the taskbar, menus and overlays. It also keeps a tray icon. These need a full-trust desktop process.
 ```
 
 ### Restricted capabilities
@@ -253,7 +261,6 @@ If Partner Center asks why the package declares `runFullTrust`, paste the last p
 
 ## Decisions for the owner
 - **Violence in the age questionnaire.** Throwing a buddy, with her dizzy or knocked-out pose and an "Ouch!", may count as mild cartoon or comic violence. Answering yes to the mildest option is the safe reading. IARC sets the rating from the answers.
-- **The privacy question.** "No" above is the plain reading: the app collects and sends nothing, and an exe name of a window isn't personal information. Store Policy 10.5.1 also says Win32 products inherently have access to personal information. If you read the question that way, answer Yes: the privacy policy URL is the same either way.
 - **"shimeji" as a keyword.** The app imports Shimeji folders, so it's accurate, but Microsoft asks to avoid others' brand names. It's a project and genre name rather than a company's brand; drop it if you'd rather not.
 - **The empty first run.** Store Policy 10.1.1 asks that "the value proposition of your product must be clear during the first run experience". The Manager opens empty, with Import and New buddy. The notes point testers to the sample. If certification still calls it incomplete, a Store build could seed the sample on first run: `apps/desktop/public/seed.json` exists for that, but the release packer refuses an app folder with a seed today.
 - **Generative AI declaration.** Left unticked above, because the app runs and calls no model. Tick it only if you read the local API's lines from AI agents as the app's own.
@@ -263,7 +270,7 @@ If Partner Center asks why the package declares `runFullTrust`, paste the last p
 ## Where the docs were unclear
 - **Keywords:** the MSIX page says 7 keywords of up to 40 characters and 21 words in all; an older FAQ says 30 characters. Each keyword here is under 30.
 - **Age ratings:** Microsoft doesn't publish IARC's questions, only that the first one is the product's kind and the rest follow from it.
-- **Privacy policy question:** Microsoft marks it Yes itself when the package declares capabilities that could reach personal information. Whether `runFullTrust` triggers that isn't said. The URL is given either way.
+- **Privacy policy question:** Microsoft marks it Yes itself when the package declares capabilities that could reach personal information. Whether `runFullTrust` triggers that isn't said. The answer here is Yes either way.
 - **Store logo FAQ:** the screenshots page's FAQ calls a Store logo "mandatory", while its own Store logos section calls them all optional for apps. The 300x300 tile icon is recommended here either way.
 - **Developed by:** 255 characters on the MSIX page, with nothing about the form it takes.
 
