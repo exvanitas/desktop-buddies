@@ -56,7 +56,7 @@ try {
   if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw "-Tag '$Tag' isn't like v1.2.3" }
   $v = $Matches[1]
   $branchVersion = (Get-Content -Raw (Join-Path $root 'package.json') | ConvertFrom-Json).version
-  if ($branchVersion -ne $v) { throw "package.json here says $branchVersion, not $v: package a release from a commit at its version" }
+  if ($branchVersion -ne $v) { throw "package.json here says $branchVersion, not ${v}: package a release from a commit at its version" }
   $draft = gh release view $Tag -R $env:GITHUB_REPOSITORY --json isDraft --jq '.isDraft'
   Expect 'release.published' ($LASTEXITCODE -eq 0 -and $draft -eq 'false') "$Tag draft=$draft"
   if ($draft -ne 'false') { throw "$Tag isn't a published release" }

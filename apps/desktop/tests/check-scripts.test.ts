@@ -67,6 +67,15 @@ test('every check script is read here', () => {
   assert.ok(ALL.length >= 10 && ALL.includes('smoke.ps1') && ALL.includes('first-buddy.ps1'), ALL.join(','));
 });
 
+/* "$v: text" in a string reads as a scope or drive named v, and the script doesn't parse at all
+   (store-release.ps1 on its first run). "${v}:" is the way. */
+test('no variable is followed by a colon that starts no name', () => {
+  for (const name of ALL) {
+    const bad = [...code(read(name)).matchAll(/\$[A-Za-z_]\w*:(?![\w{:])/g)].map(m => lineAt(code(read(name)), m.index!).trim());
+    assert.deepStrictEqual(bad, [], name);
+  }
+});
+
 for (const name of ALL) {
   test(`${name}: one spelling per variable, its helpers' too, as PowerShell's names ignore case`, () => {
     /* $exe = $null emptied the [string] -Exe; $warm = @() hit the [int] -Warm; $work = a rect hid -Work */
