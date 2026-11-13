@@ -33,8 +33,8 @@ export const TOOLS = [
 
 /* The Store package's family name: its Name, an underscore, and an id Windows derives from its
    Publisher. `apps/desktop/packaging/msix/msix.py --family` prints it, and a test there checks this
-   line against identity.json. A placeholder until the app is registered in Partner Center. */
-export const PACKAGE_FAMILY = 'PLACEHOLDER.DesktopBuddies_m8z88z54g2w36';
+   line against identity.json, which holds the app's Partner Center identity. */
+export const PACKAGE_FAMILY = 'exvanitas.DesktopBuddies_x5a6e4dh4zehg';
 const DATA = 'dev.exvanitas.desktop-buddies';
 
 /* The two ways it's installed, each an exe and the data folder its replies land in. The installer's

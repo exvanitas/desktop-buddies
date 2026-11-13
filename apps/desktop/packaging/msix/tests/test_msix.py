@@ -55,10 +55,17 @@ class Identity(unittest.TestCase):
         named = re.findall(r"^export const PACKAGE_FAMILY = '([^']+)';$", server, re.M)
         self.assertEqual(named, [msix.family(identity)], "tools/mcp/server.mjs's PACKAGE_FAMILY must be what msix.py --family prints")
 
-    def test_the_identity_in_the_repo_is_a_marked_placeholder(self):
+    def test_the_identity_in_the_repo_is_partner_centers(self):
+        # The four values Partner Center gives under Product identity, word for word. The family name
+        # is derived from the other three, so a typo in the publisher shows up here too.
         identity = msix.read_identity(MSIX / "identity.json")
-        self.assertTrue(msix.placeholder(identity))
-        self.assertEqual(identity["publisherDisplayName"], "exvanitas")
+        self.assertEqual(identity, {"name": "exvanitas.DesktopBuddies", "publisher": "CN=56225CE3-96A3-4463-AE31-2FC154294F6D", "publisherDisplayName": "exvanitas"})
+        self.assertEqual(msix.family(identity), "exvanitas.DesktopBuddies_x5a6e4dh4zehg")
+        self.assertFalse(msix.placeholder(identity))
+
+    def test_a_placeholder_is_told_apart(self):
+        self.assertTrue(msix.placeholder({**IDENTITY, "name": "PLACEHOLDER.DesktopBuddies"}))
+        self.assertTrue(msix.placeholder({**IDENTITY, "publisher": "CN=00000000-0000-0000-0000-000000000000"}))
         self.assertFalse(msix.placeholder(IDENTITY))
 
     def test_a_bad_identity_is_refused(self):
@@ -256,10 +263,17 @@ class Stage(unittest.TestCase):
         for name, w, h, _ in icons.plan():
             self.assertEqual(size_of((out / "Assets" / name).read_bytes()), (w, h), name)
 
-    def test_the_repo_identity_warns_that_it_is_a_placeholder(self):
+    def test_the_repo_identity_builds_the_store_family_without_a_warning(self):
         r = self.run_msix("--stage-only")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("::warning::msix: identity.json holds placeholders", r.stdout)
+        self.assertNotIn("warning", r.stdout)
+        self.assertIn("family exvanitas.DesktopBuddies_x5a6e4dh4zehg", r.stdout)
+
+    def test_a_placeholder_identity_builds_with_a_warning(self):
+        self.put("in/placeholder.json", json.dumps({**IDENTITY, "name": "PLACEHOLDER.DesktopBuddies"}).encode())
+        r = self.run_msix("--stage-only", "--identity", str(self.dir / "in/placeholder.json"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("::warning::msix: placeholder.json holds placeholders", r.stdout)
 
     def test_refusals(self):
         self.put("in/not.exe", b"not an exe")

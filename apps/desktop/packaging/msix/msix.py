@@ -14,8 +14,8 @@ machine. The package is unsigned: the Store signs what it publishes, and a test 
 --stage-only stops before the SDK's tools, so it runs anywhere. --family prints the package family
 name the identity gives, which is what the MCP server's PACKAGE_FAMILY must say.
 
-The identity defaults to identity.json beside this script. Until the owner registers the app in
-Partner Center it holds placeholders, and a build says so as a warning.
+The identity defaults to identity.json beside this script, which holds the app's Partner Center
+identity. A placeholder identity still builds, for tests, and a build says so as a warning.
 
 The Store takes a version of four parts, each at most 65535, the first at least 1 and the last 0
 (Microsoft's "Version numbering for Windows 10 and 11 packages"). Anything else is refused before a
