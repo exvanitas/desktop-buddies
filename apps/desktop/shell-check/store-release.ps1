@@ -131,7 +131,8 @@ try {
   if (-not $pkg) { throw 'Add-AppxPackage left nothing installed' }
   Expect 'install.family' ($pkg.PackageFamilyName -ceq $family) "windows $($pkg.PackageFamilyName), msix.py $family"
   Expect 'build.unsigned' ((Hash $msix) -eq $built) 'the package for Partner Center is the unsigned build'
-  "$built  $([IO.Path]::GetFileName($msix))" | Set-Content -LiteralPath (Join-Path $Out 'SHA256SUMS.txt') -Encoding ascii
+  # One line ending in LF, as the release's own SHA256SUMS.txt, so sha256sum -c reads it anywhere.
+  [IO.File]::WriteAllText((Join-Path $Out 'SHA256SUMS.txt'), "$built  $([IO.Path]::GetFileName($msix))`n", [Text.Encoding]::ASCII)
 } catch {
   $i = $_.InvocationInfo
   Expect 'run.error' $false "$($_.Exception.Message) at line $(if ($i) { $i.ScriptLineNumber })"
