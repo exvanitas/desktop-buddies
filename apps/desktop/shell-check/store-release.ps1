@@ -137,10 +137,16 @@ try {
   Expect 'run.error' $false "$($_.Exception.Message) at line $(if ($i) { $i.ScriptLineNumber })"
 } finally {
   if ($installed) { try { Get-AppxPackage -Name $name | Remove-AppxPackage } catch { Expect 'cleanup.uninstall' $false $_.Exception.Message } }
+  # As store-package.ps1 does it: -DeleteKey binds only with a certificate's own path, not from a pipe.
   if ($thumb) {
-    foreach ($store in 'Cert:\CurrentUser\My', 'Cert:\LocalMachine\TrustedPeople') {
-      try { Get-ChildItem $store | Where-Object Thumbprint -eq $thumb | Remove-Item -DeleteKey:($store -like '*CurrentUser*') } catch { Expect "cleanup.cert" $false $_.Exception.Message }
-    }
+    try {
+      $trusted = Join-Path 'Cert:\LocalMachine\TrustedPeople' $thumb
+      $mine = Join-Path 'Cert:\CurrentUser\My' $thumb
+      if (Test-Path -LiteralPath $trusted) { Remove-Item -LiteralPath $trusted }
+      if (Test-Path -LiteralPath $mine) { Remove-Item -LiteralPath $mine -DeleteKey }
+      $keyLeft = $keyName -and [System.Security.Cryptography.CngKey]::Exists($keyName)
+      Expect 'cleanup.cert' (-not (Test-Path -LiteralPath $trusted) -and -not (Test-Path -LiteralPath $mine) -and -not $keyLeft) "$(if ($keyLeft) { 'its private key is still there' })"
+    } catch { Expect 'cleanup.cert' $false $_.Exception.Message }
   }
   if ($tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
   if ($name -and (Get-AppxPackage -Name $name)) { Expect 'cleanup.gone' $false "$name is still installed" }
