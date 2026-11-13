@@ -1,0 +1,51 @@
+name: store
+
+# The Microsoft Store's package for a published release, from that release's own zip and the Partner
+# Center identity on this branch. Unsigned, as Partner Center takes it: the Store signs what it
+# publishes. The owner uploads it to Partner Center by hand from this run's artifact.
+# apps/desktop/shell-check/store-release.ps1 has the checks. A push that changes the identity or this
+# file runs it for the branch's own version.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The published release to package, like v1.0.0
+        required: true
+        type: string
+  push:
+    branches: [next]
+    paths:
+      - apps/desktop/packaging/msix/identity.json
+      - apps/desktop/shell-check/store-release.ps1
+      - .github/workflows/store.yml
+
+permissions:
+  contents: read
+
+jobs:
+  msix:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Store package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $tag = $env:TAG
+          if (-not $tag) { $tag = 'v' + (Get-Content -Raw package.json | ConvertFrom-Json).version }
+          apps/desktop/shell-check/store-release.ps1 -Tag $tag -Out store
+          $code = $LASTEXITCODE
+          Get-Content store/store-release.txt | ForEach-Object { "$_`n" } >> $env:GITHUB_STEP_SUMMARY
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-msix
+          path: store/
+          retention-days: 90
+          if-no-files-found: error
