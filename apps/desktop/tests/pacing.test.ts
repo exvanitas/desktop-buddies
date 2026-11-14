@@ -479,15 +479,45 @@ test('getting up from a trip with no art of her own, each display frame turns he
 test('a failed pacing run says what each judged move looked like: when, the frames seen, how far, and where and in what pose', () => {
   const told = [0, 1600, 3200, 4800], s: Sample[] = [];
   let x = 0;
-  for (let t = 0; t <= 6400; t += 1000 / 60) { if (t < 3200 || t > 3800) x += 3; s.push([t, x, 500, 0, t < 3300 ? 'run' : 'sprawl']); }
+  for (let t = 0; t <= 6400; t += 1000 / 60) { if (t < 3200 || t > 3800) x += 3; s.push([t, x, 500, 0, 'run']); }
   const w = watches(s, told, 6400);
   assert.deepStrictEqual(w.map(m => m.moved), [true, true, false, true]);
   const frozen = w[2]!;
   assert.strictEqual(frozen.at, 3200);
-  assert.ok(frozen.seen >= 20 && frozen.far === 0, JSON.stringify(frozen));
-  assert.deepStrictEqual([frozen.told!.pose, frozen.end!.pose], ['run', 'sprawl']);
+  assert.ok(frozen.seen >= 20 && frozen.far === 0 && !frozen.posed, JSON.stringify(frozen));
+  assert.deepStrictEqual([frozen.told!.pose, frozen.end!.pose], ['run', 'run'], 'gone nowhere in the pose she was told in: frozen');
   assert.strictEqual(frozen.told!.y, 500);
   assert.strictEqual(measure(s, told, 6400).failed, 1, 'the same rule as the result line');
+});
+
+/* `poses(t)`: her pose key at each frame; she moves 3 px a frame except while `still(t)`. */
+function posing(still: (t: number) => boolean, poses: (t: number) => string, until = 16000) {
+  const s: Sample[] = [];
+  let x = 0;
+  for (let t = 0; t <= until; t += 1000 / 60) { if (!still(t)) x += 3; s.push([t, x, 500, 0, poses(t)]); }
+  return s;
+}
+const TOLD = Array.from({ length: 10 }, (_, k) => k * 1600);
+
+test('one move a run that goes nowhere passes on a new pose, as a trip does; in the pose she was told in, it fails', () => {
+  const tripped = posing(t => t >= 4800 && t < 5600, t => t >= 4810 && t < 5600 ? 'sprawl' : 'run');
+  const p = measure(tripped, TOLD, 16000), w = watches(tripped, TOLD, 16000);
+  assert.strictEqual(p.failed, 0, JSON.stringify(w[3]));
+  assert.ok(w[3]!.posed && w[3]!.moved && w.filter(x => x.posed).length === 1);
+  assert.strictEqual(verdict(p), 'pass');
+  const frozen = posing(t => t >= 4800 && t < 5600, () => 'run');
+  assert.strictEqual(measure(frozen, TOLD, 16000).failed, 1, 'no travel and the same pose');
+});
+
+test('an overlay that only swaps her pictures never passes: two or more moves that go nowhere all fail, new poses or not', () => {
+  /* she never moves at all, and her pose changes on every watch */
+  const swapping = posing(() => true, t => `pose${Math.floor((t + 300) / 400)}`);
+  const all = measure(swapping, TOLD, 16000);
+  assert.strictEqual(all.failed, all.judged, JSON.stringify(watches(swapping, TOLD, 16000).slice(0, 2)));
+  /* two trips in one run, each with a new pose: both fail */
+  const two = posing(t => (t >= 4800 && t < 5600) || (t >= 9600 && t < 10400), t => (t >= 4810 && t < 5600) || (t >= 9610 && t < 10400) ? 'sprawl' : 'run');
+  assert.strictEqual(measure(two, TOLD, 16000).failed, 2);
+  assert.ok(!watches(two, TOLD, 16000).some(x => x.posed));
 });
 
 /* The runner's one pacing failure, 43578913239: a judged move that went 0 px with the display steady
@@ -505,8 +535,10 @@ test('told to run, she can trip at once and lie still for the whole watch: a rea
     told.push(w.now.t); w.sim.actAll(orders[k % 4]!);
     for (const t0 = w.now.t; w.now.t - t0 < 1600;) { w.frame(); sample(); }
   }
-  const last = watches(samples, told, w.now.t).at(-1)!;
+  const all = watches(samples, told, w.now.t), last = all.at(-1)!;
   assert.strictEqual(pet.P.state, 'trip', 'she tripped');
-  assert.ok(!last.moved && last.far === 0, JSON.stringify(last));
+  assert.ok(last.far === 0, JSON.stringify(last));
   assert.notStrictEqual(last.told!.pose, last.end!.pose, 'her pose changed, though her place did not');
+  assert.ok(last.moved && last.posed, 'so it passes, on the new pose');
+  assert.strictEqual(measure(samples, told, w.now.t).failed, 0, 'and so does the run');
 });

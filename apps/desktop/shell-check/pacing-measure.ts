@@ -64,19 +64,33 @@ export function measure(samples: Sample[], told: number[] = [], stop = -Infinity
 export interface Spot { x: number; y: number; pose: string }
 /* One judged move, so a failure can say what it saw: when she was told (ms after the probe started
    watching), the frames its watch saw, how far she went in it, where she was drawn as she was told
-   (the last frame before) and at the watch's end, and whether it counts as moved. */
-export interface Watch { at: number; seen: number; far: number; told: Spot | null; end: Spot | null; moved: boolean }
+   (the last frame before) and at the watch's end, whether it counts as moved, and whether that was on
+   a new pose alone. */
+export interface Watch { at: number; seen: number; far: number; told: Spot | null; end: Spot | null; moved: boolean; posed: boolean }
 const spot = (s: Sample | undefined): Spot | null => s ? { x: +s[1].toFixed(1), y: +s[2].toFixed(1), pose: s[4] } : null;
 /* Every move the probe told her to make whose watch ended before the probe stopped watching, judged
-   on its own, from the probe's own list, never from what the samples happen to cover. */
+   on its own, from the probe's own list, never from what the samples happen to cover.
+   A move can go nowhere for real: told to run, she can trip on her first ticks (the run's chance of it
+   each tick, about 1.8% of run orders in the engine) and lie still through the watch, or a drop told
+   just above the floor lands before it. Her pose changes then; an overlay that's stuck changes
+   neither. So one watch a run that saw enough frames and went under TRAVEL counts as moved if her
+   pose at its end isn't the one she had when told. Two or more that went nowhere all fail, new poses
+   or not: that's far past what the engine does on its own, and an overlay that only swaps pictures
+   shouldn't pass. */
 export function watches(samples: Sample[], told: number[], stop = -Infinity): Watch[] {
   const start = samples[0]?.[0] ?? 0;
-  return told.filter(o => o + LIVE_TO <= stop).map(o => {
+  const all = told.filter(o => o + LIVE_TO <= stop).map(o => {
     const seen = samples.filter(s => s[0] >= o + LIVE_FROM && s[0] <= o + LIVE_TO), first = seen[0];
     const far = first ? Math.max(...seen.map(s => Math.hypot(s[1] - first[1], s[2] - first[2]))) : 0;
-    const before = samples.filter(s => s[0] < o).at(-1);
-    return { at: Math.round(o - start), seen: seen.length, far: +far.toFixed(1), told: spot(before), end: spot(seen.at(-1)), moved: seen.length >= SEEN && far >= TRAVEL };
+    const before = samples.filter(s => s[0] < o).at(-1), w: Watch = { at: Math.round(o - start), seen: seen.length, far: +far.toFixed(1), told: spot(before), end: spot(seen.at(-1)), moved: seen.length >= SEEN && far >= TRAVEL, posed: false };
+    return { w, short: seen.length >= SEEN && far < TRAVEL };
   });
+  const short = all.filter(x => x.short);
+  if (short.length === 1) {
+    const w = short[0]!.w;
+    if (w.told && w.end && w.told.pose !== w.end.pose) { w.moved = true; w.posed = true; }
+  }
+  return all.map(x => x.w);
 }
 
 /* Unpaced, headless Chromium showed a tick twice or not at all on 4.4 to 9.9% of the display frames
