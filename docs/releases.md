@@ -43,6 +43,8 @@ It runs on GitHub-hosted runners only, as SignPath requires. Every action is pin
 Release mode takes the exe the workflow built. Previews still take only the frozen exe in `apps/desktop/preview/exe.sha256`, so a preview never ships a new exe by accident.
 
 ## The Microsoft Store
+**Parked 2026-11-14: the app isn't going to the Store.** The work stays, dormant: the identity, `store.yml` (`apps/desktop/shell-check/store-release.ps1`), `docs/store/listing.md`, and the packaged-mode checks in `shell.yml`. While parked, `STORE_MSIX: parked` in `release.yml` keeps the MSIX off releases, since an unsigned MSIX is no use to anyone downloading. To revive it: set `STORE_MSIX` to `on`, run `store.yml` for the release's tag, and put back the Store parts of `README.md` and `PRIVACY.md` from the commit that parked it.
+
 The Store version is the MSIX from the draft, uploaded to Partner Center by hand as a new submission's package. Once the app is registered there, its Product identity page gives four values:
 - **Package/Identity/Name** goes in `identity.json` as `name`.
 - **Package/Identity/Publisher**, `CN=` and a GUID, goes in `identity.json` as `publisher`.

@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **No Microsoft Store version for now.** Desktop Buddies installs from GitHub, with the installer or the zip, and through winget once it's in the catalogue. They aren't signed, so 1.0.0's note on Windows' warnings still holds.
+
 ## 1.0.0 (2026-11-12)
 
 ### Smoother buddies

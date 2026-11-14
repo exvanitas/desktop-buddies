@@ -18,6 +18,9 @@ permissions: {}
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  # The Store route is parked (docs/releases.md, The Microsoft Store): no MSIX goes on a release, since
+  # an unsigned one is no use to anyone downloading. `on` builds it again.
+  STORE_MSIX: parked
   RUST: 1.95.0
   CARGO_ABOUT: 0.9.3
 
@@ -168,6 +171,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           msix="desktop-buddies-$VERSION-x64.msix"
+          if [ "$STORE_MSIX" != on ]; then
+            echo "::notice::No MSIX: the Store route is parked (STORE_MSIX=$STORE_MSIX)"
+            echo "MSIX: none, the Store route is parked" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           # Until the Partner Center identity is in identity.json, a package couldn't be uploaded to the
           # Store, so none is built or published. The release goes out with the zip and the installer.
           if grep -q -e PLACEHOLDER -e 'CN=00000000-0000-0000-0000-000000000000' apps/desktop/packaging/msix/identity.json; then

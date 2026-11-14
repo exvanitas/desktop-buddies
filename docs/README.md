@@ -12,6 +12,6 @@
 | [design/round-1/peel/DESIGN.md](design/round-1/peel/DESIGN.md) | The Manager and Maker's look: the spec for the design that was picked | Current |
 | [buddy-format-safety.md](buddy-format-safety.md) | What a `.buddy` may contain, and the validator | Built |
 | [releases.md](releases.md) | How releases are built and signed, and the code signing policy | Current; signing not set up yet |
-| [store/listing.md](store/listing.md) | The Microsoft Store listing, ready to paste, with its screenshots and age-rating answers | Current; not submitted yet |
+| [store/listing.md](store/listing.md) | The Microsoft Store listing, ready to paste, with its screenshots and age-rating answers | Parked 11-14: not submitting |
 | [gallery-plan.md](gallery-plan.md) | The buddy gallery's data, files and hosting | Plan, nothing built |
 | [desktop-app-plan.md](desktop-app-plan.md) | The original plan | History |

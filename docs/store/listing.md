@@ -1,5 +1,7 @@
 # Microsoft Store listing
 
+**Parked 2026-11-14: not submitting; revive from here.** [docs/releases.md](../releases.md#the-microsoft-store) says what to turn back on.
+
 What to paste into Partner Center for the Desktop Buddies MSIX submission, field by field, in the order Partner Center shows them. Each field's text is in a box, ready to copy. Limits are Microsoft's, from the pages listed at the bottom, and `tools/store/tests/listing.test.mjs` checks every box against its limit. Facts about the app point to the code or doc they rest on.
 
 The owner fills Partner Center in by hand. Nothing here is submitted by a script.
