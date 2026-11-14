@@ -2,6 +2,7 @@
 
 | Doc | What it is | State |
 |---|---|---|
+| [install.md](install.md) | Installing, updating and removing, Windows' warnings, and where buddies are kept | Current |
 | [project-structure.md](project-structure.md) | The layout, the rules, and where a change goes | Current |
 | [core-loops.md](core-loops.md) | The loops a buddy runs through | Reference |
 | [state-machine-design.md](state-machine-design.md) | How behaviours work as data | Built |
