@@ -89,6 +89,10 @@ A slope needs time: the leak budget is 15 MB an hour, under which the creep abov
 
 A budget that's judged is a PASS or a FAIL in `soak.txt`; one that isn't is an INFO line saying within or OVER. With `enforce` false, none is judged.
 
+### Big saves on the runner
+
+The Windows smoke's `makerprobe.shaped` saves a buddy of 1146 images, and on the runner that swings with the machine: first saves of 8.1, 13.4 and 20.8 s, and 12 to 40 s for the same 1147 writes from the Maker, on code that didn't change them. Once, on 5f6f944, a first save took 76 s; a rerun of the same commit passed. Its reply timeout is 30 s, so the runner alone can fail it. A single failure there needs a rerun and a control run of the commit before it, before anything is blamed.
+
 ## On a real PC
 
 `apps/desktop/shell-check/sample-pc.ps1` samples the same numbers for 30 minutes while the app runs as the owner uses it. It only reads: it never starts or stops anything, and writes two files to Downloads, a CSV and a summary like the soak's, with numbers only. With Desktop Buddies running and `soak-sampler.ps1` in the same folder:
