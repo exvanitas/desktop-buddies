@@ -605,6 +605,8 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
      when it's over, if it took long enough to ask, and every SAVE_WATCH_MS while it runs, with what
      the library is doing, so a save that never ends says where it is. Counts and times only. */
   const saveTraces = new WeakMap<object, ReturnType<typeof phases>>();
+  /* Whether the hub's page counts as hidden, for a timer that might be held back. Nothing off a page. */
+  const pageSeen = () => typeof document === 'undefined' ? '' : `; the hub page ${document.visibilityState}`;
   function phases(what: string) {
     const from = now(), steps: string[] = [], ms = Math.round;
     let step = 'queued', since = from, over = false;
@@ -613,7 +615,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       if (over) return;
       const lib = library.busy();
       note(`${what} still going after ${ms(now() - from)} ms: ${step} for ${ms(now() - since)}` +
-        (step === 'queued' ? `, the queue on ${queueOn ?? 'nothing'}` : '') + (lib.length ? `; library: ${lib.join('; ')}` : ''));
+        (step === 'queued' ? `, the queue on ${queueOn ?? 'nothing'}` : '') + (lib.length ? `; library: ${lib.join('; ')}` : '') + pageSeen());
       watch();
     });
     watch();
