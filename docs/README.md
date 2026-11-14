@@ -6,6 +6,7 @@
 | [core-loops.md](core-loops.md) | The loops a buddy runs through | Reference |
 | [state-machine-design.md](state-machine-design.md) | How behaviours work as data | Built |
 | [native-shell-design.md](native-shell-design.md) | The exe, its contract with the app, and its measured results | Built |
+| [performance.md](performance.md) | What the app costs over hours: the soak test, its budgets, and the read-only sample for a real PC | Built; budgets reported only |
 | [local-api.md](local-api.md) | Other apps asking buddies to do things: requests, replies, consent, limits | First slice built |
 | [stage-3-design.md](stage-3-design.md) | Splitting the engine from the page | Built, kept for the reasons behind it |
 | [parity/notes.md](parity/notes.md) | What Shimeji does, read from its source | Reference |

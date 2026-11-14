@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { test } from 'vitest';
 
-const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1', 'store-package.ps1', 'installer-check.ps1'] as const;
+const SCRIPTS = ['taskbar-check.ps1', 'menu-check.ps1', 'api-e2e.ps1', 'store-package.ps1', 'installer-check.ps1', 'soak.ps1'] as const;
 const DIR = new URL('../shell-check/', import.meta.url);
 const ALL = fs.readdirSync(DIR).filter(f => f.endsWith('.ps1')).sort();
 const read = (name: string) => fs.readFileSync(new URL(name, DIR), 'utf8');
@@ -93,14 +93,14 @@ for (const name of ALL) {
   });
 }
 
-for (const name of ['smoke.ps1', 'api-e2e.ps1', 'store-package.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
+for (const name of ['smoke.ps1', 'api-e2e.ps1', 'store-package.ps1', 'soak.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
   test(`${name}: an error anywhere says FAIL run.error with its line and keeps the results`, () => {
     const ps = read(name);
     assert.match(ps, /function Error-Line\(\$e\) \{[\s\S]*?" at line \$\(\$i\.ScriptLineNumber\)/);
     const trap = ps.match(/^trap \{\n([\s\S]*?)\n\}/m);
     assert.ok(trap, 'a trap at the top');
     assert.match(trap[1]!, /\$msg = "FAIL run\.error \$\(Error-Line \$_\)"/);
-    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e|store-package)\.txt'\)/);
+    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e|store-package|soak)\.txt'\)/);
     assert.match(trap[1]!, /\n  break$/);
     /* defined before anything that can throw */
     const helpers = ps.indexOf('. (Join-Path');

@@ -154,6 +154,8 @@ On API 2 the hub just opens the Manager or focuses it, which restores it, and th
 
 Only native changes start it. To try a new app folder or check on the existing exe, run the workflow by hand with `reuse`.
 
+What the exe and app cost over hours, in four states, is the soak test's job: `.github/workflows/soak.yml`. See [performance.md](performance.md).
+
 The smoke run also takes the real Maker through three runs of the exe on one data folder: opened through the hub's real command, edited, tried on screen, 60 quick saves of a buddy out on the desktop while something reads her images the whole time, a real minimize, a window closed from outside on an unsaved edit, the largest allowed buddy, and a quit in the middle of saving her.
 
 It proves: every data command and its refusals, reads over the cap refused, one winner when moves race for a name, library images served and readable on a canvas, anything else in the library refused, overlay styles and placement, click-through and the lease running out, including on a hung page and after a storm of captures on and off, a real click reaching an overlay without taking focus, window open, place and close, navigation refused, the tracker against real windows (listed with correct bounds and order, a move seen quickly, minimize and close seen, no title in the payload), the `monitors` event, second launch with a file, autostart and file association set and cleared, a double-click through that association, the save dialog, the SharedWorker outliving every overlay, a hung hub, a missing app folder, and a clean exit with no stray processes.

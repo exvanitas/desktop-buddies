@@ -1,0 +1,71 @@
+# Performance
+
+What Desktop Buddies costs while it runs for hours, measured two ways: a soak test on GitHub's Windows runner, and a read-only sample on a real PC. The runner draws without a graphics card, so its CPU numbers are higher than a real PC's. Budgets compare the runner with itself; the real numbers come from a real PC.
+
+Last measured on the owner's PC, 2026-11-06: 110 MB and 0.06% CPU with no buddies out, 145 MB and about 1.4% CPU with one, up to 175 MB while she's thrown ([native-shell-design.md](native-shell-design.md#results)).
+
+## The soak test
+
+`.github/workflows/soak.yml` runs the real exe and the built app in four states, a job each, on its own runner:
+
+| State | What's going on |
+|---|---|
+| `walking` | Three copies of the test buddy out, left alone |
+| `hidden` | Three out, then Hide all with the Manager's own button, and the Manager closed |
+| `manager` | Three out, and the Manager open |
+| `api` | One out, the local API on with one app allowed, asking every 5 s: a line to say every 20 s, a wave in between (the API allows 4 lines a minute from one app) |
+
+Each job starts the exe once for 40 s on a fresh data folder, so the buddy is imported and saved, then starts it again and puts it in its state. Every 10 s it reads the exe and every process under it (its WebView2): working set, private working set, private bytes, handles, GDI and USER objects, threads, CPU time and context switches. It reads them from the system's process list in one call, and checks that reading against .NET's own numbers for its own process first.
+
+Run it from the Actions tab: **soak**, Run workflow, with the minutes per state (120 by default, at most 300). By default it uses the exe from the latest shell build on the branch; with that unticked, or with no such build, it builds one. A push to `next` that changes the soak's own files runs it for 10 minutes a state, to prove the harness. A weekly run is in the workflow, commented out until the owner wants it.
+
+Locally, on a Windows PC with Desktop Buddies not running:
+
+```powershell
+pnpm --filter @buddies/desktop build
+apps/desktop/shell-check/soak.ps1 -Exe <path to desktop-buddies.exe> -App apps/desktop/dist/app -State walking -Minutes 10
+```
+
+`-SetupOnly` checks the sampler and the budgets and stops before anything starts.
+
+### Reading it
+
+Each job's summary on the run's page has a table: mean and peak over the steady part of the run, and the change an hour. Each job's artifact, `soak-<state>`, has:
+
+- `soak.json`, the summary
+- `soak.csv`, a row per process and a `total` row per sample, to plot
+- `soak.txt`, every check as PASS, FAIL or INFO, and the budgets
+- `soak.log` and `soak-prime.log`, the app's own logs
+
+The steady part is the last 75% of the run, past the start's own climb. In it:
+
+- **Leak slope** (`leak_mb_per_h`): a least-squares line through private bytes, in MB an hour. One spike can't make a slope; memory that keeps growing does.
+- **Handles, GDI and USER an hour** (`handles_per_h`, `gdi_per_h`, `user_per_h`): the same fit. A leak of handles or window objects shows here long before it fails.
+- **CPU** (`idle_cpu_pct_core`): the mean, as a percentage of one core. The runner's core count is in the summary.
+- **Wakeups** (`wakeups_per_s`): context switches a second, all processes together: how often the app's threads wake. A hidden app that wakes often drains a battery even at low CPU.
+- `by_kind_mean`: memory and CPU for the exe and each kind of WebView2 process (browser, renderer, gpu-process, utility).
+
+The job fails when the harness does: the app didn't reach its state, quit early, logged an error, didn't quit by its own time limit, or left processes behind.
+
+### Budgets
+
+`apps/desktop/shell-check/soak-budgets.json`:
+
+| Budget | Value |
+|---|---|
+| Leak slope, every state | under 2 MB an hour |
+| Handles, GDI and USER objects | under 50 more an hour each |
+| Hidden | under 0.5% of one core; wakeups from the first runs |
+| Memory and CPU, per state | the state's baseline plus 20% |
+
+While `enforce` is false, each is reported in `soak.txt` and the summary as within or OVER, and nothing fails on them. To turn them on: put each state's mean `private_ws_mb` and `cpu_pct_core` from its first full runs into `baseline`, set `hidden_wakeups_per_s` from the hidden runs, and set `enforce` to true.
+
+## On a real PC
+
+`apps/desktop/shell-check/sample-pc.ps1` samples the same numbers for 30 minutes while the app runs as the owner uses it. It only reads: it never starts or stops anything, and writes two files to Downloads, a CSV and a summary like the soak's, with numbers only. With Desktop Buddies running and `soak-sampler.ps1` in the same folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File sample-pc.ps1
+```
+
+The summary also says the app's version, how it was installed (installer, zip or Store), the Windows version, the core count, and whether the PC was on battery when it started. If the app is restarted during the sample, it follows the new one and counts the restart.

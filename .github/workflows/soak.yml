@@ -1,0 +1,145 @@
+name: soak
+
+# The real exe and app left in one state for hours, sampled every 10 s: memory, handles, GDI and USER
+# objects, threads, CPU and wakeups, for the exe and its WebView2. A job per state, each on its own
+# runner. apps/desktop/shell-check/soak.ps1 has the states and the checks; docs/performance.md says how
+# to read the results. A push that changes the soak's own files runs it for 10 minutes a state, to
+# prove the harness; a run by hand runs 120 by default.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes each state is sampled for (1 to 300)
+        type: string
+        default: '120'
+      reuse:
+        description: Use the exe from the latest shell build on this branch, instead of building one
+        type: boolean
+        default: true
+  push:
+    branches: [next]
+    paths:
+      - apps/desktop/shell-check/soak.ps1
+      - apps/desktop/shell-check/soak-sampler.ps1
+      - apps/desktop/shell-check/soak-budgets.json
+      - .github/workflows/soak.yml
+  # Weekly, once the owner says so:
+  # schedule:
+  #   - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # The exe and the app folder, once, for every state's job.
+  prepare:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      REUSE: ${{ github.event_name == 'push' || inputs.reuse }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exe from the latest build
+        id: reuse
+        if: env.REUSE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh run list --workflow shell.yml --branch $env:GITHUB_REF_NAME --status success --limit 20 --json databaseId,event --jq '[.[] | select(.event == "push")][0].databaseId'
+          if (-not $run) { "::warning::no earlier shell build on this branch, so this run builds the exe"; exit 0 }
+          "using the exe from shell run $run"
+          gh run download $run --name desktop-buddies-windows --dir exe
+          if ($LASTEXITCODE) { "::warning::the exe from shell run $run couldn't be downloaded, so this run builds one"; exit 0 }
+          "found=true" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        if: steps.reuse.outputs.found != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: soak-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            soak-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
+            soak-${{ runner.os }}-
+
+      - name: Release build
+        if: steps.reuse.outputs.found != 'true'
+        working-directory: apps/desktop/src-tauri
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo build --release --locked
+          if ($LASTEXITCODE) { throw 'the release build failed' }
+          New-Item -ItemType Directory -Force ../../../exe | Out-Null
+          Copy-Item target/release/desktop-buddies.exe ../../../exe/
+
+      - name: About the exe
+        run: |
+          $f = Get-Item exe/desktop-buddies.exe
+          $line = "$($f.Name) $($f.Length) bytes sha256 $((Get-FileHash $f -Algorithm SHA256).Hash)"
+          $line
+          "$line`n" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @buddies/desktop build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soak-exe
+          path: exe/desktop-buddies.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      # The app folder, and the probe the hidden state clicks Hide all with.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soak-app
+          path: |
+            apps/desktop/dist/app
+            apps/desktop/dist/api-probe
+          retention-days: 7
+          if-no-files-found: error
+
+  soak:
+    needs: prepare
+    runs-on: windows-latest
+    # The longest run asked for, 300 minutes, plus the start, the end and the uploads.
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        state: [walking, hidden, manager, api]
+    env:
+      MINUTES: ${{ inputs.minutes || '10' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: soak-exe
+          path: exe
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: soak-app
+          path: apps/desktop/dist
+
+      - name: Soak
+        shell: pwsh
+        run: apps/desktop/shell-check/soak.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -State ${{ matrix.state }} -Minutes $env:MINUTES -Out results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-${{ matrix.state }}
+          path: results
+          retention-days: 30
+          if-no-files-found: warn
