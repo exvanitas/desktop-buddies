@@ -9,6 +9,8 @@ interface Processed { frames: Frame[]; scale: number }
 
 const clamp = (n: number, a: number, b: number) => Math.min(b, Math.max(a, n));
 const MAX_SRC = 1024, MAX_OUT = 320;
+/* Art kept at its own pixels, as Shimeji are, up to the largest size a buddy can have. */
+const MAX_NATIVE = 512;
 function loadImg(src: string) { return new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }); }
 function canvasOf(im: HTMLImageElement) {
   const k = Math.min(1, MAX_SRC / Math.max(im.naturalWidth, im.naturalHeight));
@@ -79,13 +81,16 @@ function alphaBox(c: Art): ContentBox | null {
   return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 };
 }
 function union(a: ContentBox | null, b: ContentBox | null) { if (!a) return b; if (!b) return a; return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }; }
-/* Draw canvases (with offsets) into a square region and export frames with normalized content boxes. */
-function pack(items: Packable[], reg: Square): Frame[] {
-  const O = clamp(Math.ceil(reg.side), 32, MAX_OUT), k = O / reg.side;
+/* Draw canvases (with offsets) into a square region and export frames with normalized content boxes.
+   `native` keeps the art's own pixels, past the usual 32 to 320 px, up to MAX_NATIVE. Drawn at its own
+   size, a picture lands on whole pixels: a half-pixel offset would blend every pixel with its neighbour. */
+function pack(items: Packable[], reg: Square, native = false): Frame[] {
+  const O = native ? Math.min(Math.ceil(reg.side), MAX_NATIVE) : clamp(Math.ceil(reg.side), 32, MAX_OUT);
+  const k = native && reg.side <= MAX_NATIVE ? 1 : O / reg.side, at = (n: number) => k === 1 ? Math.round(n) : n * k;
   return items.map(({ c, ox, oy }) => {
     const o = document.createElement('canvas'); o.width = o.height = O;
     const x = o.getContext('2d')!; x.imageSmoothingQuality = 'high';
-    x.drawImage(c, (ox - reg.x0) * k, (oy - reg.y0) * k, c.width * k, c.height * k);
+    x.drawImage(c, at(ox - reg.x0), at(oy - reg.y0), c.width * k, c.height * k);
     const b = alphaBox(o);
     return { src: o.toDataURL('image/png'), bb: b ? { x0: b.x0 / O, y0: b.y0 / O, x1: b.x1 / O, y1: b.y1 / O } : { x0: 0, y0: 0, x1: 1, y1: 1 } };
   });
@@ -97,34 +102,34 @@ function squareAround(cx: number, bottom: number, box: ContentBox): Square {
 }
 /* Main image: trim empty margins, feet on the bottom edge. Returns the frame and a
    reference so later pose frames drawn on the same-size canvas keep the same scale. */
-export async function processBase(src: string) {
+export async function processBase(src: string, opts?: { native?: boolean }) {
   const im = await loadImg(src).catch(() => null); if (!im) return null;
   let c = canvasOf(im);
   let photo = false; if (isOpaque(c)) { if (!removePlainBg(c)) { photo = true; c = sticker(c); } }
   const box = alphaBox(c) || { x0: 0, y0: 0, x1: c.width, y1: c.height };
   const cx = (box.x0 + box.x1) / 2, reg = squareAround(cx, box.y1, box);
-  const [frame] = pack([{ c, ox: 0, oy: 0 }], reg);
+  const [frame] = pack([{ c, ox: 0, oy: 0 }], reg, !!(opts && opts.native) && !photo);
   return { frame: frame!, photo, ref: { ow: c._ow!, oh: c._oh!, w: c.width, h: c.height, cx, by: box.y1, side: reg.side } };
 }
 /* Pose frames: all frames in a batch share one crop so the animation stays aligned. */
-export async function processFrames(srcs: string[], ref?: ImageRef | null, opts?: { independent?: boolean }): Promise<Processed | null> {
+export async function processFrames(srcs: string[], ref?: ImageRef | null, opts?: { independent?: boolean; native?: boolean }): Promise<Processed | null> {
   if (opts && opts.independent) ref = null;
   /* repeated frames (e.g. walk 1,2,1,3) are processed once and shared */
   const uniq = [...new Set(srcs)], cs: Art[] = [], idx = new Map<string, number>();
   for (const s of uniq) { try { let c = canvasOf(await loadImg(s)); if (isOpaque(c) && !removePlainBg(c)) c = sticker(c); idx.set(s, cs.length); cs.push(c); } catch (e) { /* skip */ } }
   if (!cs.length) return null;
   const order = srcs.filter(s => idx.has(s)).map(s => idx.get(s)!);
-  const out = await processCanvases(cs, ref);
+  const out = await processCanvases(cs, ref, !!(opts && opts.native));
   const all = out.frames; out.frames = order.map(i => all[i]!);
   return out;
 }
-async function processCanvases(cs: Art[], ref?: ImageRef | null): Promise<Processed> {
+async function processCanvases(cs: Art[], ref?: ImageRef | null, native = false): Promise<Processed> {
   const same = ref && cs.every(c => c._ow === ref.ow && c._oh === ref.oh && c.width === ref.w);
   if (same) {
     let U: ContentBox | null = null; for (const c of cs) U = union(U, alphaBox(c));
     U = U || { x0: 0, y0: 0, x1: ref!.w, y1: ref!.h };
     const reg = squareAround(ref!.cx, Math.max(ref!.by, U.y1), union(U, { x0: ref!.cx - ref!.side / 2, y0: ref!.by - ref!.side, x1: ref!.cx + ref!.side / 2, y1: ref!.by })!);
-    return { frames: pack(cs.map(c => ({ c, ox: 0, oy: 0 })), reg), scale: +(reg.side / ref!.side).toFixed(3) };
+    return { frames: pack(cs.map(c => ({ c, ox: 0, oy: 0 })), reg, native), scale: +(reg.side / ref!.side).toFixed(3) };
   }
   const mw = Math.max(...cs.map(c => c.width)), mh = Math.max(...cs.map(c => c.height));
   const items = cs.map(c => ({ c, ox: (mw - c.width) / 2, oy: mh - c.height }));
@@ -132,7 +137,7 @@ async function processCanvases(cs: Art[], ref?: ImageRef | null): Promise<Proces
   for (const it of items) { const b = alphaBox(it.c); if (b) U = union(U, { x0: b.x0 + it.ox, y0: b.y0 + it.oy, x1: b.x1 + it.ox, y1: b.y1 + it.oy }); }
   U = U || { x0: 0, y0: 0, x1: mw, y1: mh };
   const reg = squareAround((U.x0 + U.x1) / 2, U.y1, U);
-  return { frames: pack(items, reg), scale: 1 };
+  return { frames: pack(items, reg, native), scale: 1 };
 }
 /* Size matching for separately generated images. AI images come out at slightly different
    sizes, and trimming each frame on its own makes poses with raised arms look smaller.
@@ -181,18 +186,24 @@ export async function bottomOf(src: string): Promise<number | null> {
 }
 export const natSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 
-/* Build a whole buddy from a Shimeji image folder. files: [{name, src}] */
+/* Build a whole buddy from a Shimeji image folder. files: [{name, src}]
+   Shimeji draw their pictures pixel for pixel, so the frames keep their own pixels and her size is the
+   main frame's side: at that size the view draws one picture pixel to one screen pixel. Her standing
+   art is shime1 itself, kept as Stand so it isn't given the squash a still main image gets. */
 export async function fromShimeji(files: { name: string; src: string }[]): Promise<(Buddy & { poses: Partial<Record<PoseKey, Pose>> }) | null> {
   const byNum: Record<number, string> = {};
   files.forEach(f => { const m = /shime(\d+)\.png$/i.exec(f.name); if (m) byNum[+m[1]!] = f.src; });
   if (!byNum[1]) return null;
-  const base = await processBase(byNum[1]); if (!base) return null;
+  const base = await processBase(byNum[1], { native: true }); if (!base) return null;
   const poses: Partial<Record<PoseKey, Pose>> = {};
   for (const [key, nums] of Object.entries(SHIMEJI_MAP) as [PoseKey, number[]][]) {
     if (!nums.every(n => byNum[n])) continue;
-    if (key === 'stand' || key === 'drag') continue; // same as main image
-    const r = await processFrames(nums.map(n => byNum[n]!), base.ref);
+    if (key === 'drag') continue; // same as main image
+    if (key === 'stand') { poses.stand = { frames: [base.frame], fps: 4, scale: 1 }; continue; }
+    const r = await processFrames(nums.map(n => byNum[n]!), base.ref, { native: true });
     if (r) poses[key] = { frames: r.frames, fps: SHIMEJI_FPS[key] || 4, scale: r.scale };
   }
-  return { base: base.frame, ref: base.ref, poses, faces: 'left', size: Math.round(clamp(base.ref.side, 64, 200)) };
+  /* the main frame's side, as pack cut it */
+  const side = Math.min(Math.ceil(base.ref.side), MAX_NATIVE);
+  return { base: base.frame, ref: base.ref, poses, faces: 'left', size: clamp(side, 16, MAX_NATIVE) };
 }

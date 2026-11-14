@@ -10,6 +10,9 @@ const SHAPES: Partial<Record<ParticleKind, string>> = { heart: HEART, star: STAR
 const TAIL_CLEAR = 20;
 /* to the low end when the range is empty: a bubble bigger than the page keeps its top left on it */
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(n, hi));
+/* Shown at this share of its own pixels or more, a picture is drawn crisp: a pose scale written to three
+   places can leave a picture shown at its own size a hair under it. */
+const CRISP_AT = .995;
 
 export interface ViewOptions {
   root: HTMLElement; input: Input; viewport: Viewport;
@@ -27,8 +30,9 @@ export const WAIT_MS = 250;
 /* pictures already decoded here, newest last, so a pose seen before changes at once */
 const KNOWN = 256;
 interface Loading { src: string; img: HTMLImageElement; ready: boolean; since: number }
-/* `fitted`: the bubble is where the view moved it, not where the engine wrote it */
-interface PetElements { el: HTMLElement; body: HTMLElement; img: HTMLImageElement; bub: HTMLElement; tag: HTMLElement; last: PetFrame | null; fitted: boolean; loading: Loading | null }
+/* `fitted`: the bubble is where the view moved it, not where the engine wrote it. `crisp`: the picture is
+   drawn nearest-neighbour, see crisp(). */
+interface PetElements { el: HTMLElement; body: HTMLElement; img: HTMLImageElement; bub: HTMLElement; tag: HTMLElement; last: PetFrame | null; fitted: boolean; loading: Loading | null; crisp: boolean }
 interface FxElement { e: HTMLElement; opacity: number | null; tf: string | null }
 export type View = ReturnType<typeof createView>;
 
@@ -62,7 +66,7 @@ export function createView(opt: ViewOptions) {
     const img = doc.createElement('img'); img.alt = ''; img.draggable = false;
     body.append(img); el.append(body);
     /* a picture it has shown is one it can show again at once */
-    img.addEventListener('load', () => { const s = img.getAttribute('src'); if (s) decoded(s); });
+    img.addEventListener('load', () => { const s = img.getAttribute('src'); if (s) decoded(s); const v = pets.get(id); if (v && v.last) crisp(v, v.last); });
     const bub = doc.createElement('div'); bub.className = 'db-bubble'; bub.hidden = true;
     const tag = doc.createElement('div'); tag.className = 'db-tag';
     root.append(el, bub, tag);
@@ -80,7 +84,23 @@ export function createView(opt: ViewOptions) {
     el.addEventListener('pointercancel', () => input.up(id));
     /* right-click menu, only when the host page asks for one (the exported desktop page does) */
     el.addEventListener('contextmenu', e => { if (!onMenu) return; e.preventDefault(); onMenu(id, e.clientX, e.clientY); });
-    return { el, body, img, bub, tag, last: null, fitted: false, loading: null };
+    return { el, body, img, bub, tag, last: null, fitted: false, loading: null, crisp: false };
+  }
+
+  /* Pixel art, crisp. A picture shown at its own pixels or bigger (an imported Shimeji at her size, on a
+     display scaled to 125%, or made bigger) is scaled nearest-neighbour, as Shimeji draws it: blended,
+     every pixel smears into the next. Each screen pixel then shows one picture pixel, wherever she's
+     placed. She also gives up a layer of her own: the browser draws a layer onto the screen blended, so
+     even at her own size, half a pixel over, she'd be soft. A picture with more pixels than it's shown
+     with, drawn art and AI images at their sizes, is scaled smooth on its own layer, as before. It's known
+     once the picture has loaded, so a page that never loads one, like the golden traces' stand-in, draws
+     as it always has. */
+  function crisp(v: PetElements, f: PetFrame) {
+    /* a picture still loading keeps how the last one was drawn, until it has */
+    if (f.size === null || !v.img.complete) return;
+    const n = v.img.naturalWidth, dpr = doc.defaultView?.devicePixelRatio || 1;
+    const on = n > 0 && f.box.size * dpr >= n * CRISP_AT;
+    if (on !== v.crisp) { v.crisp = on; v.img.style.imageRendering = on ? 'pixelated' : ''; v.el.style.willChange = on ? 'auto' : ''; }
   }
 
   function applyPet(v: PetElements, f: PetFrame) {
@@ -117,6 +137,7 @@ export function createView(opt: ViewOptions) {
     if (t.tf !== null && t.tf !== wt.tf) v.tag.style.transform = t.tf;
     if (f.src === undefined) f.src = was.src; /* hosts may leave out an image that hasn't changed */
     v.last = f;
+    crisp(v, f);
   }
 
   /* The engine placed her bubble by a guess at its size. Here the real size is known, so it's kept on

@@ -24,6 +24,8 @@ await build({ root: path.join(REPO, 'packages/engine'), configFile: false, logLe
 const { LINES, bubbleSize } = await import(pathToFileURL(SP + '/engine/engine.mjs').href);
 /* the bubble probe: the real engine and view on one screen, see bubble-probe.ts */
 await build({ root: REPO, configFile: false, logLevel: 'error', publicDir: false, build: { outDir: SP + '/probe', emptyOutDir: false, minify: false, lib: { entry: path.join(REPO, 'apps/maker/tests/browser/bubble-probe.ts'), formats: ['iife'], name: 'BubbleProbe', fileName: () => 'bubble-probe.js' } } });
+/* the crisp probe: a made-up Shimeji set through the real import, drawn by the real engine and view, see crisp-probe.ts */
+await build({ root: REPO, configFile: false, logLevel: 'error', publicDir: false, build: { outDir: SP + '/crisp', emptyOutDir: false, minify: false, lib: { entry: path.join(REPO, 'apps/maker/tests/browser/crisp-probe.ts'), formats: ['iife'], name: 'CrispProbe', fileName: () => 'crisp-probe.js' } } });
 /* an artist's lengths, up to 38 letters, and one word longer than a bubble is wide */
 const LONG_LINES = ['Have you been staring at that all day?', 'Hey! That tickles, please stop it now!', 'Mmm, that is the good spot right there', 'I think I will take a little nap here.', 'Supercalifragilisticexpialidociously!!', 'Pneumonoultramicroscopicsilicovolcanoconiosis'];
 
@@ -194,6 +196,33 @@ const watch=(page,errs)=>{page.on('pageerror',e=>errs.push('pageerror '+e.messag
   }
   await page.screenshot({path:`${SP}/shots/bubble-two-monitors.png`});
   ok('bubble probe, no errors',errs.length===0,errs.join(' | '));
+  await ctx.close();}
+ // ---- an imported Shimeji is drawn as Shimeji draws it: one picture pixel to one screen pixel at her size on an
+ // unscaled display, nearest-neighbour when the display is scaled or she's made bigger. She stands a fraction of a
+ // pixel over, and her art is centred half a pixel off the middle, the case an import once cut between pixels.
+ // Drawn art with more pixels than it's shown with stays smooth.
+ for(const dpr of [1,1.25,1.5]){const ctx=await browser.newContext({viewport:{width:400,height:320},deviceScaleFactor:dpr});const page=await ctx.newPage();const errs=[];watch(page,errs);
+  await page.setContent('<!doctype html><div id="root" style="position:absolute;inset:0"></div>');
+  await page.addStyleTag({content:fs.readFileSync(path.join(REPO,'packages/view/src/view.css'),'utf8')});
+  await page.addScriptTag({content:fs.readFileSync(SP+'/crisp/crisp-probe.js','utf8')});
+  const imp=await page.evaluate(()=>importSet(46,128,{x0:40,y0:20,x1:87,y1:128}));
+  if(dpr===1){
+   ok('crisp: the import keeps her pixels, every stored frame exactly its source',imp.base.exact===1&&imp.poses===1&&imp.side===108,JSON.stringify(imp));
+   ok('crisp: her size is her main frame\'s side, her poses at scale 1, Stand her own',imp.size===imp.side&&imp.scales.every(k=>k===1)&&imp.stand,JSON.stringify(imp));
+  }
+  const look=async(what,o,q)=>{
+   const d=await page.evaluate(o=>draw(o),o);
+   const shot='data:image/png;base64,'+(await page.screenshot({type:'png'})).toString('base64');
+   const c=await page.evaluate(([s,r,side,m])=>compare(s,r,side,m),[shot,d.rect,imp.side,d.mirror]);
+   const sized=Math.abs(d.rect[2]-imp.side*q)<.01&&Math.abs(d.rect[3]-imp.side*q)<.01;
+   ok(`crisp at ${dpr*100}%, ${what}: ${q===1?'pixel for pixel':'nearest-neighbour exact'}, each screen pixel one of hers`,c.n>4000&&c.exact===1&&sized&&d.rendering==='pixelated'&&d.layer==='auto',JSON.stringify({...c,...d}));
+   await page.screenshot({path:`${SP}/shots/crisp-${dpr*100}-${what.replace(/\W+/g,'-')}.png`});
+  };
+  await look('at her size',{},dpr);
+  if(dpr===1){await look('made half as big again',{size:162},1.5);await look('made twice as big',{size:216},2);}
+  const drawn=await page.evaluate(()=>draw({drawn:300}));
+  ok(`crisp at ${dpr*100}%: drawn art with more pixels than it's shown with stays smooth, on its own layer`,drawn.rendering==='auto'&&drawn.layer==='transform',JSON.stringify(drawn));
+  ok(`crisp at ${dpr*100}%, no errors`,errs.length===0,errs.join(' | '));
   await ctx.close();}
  // ---- exported page
  {const ctx=await browser.newContext({viewport:{width:1000,height:600}});const page=await ctx.newPage();const errs=[];watch(page,errs);await page.route(/fonts\.g/,r=>r.abort());
