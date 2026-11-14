@@ -94,6 +94,11 @@ export function argsSeen(args: string[]) {
 }
 /* The exe's own test for a file to open, which arrives as `open-file`. */
 const isBuddyFile = (arg: string) => /\.buddy(\.json)?$/i.test(arg);
+/* The switch's own words, for a failure's card. */
+const FILES = 'Open .buddy files';
+/* What went wrong with the registry, as the log may say it: the exe's error code, never its words,
+   which could carry the exe's path. */
+const kindOf = (e: unknown) => /^registry error \d+$/.exec(reason(e))?.[0] ?? 'other';
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const byName = (a: Shelved, b: Shelved) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : 1);
 
@@ -122,6 +127,10 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   /* The Store's package: Start with Windows is its startup task, which the person can also turn off
      in Windows Settings, so it's read again whenever it's about to be shown or changed. */
   let packaged = false;
+  /* Open .buddy files with Desktop Buddies: what the exe reads back, never what was asked. Read
+     again whenever the Manager opens, as the person may have changed it in Windows. Not packaged
+     only: the Store's package declares .buddy itself, so there's no switch. */
+  let files = false;
   /* API 2: whether the hub wants overlays kept on top, and what the exe last said yes to. One call
      at a time, so a late answer can't undo a later wish. null: nothing yet, or the last call failed. */
   let raiseWant: boolean | null = null, raiseSent: boolean | null = null, raiseBusy = false;
@@ -171,7 +180,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     return { id: b.id, name: b.name, image: b.buddy.base.src, status: n ? 'out' : 'home', copies: n, can: PLAYS.filter(a => canDo(b.buddy, a)), rev: revisions.of(b.id) };
   });
   const replacing = () => waiting.map(q => ({ ask: q.ask, id: q.id, name: shelf.find(b => b.id === q.id)?.name ?? q.was ?? q.called, called: q.called, file: q.file.name }));
-  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, packaged, walk, exclude, apps, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
+  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, packaged, files, walk, exclude, apps, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
   const publish = () => wire.post({ k: 'state', state: state() });
   /* Her row from a copy's world id. With --buddies every copy is the first buddy. */
   const rowOf = (copy: string) => rows().find(r => r.id === (copies !== null ? shelf[0]?.id : copy.split('~')[0])) ?? null;
@@ -709,6 +718,19 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       await changed();
       return OK;
     },
+    /* Off removes only what's ours. A failure says what Start with Windows does, and shows what
+       Windows has now. */
+    files: async ({ on }) => {
+      if (packaged) { note('files: the package declares .buddy files'); return refuse(notSet(FILES)); }
+      try { files = await shell.fileAssoc(on); }
+      catch (e) {
+        note(`files failed: ${kindOf(e)}`);
+        await readFiles();
+        return refuse(notSet(FILES));
+      }
+      publish();
+      return OK;
+    },
     /* Either way the tracker is told again, so turning it on is a new watch with a first snapshot,
        even if the stop never got through. */
     walk: ({ on }) => whenRestored(async () => {
@@ -790,7 +812,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     else if (m.k.startsWith('menu-')) buddyMenu.heard(m);
   }
 
-  async function showManager() { wantManager = true; await readAutostart(); await catchUp(); }
+  async function showManager() { wantManager = true; await readAutostart(); await readFiles(); await catchUp(); }
   /* Packaged only: what Windows says now, in case the person changed it in Windows Settings. */
   async function readAutostart() {
     if (!packaged) return;
@@ -798,6 +820,14 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     try { now = await shell.autostart(); }
     catch (e) { note(`autostart read failed: ${reason(e)}`); return; }
     if (now !== autostart) { autostart = now; trayStale = true; publish(); }
+  }
+  /* Not packaged only. A read that fails leaves what was known. */
+  async function readFiles() {
+    if (packaged) return;
+    let now: boolean;
+    try { now = await shell.fileAssoc(); }
+    catch (e) { note(`files read failed: ${kindOf(e)}`); return; }
+    if (now !== files) { files = now; publish(); }
   }
 
   async function trayChoice(id: string) {
@@ -883,6 +913,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
 
       stocked = await stock();
       autostart = await shell.autostart();
+      await readFiles();
       system(await shell.system());
       trayStale = true;
       await monitors(await shell.monitors());

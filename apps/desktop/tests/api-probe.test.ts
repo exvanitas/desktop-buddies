@@ -84,6 +84,24 @@ test('the probe says Not now, and Remove in Settings asks again', async () => {
   assert.deepStrictEqual((st.detail as { hub: { asking: string[] } }).hub.asking, [], 'off forgets who was waiting');
 });
 
+test('the probe turns Open .buddy files on and off by its switch in Settings, and says the library\'s names', async () => {
+  const { s, run } = await onManager();
+  const on = await run({ do: 'files', on: true });
+  assert.ok(on.ok, ascii(on.detail));
+  assert.strictEqual(s.exe.fileAssoc, true);
+  assert.strictEqual(document.querySelector('.panel'), null, 'Settings closed again');
+  const st = await run({ do: 'state' });
+  const hub = (st.detail as { hub: { files: boolean; names: string[] } }).hub;
+  assert.strictEqual(hub.files, true);
+  assert.deepStrictEqual(hub.names, s.state.buddies.map(b => b.name));
+  assert.ok(hub.names.length > 0);
+  const again = await run({ do: 'files', on: true });
+  assert.ok(again.ok && (again.detail as { already?: boolean }).already, ascii(again.detail));
+  const off = await run({ do: 'files', on: false });
+  assert.ok(off.ok, ascii(off.detail));
+  assert.strictEqual(s.exe.fileAssoc, false);
+});
+
 test('a click counts only once the hub says it took: one it never takes fails', async () => {
   const { s, client } = await onManager();
   await s.command({ k: 'api', on: true });
@@ -93,7 +111,7 @@ test('a click counts only once the hub says it took: one it never takes fails', 
   await s.done();
   const root = document.body.firstElementChild!;
   const deaf = { root, state: () => client.state, until: async () => false };
-  for (const t of [{ do: 'pause', on: true }, { do: 'hide', on: true }, { do: 'on', on: false }, { do: 'answer', app: 'E2E Other', allow: true }, { do: 'forget', app: 'E2E Check' }] as Unnumbered[]) {
+  for (const t of [{ do: 'pause', on: true }, { do: 'hide', on: true }, { do: 'on', on: false }, { do: 'files', on: true }, { do: 'answer', app: 'E2E Other', allow: true }, { do: 'forget', app: 'E2E Check' }] as Unnumbered[]) {
     const r = await perform({ ...t, n: 1 } as Task, deaf);
     assert.ok(!r.ok, `${t.do}: ${ascii(r.detail)}`);
   }

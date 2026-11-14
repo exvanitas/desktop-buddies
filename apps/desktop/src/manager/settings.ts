@@ -53,6 +53,27 @@ export function createFilesNote() {
   return { el, update(packaged: boolean) { el.hidden = !packaged; } };
 }
 
+export const FILES_SWITCH = 'Open .buddy files with Desktop Buddies';
+export interface FilesState { files: boolean; packaged: boolean; ready: boolean }
+/* Anywhere else, a switch: it shows what the hub says Windows has, like Walk on windows. Made once
+   and carried from panel to panel. */
+export function createFilesSetting(set: (on: boolean) => void) {
+  let now: FilesState = { files: false, packaged: false, ready: false };
+  const on = button(h('i'), () => set(!now.files), { class: 'tg', role: 'switch', 'aria-checked': 'false', 'aria-label': FILES_SWITCH });
+  const row = h('div', { class: 'setting files-setting', hidden: true }, h('span', {}, FILES_SWITCH), on);
+  const note = createFilesNote();
+  return {
+    el: h('div', { class: 'files' }, row, note.el),
+    update(s: FilesState) {
+      now = s;
+      row.hidden = s.packaged;
+      note.update(s.packaged);
+      on.setAttribute('aria-checked', String(s.files));
+      on.disabled = !s.ready;
+    }
+  };
+}
+
 export function settingsPanel(theme: Theme, pick: (t: Theme) => void, walk: HTMLElement, api: HTMLElement, files: HTMLElement) {
   const choice = (t: Theme, words: string) => button(words, () => pick(t), { role: 'radio', 'aria-checked': String(t === theme), 'data-theme-choice': t });
   return h('div', { class: 'panel', role: 'dialog', 'aria-label': 'Settings' },

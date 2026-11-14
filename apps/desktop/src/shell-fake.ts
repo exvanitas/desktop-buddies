@@ -20,6 +20,8 @@ export interface FakeExe {
   /* what the exe would hold */
   files: Map<string, Uint8Array>; windows: Map<string, WindowSpec & { hidden: boolean; minimized?: boolean }>; tray: Parameters<Shell['traySet']>[0] | null;
   autostart: boolean; system: System; monitors: Monitor[];
+  /* Not packaged: whether .buddy files are ours, in this user's registry. */
+  fileAssoc: boolean;
   /* Packaged: the person turned the startup task off in Windows Settings, so the app can't turn
      it on, as the real one refuses. */
   offInWindows: boolean;
@@ -71,7 +73,7 @@ export function createFakeExe(o: FakeOptions = {}): FakeExe {
   const snapshot = () => ({ seq: ++seq, foreground: desktop[0]?.id ?? 0, list: desktop });
   const exe: FakeExe = {
     shell: null as unknown as Shell, invoke: null as unknown as Tauri['core']['invoke'],
-    files: new Map(), windows: new Map(), tray: null, autostart: false, offInWindows: false, focused: null, raising: false, saved: [], dialog: false,
+    files: new Map(), windows: new Map(), tray: null, autostart: false, fileAssoc: false, offInWindows: false, focused: null, raising: false, saved: [], dialog: false,
     system: { userState: 'normal', onBattery: false, saver: false, ...o.system },
     monitors: o.monitors || [],
     watching: false,
@@ -216,7 +218,10 @@ export function createFakeExe(o: FakeOptions = {}): FakeExe {
       return exe.autostart;
     },
     file_assoc: (a: { on?: boolean }) => {
-      if (!o.packaged) return false;
+      if (!o.packaged) {
+        if (a.on !== undefined) exe.fileAssoc = a.on;
+        return exe.fileAssoc;
+      }
       if (a.on !== undefined) throw new Error('the package declares .buddy files, so Windows handles them');
       return true;
     }

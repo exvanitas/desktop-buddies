@@ -29,7 +29,7 @@ import { createBus } from '../src/wire';
 
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r)); };
 const row = (name: string, copies = 0, id = name.toLowerCase(), can: BuddyRow['can'] = []): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 1 });
-const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
+const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
 const fail = (id: string, title: string, more: Partial<Failure> = {}): Failure => ({ id, kind: 'other', file: title, title, why: 'Why.', fix: 'Fix.', ...more });
 const LINE: Outline = rectangle(138, 138, 1.5);
 
@@ -866,9 +866,35 @@ test('Settings says Windows opens .buddy files only in the Store\'s package, wit
   const boxed = await scripted({ packaged: true });
   await click(boxed.button('Settings'));
   assert.deepStrictEqual(boxed.words('.panel .files-note'), [FILES_NOTE]);
-  assert.ok(!boxed.all('.panel [role=switch]').some(b => /buddy/i.test(b.getAttribute('aria-label') ?? '')), 'no .buddy switch');
+  assert.ok(!boxed.all('.panel [role=switch]').some(b => boxed.shown(b) && /buddy/i.test(b.getAttribute('aria-label') ?? '')), 'no .buddy switch');
   await boxed.set({ packaged: false });
   assert.deepStrictEqual(boxed.words('.panel .files-note'), []);
+});
+
+const FILES_SWITCH = 'Open .buddy files with Desktop Buddies';
+
+test('Open .buddy files: a switch under Theme and above Walk on windows, showing the hub, and sending files', async () => {
+  const v = await scripted({ ready: false });
+  await click(v.button('Settings'));
+  const sw = () => v.button(FILES_SWITCH, '.panel');
+  assert.deepStrictEqual(v.words('.panel .files-setting > span'), [FILES_SWITCH]);
+  assert.strictEqual(sw().getAttribute('role'), 'switch');
+  assert.strictEqual(sw().getAttribute('aria-checked'), 'false');
+  assert.ok(sw().disabled, 'not until the hub is ready');
+  const order = [v.one('.panel [role=radiogroup]'), sw(), v.button('Walk on windows', '.panel')].map(e => [...v.all('.panel *')].indexOf(e!));
+  assert.ok(order[0]! >= 0 && order[0]! < order[1]! && order[1]! < order[2]!, `order ${order}`);
+  await v.set({ ready: true });
+  assert.ok(!sw().disabled);
+  await click(sw());
+  assert.deepStrictEqual(v.sent, [{ k: 'files', on: true }]);
+  assert.strictEqual(sw().getAttribute('aria-checked'), 'false', "what the hub says, not what was clicked");
+  await v.set({ files: true });
+  assert.strictEqual(sw().getAttribute('aria-checked'), 'true');
+  await click(sw());
+  assert.deepStrictEqual(v.sent.at(-1), { k: 'files', on: false });
+  await v.set({ packaged: true });
+  assert.ok(!v.all('.panel [role=switch]').some(b => v.shown(b) && b.getAttribute('aria-label') === FILES_SWITCH), 'packaged: no switch');
+  assert.deepStrictEqual(v.words('.panel .files-note'), [FILES_NOTE]);
 });
 
 test('Theme: dark by default, Light is shown and remembered, and the panel stays', async () => {

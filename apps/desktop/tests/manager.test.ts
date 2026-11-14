@@ -619,6 +619,85 @@ test('not packaged: nothing reads Start with Windows again, and a failure says w
   assert.strictEqual(reads(), before + 1, 'only the set itself');
 });
 
+/* Open .buddy files with Desktop Buddies: the exe's per-user association, off unless the person
+   turns it on. */
+
+const assocSets = (r: Run) => r.exe.calls.filter(c => c.cmd === 'file_assoc' && (c.args as { on?: boolean }).on !== undefined);
+
+test('open .buddy files: off by default, and starting only reads it', async () => {
+  const r = await setup(), { s } = await r.open();
+  assert.strictEqual(s().files, false);
+  assert.strictEqual(r.exe.fileAssoc, false);
+  assert.ok(r.exe.calls.some(c => c.cmd === 'file_assoc'), 'read at start');
+  assert.deepStrictEqual(assocSets(r), [], 'nothing set');
+});
+
+test('open .buddy files: a start that finds it on shows it on', async () => {
+  const r = await setup({}, async e => { e.fileAssoc = true; }), { s } = await r.open();
+  assert.strictEqual(s().files, true);
+});
+
+test('open .buddy files: on and off reach the exe, are set not toggled, and show what it read back', async () => {
+  const r = await setup(), { client, s } = await r.open();
+  assert.ok((await client.setFiles(true)).ok);
+  assert.ok((await client.setFiles(true)).ok);
+  assert.deepStrictEqual([s().files, r.exe.fileAssoc], [true, true]);
+  assert.ok((await client.setFiles(false)).ok);
+  assert.deepStrictEqual([s().files, r.exe.fileAssoc], [false, false]);
+  assert.deepStrictEqual(assocSets(r).map(c => (c.args as { on: boolean }).on), [true, true, false]);
+  assert.deepStrictEqual(s().failures, []);
+  assert.ok(r.exe.logs.includes('manager files'), r.exe.logs.join('; '));
+});
+
+test('open .buddy files: a failure is refused as Start with Windows is, shows what Windows has, and logs only its kind', async () => {
+  const r = await setup(), { client, s } = await r.open();
+  r.exe.failNext('file_assoc', 'registry error 5');
+  const a = await client.setFiles(true);
+  assert.ok(!a.ok);
+  assert.deepStrictEqual(s().failures.map(f => [f.title, f.why, f.fix]), [["Open .buddy files didn't change", "Windows didn't accept the change.", 'Try again.']]);
+  assert.strictEqual(s().files, false);
+  assert.ok(r.exe.logs.includes('files failed: registry error 5'), r.exe.logs.join('; '));
+  /* half done, as a registry that took the first keys and not the rest would leave it */
+  r.exe.failNext('file_assoc', 'could not reach C:\\Users\\someone\\app\\desktop-buddies.exe', (x: { on?: boolean }) => x.on !== undefined);
+  r.exe.fileAssoc = true;
+  assert.ok(!(await client.setFiles(false)).ok);
+  assert.strictEqual(s().files, true, 'what Windows has now, read after the failure');
+  assert.ok(r.exe.logs.includes('files failed: other'), r.exe.logs.join('; '));
+  assert.ok(!r.exe.logs.some(l => /Users|desktop-buddies\.exe/.test(l)), 'never a path');
+  assert.strictEqual(s().failures.length, 2);
+});
+
+test('open .buddy files: the Manager opening reads it again, as it may have changed in Windows', async () => {
+  const r = await setup(), { s } = await r.open();
+  const reads = () => r.exe.calls.filter(c => c.cmd === 'file_assoc').length;
+  const before = reads();
+  r.exe.fileAssoc = true;
+  r.exe.emit('tray-click', null);
+  await r.done();
+  assert.strictEqual(reads(), before + 1);
+  assert.strictEqual(s().files, true);
+  r.exe.fileAssoc = false;
+  r.exe.emit('tray', { id: 'manager' });
+  await r.done();
+  assert.strictEqual(s().files, false);
+  r.exe.failNext('file_assoc', 'registry error 2');
+  r.exe.emit('tray-click', null);
+  await r.done();
+  assert.strictEqual(s().files, false, 'a read that fails leaves what was known');
+  assert.deepStrictEqual(s().failures, [], 'and is no failure of the person\'s');
+});
+
+test('open .buddy files, packaged: the package declares them, so nothing reads or sets the switch', async () => {
+  const r = await setup({ api: 2, packaged: true }), { client, s } = await r.open();
+  assert.strictEqual(s().files, false);
+  r.exe.emit('tray-click', null);
+  await r.done();
+  assert.ok(!r.exe.calls.some(c => c.cmd === 'file_assoc'), 'never asked');
+  assert.ok(!(await client.setFiles(true)).ok);
+  assert.deepStrictEqual(assocSets(r), []);
+  assert.strictEqual(s().files, false);
+});
+
 /* the Maker's hook */
 
 test('new and edit open the Maker, and state says so', async () => {
@@ -791,7 +870,7 @@ test('a window can open while the old one\'s command is still running, and both 
 
 test('a hub that never answers: the command gives up with a failure a person can read', async () => {
   const bus = createBus<Said>(), hub = bus.wire(), clocks: { ms: number; f: () => void }[] = [];
-  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
+  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
   const c = createManagerClient({ wire: bus.wire(), session: 'w', after: (ms, f) => { const x = { ms, f }; clocks.push(x); return () => {}; }, shimeji: async () => null, closeWindow: async () => {} });
   await tick(); await tick();
   const going = c.setPaused(true);

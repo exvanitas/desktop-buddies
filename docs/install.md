@@ -7,13 +7,17 @@ Windows 10 or 11, 64-bit, with Microsoft Edge WebView2, which draws the app's wi
 `desktop-buddies-X.Y.Z-setup-x64.exe`, from [Releases](https://github.com/exvanitas/desktop-buddies/releases). It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu.
 
 - **Updating:** a winget upgrade, or a newer setup run with `/S`, installs over the old version and keeps your buddies and Start with Windows. A newer setup run by hand removes the old version first: your buddies stay, but Start with Windows goes off, so turn it back on in the app. Files the new version no longer has may stay in the program folder, which does no harm.
-- **Removing:** from Installed apps in Windows Settings.
+- **Removing:** turn Open .buddy files off if you turned it on, then remove it from Installed apps in Windows Settings.
 
 ## The portable zip
 `desktop-buddies-X.Y.Z-windows-x64.zip`, from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe.
 
 - **Updating:** quit from the tray, then replace the folder with the new one.
-- **Removing:** turn Start with Windows off if you turned it on, so its startup entry goes too, quit from the tray, and delete the folder.
+- **Removing:** turn Start with Windows and Open .buddy files off if you turned them on, so their entries go too, quit from the tray, and delete the folder.
+- **Moving the folder:** Open .buddy files shows off again, since Windows still has the old place. Turn it on again.
+
+## Opening .buddy files
+Windows doesn't open `.buddy` files with Desktop Buddies until you say so: turn on Open .buddy files with Desktop Buddies in the Manager's Settings. Then a double-click on one imports her. It's set for your Windows account only, and turning it off removes it.
 
 ## winget
 Coming soon, once the package is in the winget catalogue:

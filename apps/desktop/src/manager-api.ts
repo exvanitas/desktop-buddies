@@ -17,6 +17,9 @@ export interface HubState {
   hidden: boolean; paused: boolean; autostart: boolean;
   /* The Store's package: Windows opens .buddy files, and Start with Windows is its startup task. */
   packaged: boolean;
+  /* Open .buddy files with Desktop Buddies: the exe's per-user association, as Windows has it now.
+     Off by default, and never set in the Store's package, which declares .buddy itself. */
+  files: boolean;
   /* Walk on windows, the apps to stay off, and the apps in the latest snapshot, all by exe name in
      lower case */
   walk: boolean; exclude: string[]; apps: string[];
@@ -54,6 +57,7 @@ export type Command =
 | { k: 'hide'; on: boolean }
 | { k: 'pause'; on: boolean }
 | { k: 'autostart'; on: boolean }
+| { k: 'files'; on: boolean } /* open .buddy files with this app */
 | { k: 'walk'; on: boolean }
 | { k: 'exclude'; app: string; on: boolean } /* not `name` or `id`: the hub logs those, and an app's name stays out of the log */
 | { k: 'api'; on: boolean } /* let other apps ask */

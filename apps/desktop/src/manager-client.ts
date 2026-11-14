@@ -125,6 +125,7 @@ export function createManagerClient(io: ClientIO) {
     setHidden: (on: boolean) => send({ k: 'hide', on }),
     setPaused: (on: boolean) => send({ k: 'pause', on }),
     setAutostart: (on: boolean) => send({ k: 'autostart', on }),
+    setFiles: (on: boolean) => send({ k: 'files', on }),
     setWalk: (on: boolean) => send({ k: 'walk', on }),
     /* `on` keeps buddies off this app's windows. */
     setExcluded: (app: string, on: boolean) => send({ k: 'exclude', app, on }),

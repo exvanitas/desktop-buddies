@@ -15,7 +15,7 @@ import { buddyItems, confirmOf } from './manager/menu';
 import { createMisprints } from './manager/misprints';
 import type { Outlines } from './manager/outlines';
 import { createPeel } from './manager/peel';
-import { createFilesNote, createWalkSetting, settingsPanel } from './manager/settings';
+import { createFilesSetting, createWalkSetting, settingsPanel } from './manager/settings';
 import { createApiSetting, createAsking } from './manager/asking';
 import { createReplacing } from './manager/replacing';
 import { createSheet } from './manager/sheet';
@@ -31,7 +31,7 @@ export interface ViewIO {
   after(ms: number, f: () => void): void;
 }
 
-const WAITING: HubState = { ready: false, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
+const WAITING: HubState = { ready: false, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
 /* How long a note says what just happened. */
 export const NOTE_MS = 5000;
 
@@ -114,7 +114,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
     ], 'Import'), anchor);
   }
   const walk = createWalkSetting({ walk: on => act(() => client.setWalk(on)), exclude: (app, on) => act(() => client.setExcluded(app, on)) });
-  const filesNote = createFilesNote();
+  const files = createFilesSetting(on => act(() => client.setFiles(on)));
   const apiSetting = createApiSetting({ setOn: on => act(() => client.setApi(on)), forget: app => act(() => client.forgetApp(app)) });
   const asking = createAsking({ answer: (app, allow) => act(() => client.answerApp(app, allow)) });
   /* After Replace, a note says she was. After Keep both, the new one is brought into view. A
@@ -134,7 +134,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
   }
   function openSettings(anchor: HTMLElement) {
     if (popover.anchor === anchor) { popover.close(); return; }
-    const panel = () => settingsPanel(theme, t => { theme = t; showTheme(t); saveTheme(io.store, t); const next = panel(); popover.swap(next, next.querySelector<HTMLElement>(`[data-theme-choice="${t}"]`) ?? undefined); }, walk.el, apiSetting.el, filesNote.el);
+    const panel = () => settingsPanel(theme, t => { theme = t; showTheme(t); saveTheme(io.store, t); const next = panel(); popover.swap(next, next.querySelector<HTMLElement>(`[data-theme-choice="${t}"]`) ?? undefined); }, walk.el, apiSetting.el, files.el);
     popover.show(panel(), anchor);
   }
 
@@ -171,7 +171,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
     sheet.update({ buddies, query, ready, maker });
     footer.update(state);
     walk.update(state);
-    filesNote.update(state.packaged === true);
+    files.update({ files: state.files === true, packaged: state.packaged === true, ready });
     asking.update({ ...state.api, ready });
     replacing.update(state.replacing ?? []);
     apiSetting.update({ ...state.api, ready });

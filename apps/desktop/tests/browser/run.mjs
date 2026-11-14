@@ -511,6 +511,25 @@ if (!ONLY || ONLY === 'clicks') {
     ok('both switches reach the hub and come back, and the list goes quiet', await r.page.evaluate(() => [...document.querySelectorAll('.apps button')].every(b => b.disabled)) && await r.page.getByRole('switch', { name: 'Stay off discord.exe' }).getAttribute('aria-checked') === 'true');
     await r.ctx.close();
   }
+  { /* Open .buddy files */
+    const r = await open(LIBRARY.few); await ready(r.page);
+    await r.page.getByRole('button', { name: 'Settings' }).click();
+    const name = 'Open .buddy files with Desktop Buddies', b = r.page.getByRole('switch', { name });
+    const order = await r.page.evaluate(n => {
+      const at = el => [...document.querySelectorAll('.panel *')].indexOf(el);
+      return [at(document.querySelector('[role=radiogroup]')), at(document.querySelector(`[aria-label="${n}"]`)), at(document.querySelector('[aria-label="Walk on windows"]'))];
+    }, name);
+    ok('Open .buddy files: off at first, under Theme and above Walk on windows', await b.getAttribute('aria-checked') === 'false' && order[0] >= 0 && order[0] < order[1] && order[1] < order[2], order);
+    const fits = await r.page.evaluate(() => { const p = document.querySelector('.panel').getBoundingClientRect(); return p.top >= 0 && p.bottom <= innerHeight && p.right <= innerWidth; });
+    ok('and the panel stays inside the window', fits);
+    await b.click();
+    await r.page.waitForFunction(n => document.querySelector(`[aria-label="${n}"]`).getAttribute('aria-checked') === 'true', name);
+    ok('on reaches the exe and comes back', await r.hub.evaluate(() => H.state().files && H.exe().fileAssoc));
+    await b.click();
+    await r.page.waitForFunction(n => document.querySelector(`[aria-label="${n}"]`).getAttribute('aria-checked') === 'false', name);
+    ok('off reaches the exe and comes back', await r.hub.evaluate(() => !H.state().files && !H.exe().fileAssoc));
+    await r.ctx.close();
+  }
   { /* getting ready */
     const r = await open(LIBRARY.few, { extra: { stuck: true } });
     await r.page.waitForSelector('.win[data-ready="false"]');

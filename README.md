@@ -21,7 +21,7 @@ The downloads aren't signed. Windows may say "Windows protected your PC": click 
 - **The Manager** opens on first start, and from the tray icon near the clock. Call buddies out and send them home, call more copies, and import, export or delete them. Settings can keep buddies off windows or off one program, and start the app with Windows.
 - **On the desktop,** one world spans all your monitors. Buddies walk on your windows and ride along when you move one. Drag them, throw them, and right-click one to give her a treat, have her chase your mouse, or call another copy.
 - **The Maker,** from New buddy in the Manager, makes a buddy from one picture or a full set of poses. Write what she says for each mood and moment, set how she sits on floors, walls and ceilings, and try her out on your screen. Pip, the sample, shows what a full set can do.
-- **Sharing:** a buddy is one `.buddy` file. Export her from the Manager, and Import adds one.
+- **Sharing:** a buddy is one `.buddy` file. Export her from the Manager, and Import adds one. Turn on Open .buddy files with Desktop Buddies in Settings, and a double-click on one adds her too.
 - **Shimeji:** Import takes a Shimeji folder and makes a buddy of it.
 
 ## Community

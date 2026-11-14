@@ -11,6 +11,9 @@
 #   refused: a link, an over-long line, bad JSON, a key too many; and nothing wedged after
 #   paused, hidden, Not now until Remove, the MCP server over stdio, then off again, then a flood of
 #   requests to fill every reply slot twice
+#   files: Open .buddy files turned on in Settings writes this user's .buddy keys, a shell open of a
+#   fresh .buddy imports her into the running app, and off removes both keys. Left alone if this
+#   user already has .buddy keys, so a PC's own are never touched.
 # Desktop Buddies must not be running: a request would reach it. Processes end only by their own PID.
 #
 # -SetupOnly runs the checks and stops before the first launch: no window, no process, no mouse. Any
@@ -86,6 +89,13 @@ function Keys($o) { return (@($o.PSObject.Properties.Name) | Sort-Object) -join 
 
 # What the cleanup reads. Each stays empty until the step that makes it.
 $appProc = $null; $tmp = ''; $runId = ''; $log = ''; $coldLog = ''
+# This user's .buddy keys, as the exe writes them. $assocTouched once the run may have written them,
+# which it does only where neither was there before.
+$extKey = 'HKCU:\Software\Classes\.buddy'
+$progId = 'dev.exvanitas.desktop-buddies.buddy'
+$progKey = "HKCU:\Software\Classes\$progId"
+$openKey = "$progKey\shell\open\command"
+$assocTouched = $false
 
 try {
   # ---------- the parameters, and nothing started yet
@@ -446,6 +456,54 @@ try {
     Note "flood: the newest replies say $($errs -join ', ')"
     $script:flooding = $false
 
+    # ---------- .buddy files: the switch in Settings, a double-click, and off again
+    function Assoc {
+      return @{
+        ext = (Get-ItemProperty -LiteralPath $extKey -ErrorAction SilentlyContinue).'(default)'
+        cmd = (Get-ItemProperty -LiteralPath $openKey -ErrorAction SilentlyContinue).'(default)'
+        there = @((Test-Path -LiteralPath $extKey), (Test-Path -LiteralPath $progKey))
+      }
+    }
+    # "<this run's exe>" "%1". The exe names itself as Windows started it, which can be the temp
+    # folder's short form, so the long form or this run's own folder and the exe's name will do.
+    function Our-Command($c) {
+      if ("$c" -ceq ('"' + $runExe + '" "%1"')) { return $true }
+      $m = [regex]::Match("$c", '^"([^"]+)" "%1"$')
+      return $m.Success -and $m.Groups[1].Value.EndsWith("\$runId\bin\$(Split-Path $runExe -Leaf)", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $m.Groups[1].Value -PathType Leaf)
+    }
+    $was = Assoc
+    if ($was.there[0] -or $was.there[1]) {
+      Expect 'files.none_before' $false "this user already has .buddy keys, left alone: $($was.ext) $($was.cmd)"
+    } else {
+      Expect 'files.none_before' $true ''
+      [void](Task 'files_off_at_first' @{ 'do' = 'state' })
+      Expect 'files.off_at_first' ($script:did -and $script:did.Groups[2].Value -match '"files":false') ''
+      $script:assocTouched = $true
+      if (Task 'files_on' @{ 'do' = 'files'; on = $true }) {
+        $a = Assoc
+        Expect 'files.ext_names_ours' ($a.ext -ceq $progId) "$($a.ext)"
+        Expect 'files.open_command' (Our-Command $a.cmd) "$($a.cmd)"
+        # A buddy the library doesn't have: the sample with a new character id and name, so she's
+        # new and nobody is asked about.
+        $freshName = 'Clicked Open'
+        $json = [IO.File]::ReadAllText($script:SampleBuddy, [Text.Encoding]::UTF8)
+        foreach ($piece in '"name":"Olive"', '"character":"colive0seed"') { if (-not $json.Contains($piece)) { throw "the sample buddy has no $piece to change" } }
+        $json = $json.Replace('"name":"Olive"', '"name":"' + $freshName + '"').Replace('"character":"colive0seed"', '"character":"e2e' + [guid]::NewGuid().ToString('n').Substring(0, 12) + '"')
+        $fresh = Join-Path $tmp 'double-click.buddy'
+        [IO.File]::WriteAllText($fresh, $json, (New-Object Text.UTF8Encoding $false))
+        $imports = Count-In $log 'launch: a file, imported'
+        # As driver.ps1's shell-open: Windows finds the app by the keys, as a double-click does.
+        Start-Process -FilePath $fresh
+        Expect 'files.shell_open_imported' (Wait-For 'the import' { (Count-In $log 'launch: a file, imported') -gt $imports } 20) "$imports imports before, $(Count-In $log 'launch: a file, imported') after"
+        [void](Task 'files_she_came_in' @{ 'do' = 'state' })
+        Expect 'files.in_the_library' ($script:did -and $script:did.Groups[2].Value -match ('"names":\[[^\]]*"' + $freshName + '"')) ''
+      }
+      if (Task 'files_off' @{ 'do' = 'files'; on = $false }) {
+        $a = Assoc
+        Expect 'files.keys_gone' (-not $a.there[0] -and -not $a.there[1]) ".buddy $($a.there[0]), ProgID $($a.there[1])"
+      }
+    }
+
     # ---------- what every reply held, and what the log says
     Expect 'launches.all_exited_0' ($badExits.Count -eq 0) "$($script:sentCount) requests, $($badExits.Count) with another code$(if ($badExits.Count) { ': ' + (($badExits | Select-Object -First 5) -join '; ') })"
     Expect 'replies.only_allowed_fields' ($badFields.Count -eq 0) (($badFields | Select-Object -First 5) -join '; ')
@@ -476,6 +534,13 @@ try {
       } while ($left.Count -and $t.Elapsed.TotalSeconds -lt 15)
       foreach ($s in $left) { Stop-Process -Id $s.ProcessId -Force -ErrorAction SilentlyContinue }
       Expect 'end.no_strays' ($left.Count -eq 0) "$($left.Count) left after $($t.ElapsedMilliseconds) ms$(if ($left.Count) { ', stopped by PID' })"
+    }
+  }
+  # The run turned it on only where neither key was there before, so any left are this run's own.
+  Tidy 'association' {
+    if ($assocTouched -and ((Test-Path -LiteralPath $extKey) -or (Test-Path -LiteralPath $progKey))) {
+      foreach ($k in $extKey, $progKey) { if (Test-Path -LiteralPath $k) { Remove-Item -LiteralPath $k -Recurse -Force } }
+      Expect 'end.association_left' $false 'the run left .buddy keys behind, removed here'
     }
   }
   Tidy 'logs' {

@@ -2,6 +2,7 @@
    on the real Manager view and the real bubble. api-probe.ts wires it to the app; api-e2e.ps1 drives. */
 import type { HubState } from '../src/manager-api';
 import { SETTING, askWords } from '../src/manager/asking';
+import { FILES_SWITCH } from '../src/manager/settings';
 
 /* UTF-8 bytes as hex: what the driver compares, byte for byte. */
 export const hex = (s: string) => [...new TextEncoder().encode(s)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -23,6 +24,7 @@ export type Task =
   | { n: number; do: 'on'; on: boolean }
   | { n: number; do: 'pause'; on: boolean }
   | { n: number; do: 'hide'; on: boolean }
+  | { n: number; do: 'files'; on: boolean }
   | { n: number; do: 'look'; app: string }
   | { n: number; do: 'forget'; app: string }
   | { n: number; do: 'answer'; app: string; allow: boolean }
@@ -35,8 +37,9 @@ export interface ManagerIO {
   until(f: (s: HubState) => boolean): Promise<boolean>;
 }
 
-/* What the hub says about what a task touches. Names are the driver's own, all plain ASCII. */
-const facts = (s: HubState | null) => s ? { on: s.api.on, paused: s.paused, hidden: s.hidden, asking: s.api.asking, apps: s.api.apps } : null;
+/* What the hub says about what a task touches. Apps' names are the driver's own, all plain ASCII;
+   buddies' names come from files, and ascii() escapes them in the log. */
+const facts = (s: HubState | null) => s ? { on: s.api.on, paused: s.paused, hidden: s.hidden, asking: s.api.asking, apps: s.api.apps, files: s.files, names: s.buddies.map(b => b.name) } : null;
 
 export async function perform(t: Task, io: ManagerIO): Promise<Done> {
   const { root } = io;
@@ -73,6 +76,12 @@ export async function perform(t: Task, io: ManagerIO): Promise<Done> {
     const c = await inSettings(p => buttonIn(p, SETTING), 'switch');
     if (!c.clicked) return { ok: false, detail: c.why };
     return done(s => s.api.on === t.on);
+  }
+  if (t.do === 'files') {
+    if (now.files === t.on) return { ok: true, detail: { already: true, hub: facts(now) } };
+    const c = await inSettings(p => buttonIn(p, FILES_SWITCH), 'files switch');
+    if (!c.clicked) return { ok: false, detail: c.why };
+    return done(s => s.files === t.on);
   }
   if (t.do === 'look') {
     const ask = askFor(root, t.app);
