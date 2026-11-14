@@ -525,12 +525,19 @@ await group('window', async () => {
     ok('and an outside click closes it', await r.page.locator('.pop > *').count() === 0);
     await clean(r, 'menus'); }
   { const r = await h.open({ fixture: 'olive' });
+    const stand = () => r.page.evaluate(() => H.maker.current().poses.stand?.frames.length ?? 0);
+    const had = await stand();
     await dropFiles(r.page, [png('cat.png')]);
-    await r.page.waitForSelector('.ask');
-    const words = await r.page.locator('.ask button').allTextContents();
-    ok('an unnamed image asks where it goes', words.includes('New main image') && words.includes('A new buddy'), words);
-    await r.page.keyboard.press('Escape');
-    ok('and Escape leaves everything as it was', await count(r.page) === 1 && await r.page.locator('.ask').count() === 0);
+    await r.page.waitForSelector('.placed:not([hidden])');
+    const words = await r.page.locator('.placed button').allTextContents();
+    ok('an unnamed image goes to the open pose at once, and nothing asks', await stand() === had + 1 && await r.page.locator('[role=dialog]').count() === 0, await stand());
+    ok('the note offers Undo and the other places', words.join() === 'Undo,New main image,A new buddy', words);
+    ok('it doesn\'t take the keyboard', await r.page.evaluate(() => !document.activeElement?.closest('.placed')));
+    const box = await r.page.locator('.placed').boundingBox(), size = r.page.viewportSize();
+    ok('it sits inside the window', box && box.x >= 0 && box.y >= 0 && box.x + box.width <= size.width && box.y + box.height <= size.height, JSON.stringify(box));
+    await r.page.locator('.placed button', { hasText: 'Undo' }).click();
+    await r.page.waitForFunction(n => (H.maker.current().poses.stand?.frames.length ?? 0) === n, had);
+    ok('and Undo leaves everything as it was', await count(r.page) === 1 && await stand() === had && await r.page.locator('.placed').isHidden());
     const veil = () => r.page.locator('.veil').isHidden();
     await r.page.evaluate(() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'a.png', { type: 'image/png' })); document.body.dispatchEvent(new DragEvent('dragenter', { dataTransfer: d, bubbles: true })); });
     ok('a drag with files raises the veil', !await veil());

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Pictures go straight in.** In the Maker, a picture with no pose in its name goes to the pose you have open, or makes a new buddy, without asking where. A note says where it went, with Undo and the other places it could go. Shimeji images make a new buddy at once, with Undo too.
 - **Mute.** Settings has Buddies talk, and each buddy's menu has Talks, in the Manager and when you right-click her. Off, she keeps her own lines to herself. Lines other apps send still show; you choose those per app in Settings.
 - **Show names.** A switch in Settings hides every buddy's name tag on the desktop.
 - **No "Upload files to this site?" for a Shimeji.** Importing a Shimeji no longer opens a folder picker, which made Windows ask that. Drag the folder in, or pick every image in its img folder.

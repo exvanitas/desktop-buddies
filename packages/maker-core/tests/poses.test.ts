@@ -509,3 +509,14 @@ test('across sizes, scales and hand-set offsets, one step either way and back re
   }
   assert.ok(checked > 400, String(checked));
 });
+
+test('restorePose puts a pose back as it was, or takes it away', async () => {
+  const h = await started([buddy({ id: 'p0', poses: { walk: { frames: [frame('w1')], fps: 6, scale: 1 } } })]);
+  const p = h.maker.current()!, was = p.poses.walk!, copy = { ...was, frames: [...was.frames] };
+  was.frames.push(frame('w2'));
+  h.maker.restorePose(p, 'walk', copy);
+  assert.deepStrictEqual(p.poses.walk!.frames.map(f => f.src), [png('w1')]);
+  p.poses.sit = { frames: [frame('s')], fps: 4, scale: 1 };
+  h.maker.restorePose(p, 'sit', undefined);
+  assert.ok(!('sit' in p.poses));
+});

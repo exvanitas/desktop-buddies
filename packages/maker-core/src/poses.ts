@@ -136,6 +136,13 @@ export function createPoses(s: Session, deps: MakerDeps) {
     async measureLift(p: MakerBuddy, key: PoseKey) { const ps = framed(p, key); if (ps) await measure(ps.frames); },
     setPoseLift(p: MakerBuddy, key: PoseKey, px: number) { if (!lift(p, key, px)) return; s.save(); s.changed({ scope: 'field' }); },
     clearPose(p: MakerBuddy, key: PoseKey) { delete p.poses[key]; s.save(true); poses(p); },
+    /* Undo for frames just added: the pose as it was, or none, if she's still here. Pass a copy taken
+       before, since adding frames adds to the same list. */
+    restorePose(p: MakerBuddy, key: PoseKey, was: Pose | undefined) {
+      if (!s.state.pets.includes(p)) return;
+      if (was) p.poses[key] = was; else delete p.poses[key];
+      s.save(true); poses(p);
+    },
     setSpeed(p: MakerBuddy, key: PoseKey, fps: number) { const ps = p.poses[key]; if (!ps || !(fps >= SPEED.min && fps <= SPEED.max)) return; ps.fps = fps; s.save(); s.changed({ scope: 'field' }); },
     setScale(p: MakerBuddy, key: PoseKey, scale: number) { const ps = p.poses[key]; if (!ps || !(scale >= SCALE.min && scale <= SCALE.max)) return; ps.scale = scale; s.save(); s.changed({ scope: 'field' }); },
     /* Rescales every pose so the body is the size it is in the main image. */

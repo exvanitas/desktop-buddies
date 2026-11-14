@@ -34,6 +34,38 @@ test('a buddy dropped from the window stays in the library', async () => {
   assert.ok(exe.files.has('library/c1/buddy.json'), 'still there');
 });
 
+test('a buddy made here and taken back by Undo goes from the library too', async () => {
+  const exe = createDisk(), r = await hubOn(exe), store = storeOn(r);
+  const pet = { ...small('c1'), id: 'c1' }, state = { pets: [pet], bubbles: true, chatter: 'normal' as const, names: true };
+  await store.save(state);
+  assert.ok(exe.files.has('library/c1/buddy.json'));
+  store.takeBack([pet]);
+  await store.save({ ...state, pets: [] });
+  await store.idle();
+  for (let i = 0; i < 5; i++) await new Promise(t => setTimeout(t));
+  assert.ok(!exe.files.has('library/c1/buddy.json'), 'gone');
+});
+
+test('Undo before her first write never reaches the library', async () => {
+  const exe = createDisk(), r = await hubOn(exe), store = storeOn(r);
+  const pet = { ...small('c1'), id: 'c1' };
+  store.takeBack([pet]);
+  await store.save({ pets: [], bubbles: true, chatter: 'normal', names: true });
+  assert.ok(!exe.files.has('library/c1/buddy.json'));
+});
+
+test('a buddy opened in a window is never deleted by Undo there', async () => {
+  const exe = createDisk(), r = await hubOn(exe), store = storeOn(r);
+  const pet = { ...small('c1'), id: 'c1' }, state = { pets: [pet], bubbles: true, chatter: 'normal' as const, names: true };
+  await store.save(state);
+  const other = storeOn(await hubOn(exe), 'c1');
+  const [opened] = (await other.load()).pets!;
+  other.takeBack([opened!]);
+  await other.save({ ...state, pets: [] });
+  await other.idle();
+  assert.ok(exe.files.has('library/c1/buddy.json'), 'opened, not made, in that window');
+});
+
 test('a save rejects when it can\'t land, for whoever awaits it', async () => {
   const exe = createDisk(), r = await hubOn(exe), store = storeOn(r);
   exe.failUntil('data_write', 'disk full', () => true);

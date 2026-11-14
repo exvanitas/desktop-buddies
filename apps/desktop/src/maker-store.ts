@@ -53,8 +53,10 @@ interface Slot {
   failure: Problem | null; conflict: 'deleted' | 'replaced' | null;
   /* her id in this window's state */
   pet: string; name: string;
+  /* made in this window, not opened in it, and whether Undo has taken her back since */
+  made: boolean; undone?: true;
 }
-const fresh = (pet: string, name: string): Slot => ({ base: null, rev: null, out: null, refused: null, failure: null, conflict: null, pet, name });
+const fresh = (pet: string, name: string, made = false): Slot => ({ base: null, rev: null, out: null, refused: null, failure: null, conflict: null, pet, name, made });
 const pending = (s: Slot) => !!s.out && !s.out.late;
 interface Shown { problem: Problem; actions: SaveAction[] }
 
@@ -136,7 +138,7 @@ export function createHubStore(io: HubStoreIO) {
         else if (a.value && 'conflict' in a.value) { slot.conflict = a.value.conflict; slot.failure = changedElsewhere(slot.name, a.value.conflict); slot.refused = text; }
         else { slot.base = text; slot.failure = null; slot.refused = null; if (a.value) slot.rev = a.value.rev; }
       }
-      for (const [c, s] of slots) if (!s.out && !latest?.pets.some(p => p.character === c)) slots.delete(c);
+      for (const [c, s] of slots) if (!s.out && !latest?.pets.some(p => p.character === c)) drop(c, s);
       if (dirty && !stop) send();
       else { tell(); settle(); }
     });
@@ -155,10 +157,10 @@ export function createHubStore(io: HubStoreIO) {
       if (!p.character || here.has(p.character)) p.character = newCharacter();
       here.add(p.character);
     }
-    for (const [c, s] of slots) if (!here.has(c) && !s.out) slots.delete(c);
+    for (const [c, s] of slots) if (!here.has(c) && !s.out) drop(c, s);
     for (const p of S.pets) {
       const c = p.character!;
-      if (!slots.has(c)) slots.set(c, fresh(p.id, named(p)));
+      if (!slots.has(c)) slots.set(c, fresh(p.id, named(p), true));
       const slot = slots.get(c)!;
       slot.pet = p.id; slot.name = named(p);
       if (slot.conflict && !leaving) continue;
@@ -171,6 +173,16 @@ export function createHubStore(io: HubStoreIO) {
       attempt(slot, text, { k: 'maker-save', id: c, name: slot.name, file: write(p), rev: slot.rev, session: io.session });
     }
     tell(); settle();
+  }
+
+  /* She's left this window, and stays in the library, unless she was made here and Undo took her
+     back: then she goes from the library too, as the very her this window saved. The hub refuses
+     that once anything else has changed her. One the library has nothing of, or that changed
+     elsewhere, is left alone. */
+  function drop(c: string, s: Slot) {
+    slots.delete(c);
+    if (!s.made || !s.undone || s.rev === null || s.conflict || gonePage) return;
+    post({ k: 'delete', id: c, rev: s.rev }, () => {});
   }
 
   /* Everyone waiting to hear hears, once nothing's left out there. */
@@ -240,7 +252,12 @@ export function createHubStore(io: HubStoreIO) {
 
   const same = (S: MakerState) => S.pets.every(p => !!p.character && slots.get(p.character)?.base === canon(p));
 
+  /* Marked now, and gone from the library once her slot goes, after any write still out. */
+  function takeBack(pets: MakerBuddy[]) {
+    for (const p of pets) { const slot = p.character ? slots.get(p.character) : undefined; if (slot?.made && slot.pet === p.id) slot.undone = true; }
+  }
   const store: MakerStore = {
+    takeBack,
     async load(): Promise<Saved> {
       const ids = latest ? [...slots].map(([c, s]) => [c, s.pet] as const) : io.open ? [[io.open, handle()] as const] : [];
       const each = await Promise.all(ids.map(([c, pet]) => fetched(c, pet)));
@@ -260,7 +277,7 @@ export function createHubStore(io: HubStoreIO) {
   };
 
   return {
-    ...store, flush, lastGasp, pause, discard,
+    ...store, takeBack, flush, lastGasp, pause, discard,
     /* Nothing waiting to go and nothing out. */
     settled: () => !dirty && !stop && !cap && ![...slots.values()].some(pending),
     /* When every write sent has been answered, however late. */

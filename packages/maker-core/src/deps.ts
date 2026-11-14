@@ -12,8 +12,10 @@ export interface MakerState { pets: MakerBuddy[]; bubbles: boolean; chatter: Cha
 /* What a store may hand back: anything from nothing at all to a state saved by an older Maker. */
 export type Saved = Partial<MakerState>;
 
-/* Both may reject. A failed load starts empty, and a failed save warns once. */
-export interface MakerStore { load(): Promise<Saved>; save(state: MakerState): Promise<void> }
+/* Both may reject. A failed load starts empty, and a failed save warns once. `takeBack` hears of
+   buddies just made that Undo took away, before the save without them: a store that keeps each
+   buddy apart from the state, as the app's does, forgets them too. */
+export interface MakerStore { load(): Promise<Saved>; save(state: MakerState): Promise<void>; takeBack?(pets: MakerBuddy[]): void }
 
 /* A browser File fits this as it is. */
 export interface MakerFile { name: string; type: string; webkitRelativePath?: string; text(): Promise<string> }

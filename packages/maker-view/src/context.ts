@@ -62,8 +62,9 @@ export interface View {
   copy(text: string, what: string): void;
   /* Starts work the page has to wait for, from the moment it's asked for. Nothing if it's refused. */
   busy<T>(work: () => Promise<T>): Promise<T | undefined>;
-  /* an image, or images, with no pose in their names: ask what they're for */
-  askAbout(files: File[]): void;
+  /* An image, or images, with no pose in their names: they go where they most likely belong, with a
+     note offering Undo and the other places. It's work: pass it to busy. */
+  place(files: File[]): Promise<void>;
 }
 
 export const sheetOf = (page: Page): Moment | null => typeof page === 'number' ? MOMENTS[page - 1]! : null;

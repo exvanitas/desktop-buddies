@@ -41,6 +41,21 @@ export function createRoster(s: Session, deps: MakerDeps) {
     addPet, addFromSrc,
     async addSample(kind: SampleKind) { return addPet(await samples.build(kind)); },
     select(id: string) { s.selected = id; s.openPose = null; all(); },
+    /* Undo for buddies just made: they go, and whoever was open before is again, if she's still here. */
+    takeBack(ids: string[], open: string | null) {
+      const S = s.state, gone = new Set(ids);
+      const going = S.pets.filter(p => gone.has(p.id)); if (!going.length) return;
+      deps.store.takeBack?.(going);
+      S.pets = S.pets.filter(p => !gone.has(p.id));
+      s.selected = S.pets.some(p => p.id === open) ? open : S.pets[0] ? S.pets[0].id : null; s.openPose = null;
+      s.save(true); all();
+    },
+    /* Undo for a new main image: hers as it was, if she's still here. */
+    restoreMain(p: MakerBuddy, frame: Frame, ref: ImageRef | undefined) {
+      if (!s.state.pets.includes(p)) return;
+      p.base = frame; if (ref) p.ref = ref; else delete p.ref;
+      s.save(true); all();
+    },
     /* the selected buddy */
     remove() {
       const p = s.current(); if (!p) return;

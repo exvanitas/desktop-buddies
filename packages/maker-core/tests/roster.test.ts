@@ -306,3 +306,41 @@ for (const way of ['setMainImage', 'pasteImage'] as const) {
     assert.match(h.toasts.at(-1)!, way === 'setMainImage' ? /isn't here any more.*still on your disk/ : /isn't here any more.*Paste it again/);
   });
 }
+
+/* Undo, for what a picture did on its own. */
+test('takeBack: the buddies just made go, and whoever was open is again', async () => {
+  const h = await started(pets(2));
+  h.maker.select('p1');
+  const a = h.maker.addPet({ base: frame('a') })!, b = h.maker.addPet({ base: frame('b') })!;
+  const saves = h.saves();
+  h.maker.takeBack([a.id, b.id], 'p1');
+  assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['p0', 'p1']);
+  assert.strictEqual(h.maker.selected, 'p1');
+  assert.strictEqual(h.saves(), saves + 1);
+  h.maker.takeBack([a.id], 'p1');
+  assert.strictEqual(h.saves(), saves + 1, 'nobody to take back, nothing to save');
+});
+
+test('takeBack with the one who was open gone opens the first, or nobody', async () => {
+  const h = await started(pets(1));
+  const a = h.maker.addPet({ base: frame('a') })!;
+  h.maker.takeBack([a.id], 'gone');
+  assert.strictEqual(h.maker.selected, 'p0');
+  const solo = await started([]);
+  const b = solo.maker.addPet({ base: frame('b') })!;
+  solo.maker.takeBack([b.id], null);
+  assert.strictEqual(solo.maker.selected, null);
+});
+
+test('restoreMain puts her main image back, with or without its ref', async () => {
+  const h = await started([buddy({ id: 'p0' })]);
+  const p = h.maker.current()!, { base, ref } = p;
+  p.base = frame('new'); p.ref = { ...REF, w: 1 };
+  h.maker.restoreMain(p, base, ref);
+  assert.strictEqual(p.base, base); assert.strictEqual(p.ref, ref);
+  h.maker.restoreMain(p, base, undefined);
+  assert.ok(!('ref' in p));
+  const gone = buddy({ id: 'gone' }), saves = h.saves();
+  h.maker.restoreMain(gone, frame('x'), undefined);
+  assert.strictEqual(h.saves(), saves, 'not one of hers');
+});

@@ -1519,6 +1519,9 @@ const dropEvent = (files: File[], over?: Element | null) => {
   (over || document.body).dispatchEvent(e);
   return e;
 };
+/* The note a picture leaves, with Undo and the other places it could go: null when there's none. */
+const placed = (v: Awaited<ReturnType<typeof mount>>) => v.shown(v.q('.placed')) ? v.q('.placed [role=status]')!.textContent : null;
+const placedChoices = (v: Awaited<ReturnType<typeof mount>>) => v.words('.placed button');
 const dragEvent = (type: string, types = ['Files']) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'dataTransfer', { value: { types } }); document.body.dispatchEvent(e); return e; };
 
 test('a drag with files raises the veil, and text doesn\'t', async () => {
@@ -1581,57 +1584,92 @@ test('on Look, a named image dropped elsewhere goes by its name', async () => {
   await tick();
   assert.strictEqual(v.pet().base.src, before);
   assert.strictEqual(v.pet().poses.walk!.frames.length, 1);
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), null);
 });
 
-test('on Look, an unnamed image dropped elsewhere asks', async () => {
+test('on Look, an unnamed image dropped elsewhere is frames for the open pose, and says so', async () => {
   const v = await mount();
   v.sheet('look');
   const before = v.pet().base.src;
   dropEvent([file('cat.png')], v.q('.look-form'));
   await tick();
   assert.strictEqual(v.pet().base.src, before);
-  assert.ok(v.q('.ask'));
+  assert.strictEqual(v.pet().poses.stand!.frames.length, 1);
+  assert.strictEqual(placed(v), 'Added a frame to Stand.');
 });
 
-test('an image with no pose in its name asks where it goes, and each answer does it', async () => {
+test('an image with no pose in its name goes to the open pose at once, and the note offers Undo and the rest', async () => {
   const v = await mount({ pets: [olive()] });
   v.pickPose('sit');
   dropEvent([file('cat.png')]);
   await tick();
-  assert.match(v.q('.ask b')!.textContent!, /Where does cat\.png go\?/);
-  assert.deepStrictEqual(v.words('.ask button'), ['Frames for Sit', 'New main image', 'A new buddy']);
-  v.press('Frames for Sit', '.ask');
-  await tick();
+  gone(v.q('[role=dialog]'), 'nothing asks');
   assert.strictEqual(v.pet().poses.sit!.frames.length, 1);
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), 'Added a frame to Sit.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'New main image', 'A new buddy']);
+  assert.ok(!document.activeElement?.closest('.placed'), 'it never takes the keyboard');
+  v.press('Undo', '.placed');
+  await tick();
+  assert.strictEqual(v.pet().poses.sit, undefined, 'the pose had no frames, and has none again');
+  assert.strictEqual(placed(v), null);
   dropEvent([file('dog.png')]);
   await tick();
-  v.press('New main image', '.ask');
+  v.press('New main image', '.placed');
   await tick();
+  assert.strictEqual(v.pet().poses.sit, undefined, 'not frames as well');
   assert.strictEqual(v.pet().base.src, png('dog.png'));
-  dropEvent([file('fox.png')]);
-  await tick();
-  v.press('A new buddy', '.ask');
+  assert.strictEqual(placed(v), "That's the new main image.");
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'Frames for Sit', 'A new buddy']);
+  v.press('A new buddy', '.placed');
   await tick();
   assert.strictEqual(v.maker.state.pets.length, 2);
+  assert.strictEqual(v.maker.state.pets[0]!.base.src, png('base'), 'her main image is hers again');
+  assert.strictEqual(placed(v), 'Made a new buddy.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'Frames for Sit', 'New main image']);
+  v.press('Undo', '.placed');
+  await tick();
+  assert.strictEqual(v.maker.state.pets.length, 1);
+  assert.strictEqual(v.pet().name, 'Ann', 'and she is open again');
+});
+
+test('frames added to a pose that had some: Undo leaves the ones it had', async () => {
+  const v = await mount({ pets: [olive()] });
+  v.pickPose('walk');
+  dropEvent([file('a.png'), file('b.png')]);
+  await tick();
+  assert.strictEqual(v.pet().poses.walk!.frames.length, 4);
+  assert.strictEqual(placed(v), 'Added 2 frames to Walk.');
+  v.press('Undo', '.placed');
+  await tick();
+  assert.deepStrictEqual(v.pet().poses.walk!.frames.map(f => f.src), [png('w1'), png('w2')]);
 });
 
 test('several unnamed images can\'t be one main image', async () => {
   const v = await mount({ pets: [olive()] });
   dropEvent([file('a.png'), file('b.png')]);
   await tick();
-  assert.match(v.q('.ask b')!.textContent!, /Where do these 2 go\?/);
-  assert.deepStrictEqual(v.words('.ask button'), ['Frames for Stand', 'New buddies, one each']);
+  assert.strictEqual(placed(v), 'Added 2 frames to Stand.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'New buddies, one each']);
+  v.press('New buddies, one each', '.placed');
+  await tick();
+  assert.strictEqual(v.maker.state.pets.length, 3);
+  assert.strictEqual(placed(v), 'Made 2 new buddies.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'Frames for Stand']);
 });
 
-test('with a word picked, there\'s no pose to give frames to', async () => {
+test('with a word picked, there\'s no pose to give frames to, so it\'s a new buddy', async () => {
   const v = await mount();
   v.sheet(4);
   v.click('.say[data-sit="hello"]');
   dropEvent([file('cat.png')]);
   await tick();
-  assert.deepStrictEqual(v.words('.ask button'), ['New main image', 'A new buddy']);
+  assert.strictEqual(v.maker.state.pets.length, 2);
+  assert.strictEqual(placed(v), 'Made a new buddy.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'New main image']);
+  v.press('New main image', '.placed');
+  await tick();
+  assert.strictEqual(v.maker.state.pets.length, 1);
+  assert.strictEqual(v.pet().base.src, png('cat.png'));
 });
 
 test('named and unnamed together: the named land, and the rest are reported', async () => {
@@ -1640,7 +1678,7 @@ test('named and unnamed together: the named land, and the rest are reported', as
   await tick();
   assert.ok(v.pet().poses.walk);
   assert.match(v.q('.toast')!.textContent!, /Skipped 1 with no pose in the name/);
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), null);
 });
 
 test('a buddy file and a Shimeji set dropped come in as buddies', async () => {
@@ -1650,8 +1688,6 @@ test('a buddy file and a Shimeji set dropped come in as buddies', async () => {
   await tick();
   assert.strictEqual(v.pet().name, 'Quill');
   dropEvent(['shime1.png', 'shime2.png', 'shime3.png', 'shime4.png'].map(n => file(n)));
-  await tick();
-  v.press('A new buddy', '.ask');
   await tick();
   assert.strictEqual(v.maker.state.pets.length, 3);
 });
@@ -1677,12 +1713,16 @@ test('a pasted image makes a buddy when there is none', async () => {
   assert.strictEqual(v.maker.state.pets.length, 1);
 });
 
-test('a pasted image asks where it goes on a sheet', async () => {
+test('a pasted image on a sheet is frames for the open pose, with Undo', async () => {
   const v = await mount({ pets: [olive()] });
   pasteEvent(file('clip.png'));
   await tick();
-  assert.deepStrictEqual(v.words('.ask button'), ['Frames for Stand', 'New main image', 'A new buddy']);
+  assert.strictEqual(v.pet().poses.stand!.frames.length, 4);
+  assert.deepStrictEqual(placedChoices(v), ['Undo', 'New main image', 'A new buddy']);
   assert.strictEqual(v.pet().base.src, png('base'));
+  v.press('Undo', '.placed');
+  await tick();
+  assert.strictEqual(v.pet().poses.stand!.frames.length, 3);
 });
 
 test('on Look a paste swaps the main image, and in a field it\'s just text', async () => {
@@ -2034,7 +2074,7 @@ test('with no buddy a dropped image makes exactly one', async () => {
   dropEvent([file('fern.png')]);
   await tick();
   assert.strictEqual(v.maker.state.pets.length, 1);
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), null, 'with nobody open, there is nothing to take it back to');
 });
 
 test('a named image dropped on the tray is a frame, and only that', async () => {
@@ -2062,7 +2102,7 @@ test('on the main image, one image is the main image whatever its name, and seve
   dropEvent([file('walk_1.png')], v.q('.stage'));
   await tick();
   assert.strictEqual(v.pet().base.src, png('walk_1.png'));
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), null);
   assert.strictEqual(v.pet().poses.walk, undefined);
   dropEvent([file('walk_1.png'), file('walk_2.png')], v.q('.stage'));
   await tick();
@@ -2087,15 +2127,37 @@ test('a paste before the Maker is ready does nothing', async () => {
   assert.strictEqual(v.maker.state.pets.length, 1);
 });
 
-test('the choice for a drop lands on its own pose, and closes without moving the keyboard', async () => {
+test('the note\'s choices are about the pose the picture came for, whatever is open since', async () => {
   const v = await mount({ pets: [olive()] });
   v.pickPose('sit');
   dropEvent([file('cat.png')]);
   await tick();
-  v.maker.pickPose('walk');
-  v.press('Frames for Sit', '.ask');
+  v.press('New main image', '.placed');
+  await tick();
+  v.pickPose('walk');
+  v.press('Frames for Sit', '.placed');
   await tick();
   assert.strictEqual(v.pet().poses.sit!.frames.length, 1);
+  assert.strictEqual(v.pet().poses.walk!.frames.length, 2);
+  assert.strictEqual(v.pet().base.src, png('base'));
+});
+
+test('the note goes by itself, but not from under the pointer or the keyboard', async () => {
+  const later: (() => void)[] = [];
+  const v = await mount({ pets: [olive()], io: { after: (_ms, f) => { later.push(f); return () => { const i = later.indexOf(f); if (i >= 0) later.splice(i, 1); }; } } });
+  dropEvent([file('cat.png')]);
+  await tick();
+  const run = () => { for (const f of later.splice(0)) f(); };
+  v.q('.placed')!.dispatchEvent(new Event('pointerenter'));
+  run();
+  assert.strictEqual(placed(v), 'Added a frame to Stand.', 'the pointer is on it');
+  v.q('.placed')!.dispatchEvent(new Event('pointerleave'));
+  v.q<HTMLButtonElement>('.placed button')!.focus();
+  run();
+  assert.notStrictEqual(placed(v), null, 'the keyboard is on it');
+  v.q<HTMLButtonElement>('.placed button')!.blur();
+  run();
+  assert.strictEqual(placed(v), null);
 });
 
 test('a pet with poses but empty frames counts as no frames', async () => {
@@ -2223,13 +2285,18 @@ test('a folder still being read when the window closes changes nothing', async (
   assert.strictEqual(a.poses.walk, undefined);
 });
 
-test('a choice left open closes when the buddy changes', async () => {
+test('a note stays when the buddy changes, and its Undo is still about hers', async () => {
   const v = await mount({ pets: twoPets() });
   dropEvent([file('cat.png')]);
   await tick();
-  assert.ok(v.q('.ask'));
+  const a = v.pet();
+  assert.strictEqual(a.poses.stand!.frames.length, 1);
   v.maker.select('b');
-  gone(v.q('.ask'));
+  assert.notStrictEqual(placed(v), null);
+  v.press('Undo', '.placed');
+  await tick();
+  assert.strictEqual(a.poses.stand, undefined);
+  assert.strictEqual(v.pet().name, 'Bo');
 });
 
 test('Use the defaults, cancelled, keeps the lines', async () => {
@@ -2254,22 +2321,20 @@ test('Copy reads the prompt as it is now, in the row and in the tray', async () 
   assert.doesNotMatch(v.copied.join(), /round moss/);
 });
 
-test('dropped Shimeji images ask first with a buddy open, and only then make one', async () => {
+test('dropped Shimeji images with a buddy open make one at once, and Undo takes her back', async () => {
   const shime = () => ['shime1.png', 'shime2.png', 'shime3.png', 'shime4.png'].map(n => file(n));
   const v = await mount();
   dropEvent(shime());
   await tick();
-  assert.strictEqual(v.maker.state.pets.length, 1);
-  assert.deepStrictEqual(v.words('.ask button'), ['A new buddy', 'Not now']);
-  v.press('Not now', '.ask');
-  await tick();
-  gone(v.q('.ask'));
-  assert.strictEqual(v.maker.state.pets.length, 1);
-  dropEvent(shime());
-  await tick();
-  v.press('A new buddy', '.ask');
-  await tick();
+  gone(v.q('[role=dialog]'), 'nothing asks');
   assert.strictEqual(v.maker.state.pets.length, 2);
+  assert.strictEqual(v.pet().name, 'Shimeji');
+  assert.strictEqual(placed(v), 'Made a new buddy from the Shimeji images.');
+  assert.deepStrictEqual(placedChoices(v), ['Undo']);
+  v.press('Undo', '.placed');
+  await tick();
+  assert.strictEqual(v.maker.state.pets.length, 1);
+  assert.strictEqual(v.pet().name, 'Ann');
 });
 
 test('dropped Shimeji images in an empty window just come in', async () => {
@@ -2277,7 +2342,7 @@ test('dropped Shimeji images in an empty window just come in', async () => {
   dropEvent(['shime1.png', 'shime2.png', 'shime3.png', 'shime4.png'].map(n => file(n)));
   await tick();
   assert.strictEqual(v.maker.state.pets.length, 1);
-  gone(v.q('.ask'));
+  assert.strictEqual(placed(v), null);
 });
 
 test('every listener on the page goes when the view does', async () => {
