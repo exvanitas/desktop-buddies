@@ -17,14 +17,18 @@ const AREA = whole({ i: 0, x: 0, y: 0, w: 1920, h: 1040, scale: 1 });
 function world(seed = 5, buddy = SAMPLE) {
   let r = seed;
   const random = () => { r = (r * 16807) % 2147483647; return r / 2147483647; };
-  const clock = { t: 0 }, timers: { at: number; f: () => void }[] = [], every: { ms: number; f: () => void; next: number }[] = [];
+  const clock = { t: 0 }, timers: { at: number; f: () => void }[] = [], every: { ms: number; f: () => void; next: number; stopped: boolean }[] = [];
   const host = createHost({
     random, now: () => clock.t, note() {},
     after: (ms, f) => { timers.push({ at: clock.t + ms, f }); return timers.length; }, cancel(id) { const t = timers[id - 1]; if (t) t.f = () => {}; },
-    every: (ms, f) => { every.push({ ms, f, next: clock.t + ms }); }
+    every: (ms, f) => { const e = { ms, f, next: clock.t + ms, stopped: false }; every.push(e); return () => { e.stopped = true; }; }
   });
-  const got: { t: number; frame: Frame }[] = [];
-  const hub: Port = { postMessage() {} }, overlay: Port = { postMessage(m) { const x = m as { k: string; frame: Frame; t: number }; if (x.k === 'frame') got.push({ t: x.t, frame: JSON.parse(JSON.stringify(x.frame)) }); } };
+  const got: { t: number; frame: Frame }[] = [], stills: { t: number; on: boolean }[] = [];
+  const hub: Port = { postMessage() {} }, overlay: Port = { postMessage(m) {
+    const x = m as { k: string; frame: Frame; t: number; on: boolean };
+    if (x.k === 'frame') got.push({ t: x.t, frame: JSON.parse(JSON.stringify(x.frame)) });
+    else if (x.k === 'still') stills.push({ t: clock.t, on: x.on });
+  } };
   host.connect(hub); host.connect(overlay);
   host.message(hub, { k: 'start', all: [AREA], pets: [buddy] });
   host.message(overlay, { k: 'join', me: AREA, n: 0 });
@@ -32,10 +36,10 @@ function world(seed = 5, buddy = SAMPLE) {
   const run = (until: number) => {
     for (; clock.t < until; clock.t += .5) {
       for (const t of timers.filter(u => u.at <= clock.t)) { timers.splice(timers.indexOf(t), 1); t.f(); }
-      for (const e of every) if (clock.t >= e.next) { e.next += e.ms; e.f(); }
+      for (const e of [...every]) if (!e.stopped && clock.t >= e.next) { e.next += e.ms; e.f(); }
     }
   };
-  return { host, hub, got, run, clock };
+  return { host, hub, got, stills, run, clock };
 }
 
 /* Draws the frames that arrive at the display's rate, as the overlay does: each display frame, the
@@ -315,49 +319,56 @@ test('a landing is a new stage, so the fall is never blended into it', () => {
 test('with no animation frames, each frame is drawn whole as it comes, and they pick up from there', () => {
   const w = world(); w.run(3000); w.host.message(w.hub, { k: 'act-all', a: 'drop' }); w.run(3600);
   const g = w.got.filter(x => x.t > 3000), clock = { t: 0 }, drew: Frame[] = [];
-  let asks = 0;
-  const d = createDrawing(f => drew.push(f), () => clock.t, () => { asks++; });
-  /* the first frame asks for an animation frame, which never comes; from STALLED_MS on, frames are drawn whole */
-  const late = g.findIndex(x => x.t - g[0]!.t > STALLED_MS);
-  assert.ok(late > 0);
-  for (const x of g.slice(0, late + 20)) { clock.t = x.t; d.arrive(x.frame, x.t); }
-  assert.strictEqual(asks, 1, 'asked once');
-  assert.strictEqual(drew.length, 20, 'every frame from then, as it came');
-  assert.ok(g.slice(late, late + 20).every((x, k) => drew[k]!.pets[0] === x.frame.pets[0]), 'each one whole');
+  const d = createDrawing(f => drew.push(f), () => clock.t, () => {});
+  d.beat(0);
+  for (const x of g.slice(0, 20)) { clock.t = x.t; d.arrive(x.frame, x.t); }
+  assert.strictEqual(drew.length, 20, 'every frame, as it came');
+  assert.ok(g.slice(0, 20).every((x, k) => drew[k]!.pets[0] === x.frame.pets[0]), 'each one whole');
   /* animation frames come back: she never goes back from the last one drawn */
   const y = drew[drew.length - 1]!.pets[0]!.box.t;
-  clock.t = g[late + 19]!.t + 1; d.beat(clock.t);
-  for (const x of g.slice(late + 20, late + 30)) { clock.t = x.t; d.arrive(x.frame, x.t); d.beat(x.t); d.beat(x.t + 8); }
+  clock.t = g[19]!.t + 1; d.beat(clock.t);
+  for (const x of g.slice(20, 30)) { clock.t = x.t; d.arrive(x.frame, x.t); d.beat(x.t); d.beat(x.t + 8); }
   assert.ok(drew.slice(20).every(f => f.pets[0]!.box.t >= y), 'never back up');
   assert.ok(STALLED_MS <= 100);
 });
 
-/* The overlay asks for animation frames only while it has something to draw. On a 60 Hz display it
-   draws exactly what it drew asking on every one, through a pause and back. */
-test('asking only while there\'s something to draw draws what asking every display frame drew', () => {
+/* While the world runs the overlay asks for every animation frame, frames or not, as it always did:
+   only a still world lets it rest. On a 60 Hz display, through a drop, a pause and back, it draws
+   exactly what asking on every display frame drew, and asks for none while the world is paused. */
+test('the overlay rests only while the world is still, and draws what it always drew', () => {
   const w = world(); w.run(3000);
   w.host.message(w.hub, { k: 'act-all', a: 'drop' }); w.run(4000);
   w.host.message(w.hub, { k: 'pause', on: true }); w.run(5000);
   w.host.message(w.hub, { k: 'pause', on: false }); w.run(6500);
+  assert.deepStrictEqual(w.stills.map(x => x.on), [true, false], 'told when it stopped and when it started');
   const g = w.got.filter(x => x.t > 3000);
   const play = (every: boolean) => {
     const clock = { t: 0 }, drew: string[] = [];
-    let pending: ((now: number) => void) | null = null, beats = 0, paused = 0;
+    let pending: ((now: number) => void) | null = null, beats = 0, paused = 0, running = 0;
     const d = createDrawing(f => drew.push(`${clock.t.toFixed(2)} ${JSON.stringify(f)}`), () => clock.t, b => { pending = b; });
-    let k = 0;
+    let k = 0, s = 0;
     for (let v = 3000; v < 6500; v += 1000 / 60) {
-      for (; k < g.length && g[k]!.t <= v; k++) { clock.t = g[k]!.t; d.arrive(g[k]!.frame, g[k]!.t); }
+      for (; k < g.length && g[k]!.t <= v; k++) {
+        for (; !every && s < w.stills.length && w.stills[s]!.t <= g[k]!.t; s++) d.still(w.stills[s]!.on);
+        clock.t = g[k]!.t; d.arrive(g[k]!.frame, g[k]!.t);
+      }
+      for (; !every && s < w.stills.length && w.stills[s]!.t <= v; s++) d.still(w.stills[s]!.on);
       clock.t = v;
-      if (every) { pending = null; beats++; d.beat(v); }
-      else if (pending) { const b: (now: number) => void = pending; pending = null; beats++; if (v > 4100 && v < 5000) paused++; b(v); }
+      const b: ((now: number) => void) | null = every ? d.beat : pending;
+      pending = null;
+      if (!b) continue;
+      beats++;
+      if (v > 4100 && v < 5000) paused++;
+      if ((v > 3000 && v < 4000) || v > 5100) running++;
+      b(v);
     }
-    return { drew, beats, paused };
+    return { drew, beats, paused, running };
   };
   const all = play(true), some = play(false);
   assert.ok(all.drew.length > 100);
   assert.deepStrictEqual(some.drew, all.drew);
-  assert.strictEqual(some.paused, 0, 'no animation frame asked for while paused');
-  assert.ok(some.beats < all.beats * 0.8, `${some.beats} animation frames against ${all.beats}`);
+  assert.strictEqual(some.paused, 0, 'no animation frame while paused');
+  assert.strictEqual(some.running, all.running, 'every one while it runs');
 });
 
 test('one who leaves is forgotten: her image is sent again when she comes back, and kept for no one else', () => {

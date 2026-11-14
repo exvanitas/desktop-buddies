@@ -84,9 +84,9 @@ const TRACE_MS = 250;
     if (id !== over) { over = id; send({ k: 'over', id }); }
   }
 
-  /* Frames are drawn on the display's beat, two ticks behind the world: pacing.ts. It asks for
-     animation frames only while there's something to draw. While the page's animation frames have
-     stopped, each frame is drawn whole as it comes. */
+  /* Frames are drawn on the display's beat, two ticks behind the world: pacing.ts. While the world is
+     still it asks for animation frames only while there's something to draw. While the page's
+     animation frames have stopped, each frame is drawn whole as it comes. */
   const drawing = createDrawing(f => { view.apply(f); check(); }, () => performance.now(), f => { requestAnimationFrame(f); });
   world.onmessage = e => {
     const m = e.data;
@@ -95,6 +95,7 @@ const TRACE_MS = 250;
       drawing.arrive(m.frame, m.t);
     }
     else if (m.k === 'area') { me = m.area; Object.assign(vp, viewport(me)); drawing.reset(); }
+    else if (m.k === 'still') drawing.still(m.on);
   };
   world.start();
   send({ k: 'join', me, n: boot.n });

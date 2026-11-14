@@ -87,21 +87,28 @@ export function blend(a: Frame, b: Frame, u: number): Frame {
 
 /* No animation frame for this long, and frames are drawn whole as they come. */
 export const STALLED_MS = 100;
-/* What an overlay does with the world's frames and the page's animation frames. It asks for the next
-   animation frame only while it has something to draw. Once the last frame that came is drawn it
-   stops, and a frame that comes starts it again: a still or hidden world sends none, so its overlays
-   don't wake 60 times a second for nothing. `ask` is requestAnimationFrame. */
+/* What an overlay does with the world's frames and the page's animation frames. While the world runs
+   it asks for every animation frame, frames or not, as it always has. While the world is still
+   (paused, hidden or away) it asks only until the last frame that came is drawn, and a frame that
+   comes starts it again: a still world sends almost none, so its overlays don't wake 60 times a
+   second for nothing. `ask` is requestAnimationFrame; the first is asked for at once. */
 export function createDrawing(draw: (f: Frame) => void, clock: () => number, ask: (beat: (now: number) => void) => void) {
   const pacer = createPacer();
-  let beaten = -Infinity, asked = false;
+  let beaten = -Infinity, asked = false, running = true;
   /* an animation frame, at its time */
   function beat(now: number) {
     asked = false; beaten = clock();
     const f = pacer.frame(now); if (f) draw(f);
-    if (!pacer.settled()) { asked = true; ask(beat); }
+    if (running || !pacer.settled()) { asked = true; ask(beat); }
   }
+  asked = true; ask(beat);
   return {
     beat,
+    /* The world stopped, or started again. */
+    still(on: boolean) {
+      running = !on;
+      if (running && !asked) { asked = true; beaten = clock(); ask(beat); }
+    },
     /* A frame from the world, with its tick's time. Asked for no animation frame, it asks, and counts
        that as one: animation frames that don't come for STALLED_MS after that are a page that stopped
        them, and each frame is drawn whole as it comes. */

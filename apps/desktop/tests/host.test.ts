@@ -393,6 +393,21 @@ test('a still world runs no timer, and takes up again by one tick, not the whole
   assert.ok(Math.abs(pet.P.x - x - step) < 1e-9, `one tick's walk, ${pet.P.x - x}, not the pause's: ${step}`);
 });
 
+test('overlays are told when the world goes still and when it runs again, and one that joins meanwhile is told too', () => {
+  const d = desk(); d.tick(50);
+  const told = (p: FakePort) => p.out.filter(m => m.k === 'still').map(m => (m as unknown as { on: boolean }).on);
+  assert.deepStrictEqual(told(d.top), [], 'nothing while it runs from the start');
+  d.send(d.hub, { k: 'pause', on: true });
+  assert.deepStrictEqual([told(d.top), told(d.low), told(d.hub)], [[true], [true], []], 'every overlay, and not the hub');
+  const late: FakePort = { out: [], postMessage(m) { this.out.push(JSON.parse(JSON.stringify(m))); } };
+  d.host.connect(late);
+  d.send(late, { k: 'join', me: AREAS[0]!, n: 9 });
+  assert.deepStrictEqual(told(late), [true]);
+  assert.ok(late.out.some(m => m.k === 'frame'), 'and given a frame at once');
+  d.send(d.hub, { k: 'pause', on: false });
+  assert.deepStrictEqual([told(d.top), told(late)], [[true, false], [true, false]]);
+});
+
 test('still, a change is drawn at once by one step, and the cursor alone draws nothing', () => {
   const d = desk(); d.tick(200);
   d.send(d.hub, { k: 'pause', on: true });

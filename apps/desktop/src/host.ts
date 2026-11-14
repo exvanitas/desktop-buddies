@@ -36,6 +36,8 @@ export type Message =
 | { k: 'act'; id: string; a: string }
 | { k: 'act-all'; a: string }; /* everyone at once: the desktop check asks for it */
 export interface Port { postMessage(m: unknown): void }
+/* What an overlay hears from the world: its place, a frame with its tick's time, and whether the world is still. */
+export type ToOverlay = { k: 'area'; area: Area } | { k: 'frame'; frame: Frame; t: number } | { k: 'still'; on: boolean };
 export interface HostIO {
 random(): number; now(): number;
 after(ms: number, f: () => void): number; cancel(id: number): void;
@@ -102,7 +104,7 @@ export function createHost(io: HostIO) {
      Whatever changes what it shows meanwhile (a bring, a line, a window that moved, an overlay that
      joined, a timer of its own) is drawn there and then, by one step. A hand holding someone keeps it
      ticking, so a drag goes on as it did. */
-  let ticking = false, stopTicks: (() => void) | null = null;
+  let ticking = false, stilled = false, stopTicks: (() => void) | null = null;
   let windows: Extract<Message, { k: 'windows' }> | null = null, windowsStale = false;
   const homes = new Map<string, string>(), leaving = new Map<string, number>(); /* who's saying goodbye, and the timer that ends it */
   const world = () => sim!;
@@ -141,12 +143,18 @@ export function createHost(io: HostIO) {
   }
 
   const still = () => !!sim && !!world().world.paused && !drag && !hold.active;
-  /* Ticks while the world runs, or a hand holds someone; stops when it's still. */
+  /* Ticks while the world runs, or a hand holds someone; stops when it's still. Overlays are told
+     when it stops and starts: while it runs they draw on every animation frame, as they always did,
+     and while it's still they draw only what comes. */
   function clock() {
     if (!still()) {
-      if (!ticking) { ticking = true; const stop = io.every(TICK_MS, step); stopTicks = typeof stop === 'function' ? stop : null; }
-    } else if (ticking && stopTicks) { stopTicks(); stopTicks = null; ticking = false; }
+      if (!ticking) {
+        ticking = true; const stop = io.every(TICK_MS, step); stopTicks = typeof stop === 'function' ? stop : null;
+        if (stilled) { stilled = false; tell({ k: 'still', on: false }); }
+      }
+    } else if (ticking && stopTicks) { stopTicks(); stopTicks = null; ticking = false; stilled = true; tell({ k: 'still', on: true }); }
   }
+  function tell(m: Extract<ToOverlay, { k: 'still' }>) { for (const [port, s] of ports) if (s.vp) port.postMessage(m); }
   /* After anything that can change what's shown: a still world, its timer stopped, takes the one step
      that shows it. A timer that can't be stopped ticks on and shows it, as it always did. */
   function settle() {
@@ -257,7 +265,7 @@ export function createHost(io: HostIO) {
     message(port: Port, m: Message) {
       if (!ports.has(port)) return; /* an overlay that left can still have messages on the way */
       if (m.k === 'start') { if (!sim) start(m); return; }
-      if (m.k === 'join') { const s = ports.get(port)!; s.i = m.me.i; s.n = m.n; place(port, s); io.note(`joined overlay ${m.me.i}`); if (sim) settle(); return; }
+      if (m.k === 'join') { const s = ports.get(port)!; s.i = m.me.i; s.n = m.n; place(port, s); io.note(`joined overlay ${m.me.i}`); if (stilled && s.vp) port.postMessage({ k: 'still', on: true }); if (sim) settle(); return; }
       if (!sim) return;
       handle(port, m);
       /* the cursor alone moves nothing in a still world, unless a hand holds someone */
