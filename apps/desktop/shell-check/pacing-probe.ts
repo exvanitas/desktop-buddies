@@ -5,7 +5,7 @@
 import type { OverlayBoot } from '../src/hub-core';
 import type { Message } from '../src/host';
 import { createShell } from '../src/shell';
-import { measure, poseKey, verdict, type Sample } from './pacing-measure';
+import { measure, poseKey, verdict, watches, type Sample } from './pacing-measure';
 
 const WARM_MS = 4000, SAMPLE_MS = 16000, EVERY_MS = 1600;
 const ORDERS = ['drop', 'jump', 'drop', 'run'];
@@ -35,8 +35,11 @@ if (boot.me.i === 0 && boot.mode !== 'empty') {
     sampling = true;
     setTimeout(() => {
       sampling = false; clearInterval(order);
-      const p = measure(samples, told, performance.now());
-      say(`result ${JSON.stringify({ ...p, hz: +p.hz.toFixed(1), steady: +p.steady.toFixed(3), worst: +p.worst.toFixed(1), travel: +p.travel.toFixed(1), uneven: +((p.still + p.doubled) / Math.max(1, p.counted)).toFixed(4), verdict: verdict(p) })}`);
+      const stop = performance.now(), p = measure(samples, told, stop), v = verdict(p);
+      say(`result ${JSON.stringify({ ...p, hz: +p.hz.toFixed(1), steady: +p.steady.toFixed(3), worst: +p.worst.toFixed(1), travel: +p.travel.toFixed(1), uneven: +((p.still + p.doubled) / Math.max(1, p.counted)).toFixed(4), verdict: v })}`);
+      /* A failure says what each judged move looked like: the order, when, the frames seen, how far she
+         went, and where and in what pose she was drawn as told and at the watch's end. */
+      if (v === 'fail') say(`moves ${JSON.stringify(watches(samples, told, stop).map((w, i) => ({ order: ORDERS[i % ORDERS.length], ...w })))}`);
     }, SAMPLE_MS);
   }, WARM_MS);
   say('probe up');

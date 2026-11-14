@@ -100,6 +100,9 @@ if ($found) {
   if ($r.verdict -eq 'no verdict') { Report 'pacing.even' "no verdict, no steady display to judge by: $numbers" }
   else { Expect 'pacing.even' ($r.verdict -eq 'pass') $numbers }
 }
+# A failed run's probe says what each judged move looked like: shown here, numbers and order names only.
+$moves = [regex]::Matches($text, 'PACING moves (\[[^\r\n]*\])') | Select-Object -Last 1
+if ($moves) { Report 'pacing.moves' $moves.Groups[1].Value }
 
 $results | Set-Content (Join-Path $Out 'pacing.txt')
 $fail = @($results | Where-Object { $_ -like 'FAIL *' })

@@ -7,7 +7,9 @@ import { bodyOf, type BodyParts, type BuddyData, type Frame, type PetFrame } fro
 import { test } from 'vitest';
 import { createHost, type Port } from '../src/host';
 import { BEHIND_MS, PLACED, RELEARN, STALLED_MS, TICK_MS, blend, createDrawing, createPacer } from '../src/pacing';
-import { measure, poseKey, verdict, type Sample } from '../shell-check/pacing-measure';
+import { measure, poseKey, verdict, watches, type Sample } from '../shell-check/pacing-measure';
+import { lively } from '@buddies/engine';
+import { screen, world as engineWorld } from '../../../packages/engine/tests/support';
 import { whole } from './areas';
 
 const SAMPLE: BuddyData = { ...read(fs.readFileSync(new URL('../../../packages/test-support/fixtures/sample.json', import.meta.url), 'utf8')), id: 'b0' };
@@ -472,4 +474,39 @@ test('getting up from a trip with no art of her own, each display frame turns he
   }
   const most = Math.max(...drawn.slice(1).map((r, i) => Math.abs(r - drawn[i]!)));
   assert.ok(most <= tick * 16.67 / 16 + 1e-6, `a display frame turned her ${most.toFixed(2)} degrees, a tick ${tick.toFixed(2)}: ${drawn.map(r => r.toFixed(1)).join(' ')}`);
+});
+
+test('a failed pacing run says what each judged move looked like: when, the frames seen, how far, and where and in what pose', () => {
+  const told = [0, 1600, 3200, 4800], s: Sample[] = [];
+  let x = 0;
+  for (let t = 0; t <= 6400; t += 1000 / 60) { if (t < 3200 || t > 3800) x += 3; s.push([t, x, 500, 0, t < 3300 ? 'run' : 'sprawl']); }
+  const w = watches(s, told, 6400);
+  assert.deepStrictEqual(w.map(m => m.moved), [true, true, false, true]);
+  const frozen = w[2]!;
+  assert.strictEqual(frozen.at, 3200);
+  assert.ok(frozen.seen >= 20 && frozen.far === 0, JSON.stringify(frozen));
+  assert.deepStrictEqual([frozen.told!.pose, frozen.end!.pose], ['run', 'sprawl']);
+  assert.strictEqual(frozen.told!.y, 500);
+  assert.strictEqual(measure(s, told, 6400).failed, 1, 'the same rule as the result line');
+});
+
+/* The runner's one pacing failure, 43578913239: a judged move that went 0 px with the display steady
+   and the world ticking. The engine does that on its own: told to run, she can trip on her first
+   ticks (the run's chance of it each tick), and lies there for the whole watch. Main's engine is the
+   same, so this is a hole in the check, not the overlay resting: her pose changes, her place doesn't. */
+test('told to run, she can trip at once and lie still for the whole watch: a real 0 px move, with a new pose', () => {
+  const w = engineWorld([screen('s', 0, 0, 1024, 720)], { seed: 47, pace: lively });
+  const pet = w.add({ ...SAMPLE, id: 'olive' }), VP = { x: 0, y: 0, scale: 1 };
+  const start = w.now.t;
+  w.until(() => w.now.t - start > 4500);
+  const orders = ['drop', 'jump', 'drop', 'run'], samples: Sample[] = [], told: number[] = [];
+  const sample = () => { const p = pet.frame(VP); samples.push([w.now.t, p.box.l + p.box.ox, p.box.t + p.box.oy, 0, poseKey(p.size, p.origin, p.body)]); };
+  for (let k = 0; k < 8; k++) {
+    told.push(w.now.t); w.sim.actAll(orders[k % 4]!);
+    for (const t0 = w.now.t; w.now.t - t0 < 1600;) { w.frame(); sample(); }
+  }
+  const last = watches(samples, told, w.now.t).at(-1)!;
+  assert.strictEqual(pet.P.state, 'trip', 'she tripped');
+  assert.ok(!last.moved && last.far === 0, JSON.stringify(last));
+  assert.notStrictEqual(last.told!.pose, last.end!.pose, 'her pose changed, though her place did not');
 });

@@ -54,19 +54,29 @@ export function measure(samples: Sample[], told: number[] = [], stop = -Infinity
     else if (step[k]! > 1.5 * (before + after) / 2) doubled++;
     worst = Math.max(worst, step[k]!);
   }
-  /* Liveness, which the rest can't see: a frozen overlay has no steady motion to find fault with.
-     Every move the probe told her to make whose watch ended before the probe stopped watching is
-     judged on its own, from the probe's own list, never from what the samples happen to cover. */
-  let judged = 0, failed = 0, travel = Infinity;
-  for (const o of told) {
-    if (o + LIVE_TO > stop) continue;
-    judged++;
+  /* Liveness, which the rest can't see: a frozen overlay has no steady motion to find fault with. */
+  const w = watches(samples, told, stop), judged = w.length, failed = w.filter(x => !x.moved).length;
+  const travel = judged ? Math.min(...w.map(x => x.far)) : 0;
+  return { frames: samples.length, hz: gap ? 1000 / gap : 0, steady, counted, still, doubled, worst, issued: told.length, judged, failed, travel };
+}
+
+/* Where and in what pose she was drawn: x and y as the samples have them, and her pose key. */
+export interface Spot { x: number; y: number; pose: string }
+/* One judged move, so a failure can say what it saw: when she was told (ms after the probe started
+   watching), the frames its watch saw, how far she went in it, where she was drawn as she was told
+   (the last frame before) and at the watch's end, and whether it counts as moved. */
+export interface Watch { at: number; seen: number; far: number; told: Spot | null; end: Spot | null; moved: boolean }
+const spot = (s: Sample | undefined): Spot | null => s ? { x: +s[1].toFixed(1), y: +s[2].toFixed(1), pose: s[4] } : null;
+/* Every move the probe told her to make whose watch ended before the probe stopped watching, judged
+   on its own, from the probe's own list, never from what the samples happen to cover. */
+export function watches(samples: Sample[], told: number[], stop = -Infinity): Watch[] {
+  const start = samples[0]?.[0] ?? 0;
+  return told.filter(o => o + LIVE_TO <= stop).map(o => {
     const seen = samples.filter(s => s[0] >= o + LIVE_FROM && s[0] <= o + LIVE_TO), first = seen[0];
     const far = first ? Math.max(...seen.map(s => Math.hypot(s[1] - first[1], s[2] - first[2]))) : 0;
-    travel = Math.min(travel, far);
-    if (seen.length < SEEN || far < TRAVEL) failed++;
-  }
-  return { frames: samples.length, hz: gap ? 1000 / gap : 0, steady, counted, still, doubled, worst, issued: told.length, judged, failed, travel: judged ? travel : 0 };
+    const before = samples.filter(s => s[0] < o).at(-1);
+    return { at: Math.round(o - start), seen: seen.length, far: +far.toFixed(1), told: spot(before), end: spot(seen.at(-1)), moved: seen.length >= SEEN && far >= TRAVEL };
+  });
 }
 
 /* Unpaced, headless Chromium showed a tick twice or not at all on 4.4 to 9.9% of the display frames
