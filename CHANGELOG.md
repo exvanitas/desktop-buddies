@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Pip has a picture for every pose slot.** The Maker's sample now climbs, hangs, rolls, tumbles, struggles, stands up from each way down, and has a move of her own, all in her own drawings.
 - **One sample in the Maker.** The Maker offers Pip, who has a full set of poses, to start from. Pudding and Sprout aren't offered any more; buddies you made from them keep working as they are.
 - **No more growing and shrinking.** A buddy whose poses are cut at different sizes, like the Maker's Pip, could look bigger or smaller for a moment when she changed pose: her new size was drawn before her new picture had loaded. Now the two change together.
 - **No Microsoft Store version for now.** Desktop Buddies installs from GitHub, with the installer or the zip, and through winget once it's in the catalogue. They aren't signed, so 1.0.0's note on Windows' warnings still holds.
