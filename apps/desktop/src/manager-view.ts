@@ -15,7 +15,7 @@ import { buddyItems, confirmOf } from './manager/menu';
 import { createMisprints } from './manager/misprints';
 import type { Outlines } from './manager/outlines';
 import { createPeel } from './manager/peel';
-import { createFilesSetting, createWalkSetting, settingsPanel } from './manager/settings';
+import { createFilesSetting, createLookSetting, createWalkSetting, settingsPanel } from './manager/settings';
 import { createApiSetting, createAsking } from './manager/asking';
 import { createReplacing } from './manager/replacing';
 import { createSheet } from './manager/sheet';
@@ -31,7 +31,7 @@ export interface ViewIO {
   after(ms: number, f: () => void): void;
 }
 
-const WAITING: HubState = { ready: false, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
+const WAITING: HubState = { ready: false, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], names: true, talk: true, maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
 /* How long a note says what just happened. */
 export const NOTE_MS = 5000;
 
@@ -71,14 +71,14 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
   /* The menu for one buddy, or its confirm. The hub can change who it's about while it's open: a
      save or an import changes her revision, whatever it does to her name and main image. */
   let menuFor: string | null = null, asked: BuddyRow | null = null, offered = '';
-  const offerOf = (b: BuddyRow) => `${b.copies > 1 ? 2 : b.copies} ${state.maker} ${b.can} ${b.name} ${b.image}`;
+  const offerOf = (b: BuddyRow) => `${b.copies > 1 ? 2 : b.copies} ${state.maker} ${b.can} ${b.talks} ${b.name} ${b.image}`;
   const row = (id: string) => state.buddies.find(b => b.id === id);
   /* Only ever the her the confirm named: the hub refuses one that's changed since, retries too. */
   function deleteIt(b: BuddyRow) {
     void client.deleteBuddy(b.id, b.rev).then(a => { if (!a.ok) canRetry(a.failure.id, () => deleteIt(b)); });
   }
   function buddyMenu(b: BuddyRow) {
-    const shut = (f: () => void) => () => { popover.close(); f(); };
+    const shut = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => { popover.close(); f(...a); };
     return menuOf(buddyItems(b, state.maker, {
       bringHere: shut(() => act(() => client.bringHere(b.id))),
       treat: shut(() => act(() => client.giveTreat(b.id))),
@@ -87,6 +87,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
       dismissOne: shut(() => act(() => client.dismissOne(b.id))),
       edit: shut(() => act(() => client.editBuddy(b.id))),
       exportIt: shut(() => act(() => client.exportBuddy(b.id))),
+      talks: shut(on => act(() => client.setTalks(b.id, on))),
       remove: () => {
         asked = b;
         const { el, stay } = confirmOf(b, () => popover.close(), () => { popover.close(false); deleteIt(b); });
@@ -115,6 +116,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
   }
   const walk = createWalkSetting({ walk: on => act(() => client.setWalk(on)), exclude: (app, on) => act(() => client.setExcluded(app, on)) });
   const files = createFilesSetting(on => act(() => client.setFiles(on)));
+  const look = createLookSetting({ names: on => act(() => client.setNames(on)), talk: on => act(() => client.setTalk(on)) });
   const apiSetting = createApiSetting({ setOn: on => act(() => client.setApi(on)), forget: app => act(() => client.forgetApp(app)) });
   const asking = createAsking({ answer: (app, allow) => act(() => client.answerApp(app, allow)) });
   /* After Replace, a note says she was. After Keep both, the new one is brought into view. A
@@ -134,7 +136,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
   }
   function openSettings(anchor: HTMLElement) {
     if (popover.anchor === anchor) { popover.close(); return; }
-    const panel = () => settingsPanel(theme, t => { theme = t; showTheme(t); saveTheme(io.store, t); const next = panel(); popover.swap(next, next.querySelector<HTMLElement>(`[data-theme-choice="${t}"]`) ?? undefined); }, walk.el, apiSetting.el, files.el);
+    const panel = () => settingsPanel(theme, t => { theme = t; showTheme(t); saveTheme(io.store, t); const next = panel(); popover.swap(next, next.querySelector<HTMLElement>(`[data-theme-choice="${t}"]`) ?? undefined); }, walk.el, apiSetting.el, files.el, look.el);
     popover.show(panel(), anchor);
   }
 
@@ -171,6 +173,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
     sheet.update({ buddies, query, ready, maker });
     footer.update(state);
     walk.update(state);
+    look.update({ names: state.names, talk: state.talk, ready });
     files.update({ files: state.files === true, packaged: state.packaged === true, ready });
     asking.update({ ...state.api, ready });
     replacing.update(state.replacing ?? []);

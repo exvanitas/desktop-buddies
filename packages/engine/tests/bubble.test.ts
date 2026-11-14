@@ -80,3 +80,30 @@ test('a wrapped bubble near a side keeps all of its width on her screen', () => 
     assert.strictEqual(Math.min(sx, 1280 - sx), 70, `at ${x}: ${sx}`);
   }
 });
+
+/* Mute: her own lines stay unsaid, alone or with everyone, and a line another app sent still shows. */
+test('a muted buddy keeps her own lines to herself, and an app\'s line still shows', () => {
+  const { w, pet } = standing(720);
+  const other = BUDDY('b', { name: '' }), pets = [BUDDY('a', { name: '' }), other];
+  const set = (more: { talk?: boolean; quiet?: string[] }) => w.sim.sync({ pets, ...more });
+  set({ quiet: ['a'] });
+  assert.strictEqual(said(w, pet, 'Hi there!').hidden, true, 'muted, her own line');
+  assert.strictEqual(said(w, w.sim.pets.get('b')!, 'Hi there!').hidden, false, 'the other one talks');
+  const app = said(w, pet, 'Build passed', 'An app');
+  assert.strictEqual(app.hidden, false); assert.strictEqual(app.from, 'An app');
+  set({ talk: false });
+  assert.notStrictEqual(said(w, w.sim.pets.get('b')!, 'Hello again').text, 'Hello again', 'nobody talks');
+  assert.strictEqual(said(w, w.sim.pets.get('b')!, 'Mine', 'An app').text, 'Mine');
+  set({});
+  assert.strictEqual(said(w, pet, 'Back again').text, 'Back again', 'talking is the default');
+});
+
+test('muted, she never chats on her own', () => {
+  const w = world([screen('s', 0, 0, 1280, 720)]), pet = w.add(BUDDY('a', { name: '' }));
+  w.sim.sync({ pets: [BUDDY('a', { name: '' })], quiet: ['a'] });
+  let shown = 0;
+  for (let i = 0; i < 20000; i++) { w.frame(); if (!pet.frame({ x: 0, y: 0, scale: 1 }).bubble.hidden) shown++; }
+  assert.strictEqual(shown, 0);
+  w.sim.sync({ pets: [BUDDY('a', { name: '' })] });
+  assert.ok(w.until(() => !pet.frame({ x: 0, y: 0, scale: 1 }).bubble.hidden, 20000), 'and does once she talks again');
+});

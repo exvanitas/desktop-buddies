@@ -113,7 +113,7 @@ test('fuzz: the hub takes thousands of bad requests and stays healthy', { timeou
   assert.strictEqual(lasting(), before, 'library and settings untouched');
   assert.ok(!exe.logs.some(l => /hub error/.test(l)), exe.logs.filter(l => /hub error/.test(l)).slice(0, 3).join('\n'));
   assert.ok([...exe.files.keys()].filter(p => p.startsWith(`${REPLIES}/`)).length <= SLOTS, 'replies bounded by their slots');
-  assert.ok(sent.every(m => m.k === 'act' || m.k === 'say' || m.k === 'start' || m.k === 'pause' || m.k === 'windows'), [...new Set(sent.map(m => m.k))].join());
+  assert.ok(sent.every(m => m.k === 'act' || m.k === 'say' || m.k === 'start' || m.k === 'pause' || m.k === 'look' || m.k === 'windows'), [...new Set(sent.map(m => m.k))].join());
   assert.ok(sent.filter(m => m.k === 'act').every(m => (m as { a: string }).a === 'wave'));
   for (const m of sent) if (m.k === 'say') assert.ok([...m.text].length <= LIMITS.text && !LINK.test(m.text.normalize('NFKC')), m.text);
   assert.ok(state!.api.asking.length <= LIMITS.asking);

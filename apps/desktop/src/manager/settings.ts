@@ -74,11 +74,34 @@ export function createFilesSetting(set: (on: boolean) => void) {
   };
 }
 
-export function settingsPanel(theme: Theme, pick: (t: Theme) => void, walk: HTMLElement, api: HTMLElement, files: HTMLElement) {
+export interface LookIO { names(on: boolean): void; talk(on: boolean): void }
+export interface LookState { names: boolean; talk: boolean; ready: boolean }
+export const TALK_NOTE = 'Lines other apps send still show.';
+/* Show names and Buddies talk, for every buddy. A buddy's own Talks is in her menu. Made once and
+   carried from panel to panel, and it shows what the hub says. */
+export function createLookSetting(io: LookIO) {
+  let now: LookState = { names: true, talk: true, ready: false };
+  const flip = (words: string, f: () => void) => button(h('i'), f, { class: 'tg', role: 'switch', 'aria-checked': 'true', 'aria-label': words });
+  const names = flip('Show names', () => io.names(!now.names)), talk = flip('Buddies talk', () => io.talk(!now.talk));
+  return {
+    el: h('div', { class: 'look' },
+      h('div', { class: 'setting' }, h('span', {}, 'Show names'), names),
+      h('div', { class: 'setting' }, h('span', {}, 'Buddies talk'), talk),
+      h('p', { class: 'look-note' }, TALK_NOTE)),
+    update(s: LookState) {
+      now = s;
+      names.setAttribute('aria-checked', String(s.names));
+      talk.setAttribute('aria-checked', String(s.talk));
+      names.disabled = talk.disabled = !s.ready;
+    }
+  };
+}
+
+export function settingsPanel(theme: Theme, pick: (t: Theme) => void, walk: HTMLElement, api: HTMLElement, files: HTMLElement, look: HTMLElement) {
   const choice = (t: Theme, words: string) => button(words, () => pick(t), { role: 'radio', 'aria-checked': String(t === theme), 'data-theme-choice': t });
   return h('div', { class: 'panel', role: 'dialog', 'aria-label': 'Settings' },
     h('h2', {}, 'Settings'),
     h('div', { class: 'setting' }, h('span', {}, 'Theme'),
       h('div', { class: 'choice', role: 'radiogroup', 'aria-label': 'Theme' }, choice('dark', 'Dark'), choice('light', 'Light'))),
-    files, walk, api);
+    look, files, walk, api);
 }

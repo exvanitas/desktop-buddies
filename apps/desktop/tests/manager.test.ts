@@ -870,7 +870,7 @@ test('a window can open while the old one\'s command is still running, and both 
 
 test('a hub that never answers: the command gives up with a failure a person can read', async () => {
   const bus = createBus<Said>(), hub = bus.wire(), clocks: { ms: number; f: () => void }[] = [];
-  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
+  hub.listen(m => { if (m.k === 'hello') hub.post({ k: 'state', state: { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], names: true, talk: true, maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] } }); });
   const c = createManagerClient({ wire: bus.wire(), session: 'w', after: (ms, f) => { const x = { ms, f }; clocks.push(x); return () => {}; }, shimeji: async () => null, closeWindow: async () => {} });
   await tick(); await tick();
   const going = c.setPaused(true);

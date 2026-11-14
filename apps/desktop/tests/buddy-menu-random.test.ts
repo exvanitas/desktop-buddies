@@ -13,7 +13,7 @@ import type { Monitor, PlainWindowSpec, Rect, Shell } from '../src/shell';
 
 const SEEDS = Number(process.env.MENU_SEEDS) || 3000, ONE = process.env.MENU_SEED, STEPS = 120;
 const MON: Monitor = { i: 0, name: 'M', primary: true, scale: 1.5, x: 0, y: 0, w: 1920, h: 1040, full: { x: 0, y: 0, w: 1920, h: 1080 } };
-const ROW: BuddyRow = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out', copies: 1, can: ['eat'], rev: 1 };
+const ROW: BuddyRow = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out', copies: 1, can: ['eat'], rev: 1, talks: true };
 
 function random(seed: number) {
   let a = seed >>> 0;

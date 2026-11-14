@@ -28,8 +28,8 @@ import { createFakeExe } from '../src/shell-fake';
 import { createBus } from '../src/wire';
 
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r)); };
-const row = (name: string, copies = 0, id = name.toLowerCase(), can: BuddyRow['can'] = []): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 1 });
-const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
+const row = (name: string, copies = 0, id = name.toLowerCase(), can: BuddyRow['can'] = []): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 1, talks: true });
+const BASE: HubState = { ready: true, buddies: [], hidden: false, paused: false, autostart: false, packaged: false, files: false, walk: true, exclude: [], apps: [], names: true, talk: true, maker: false, failures: [], api: { on: false, apps: [], asking: [] }, replacing: [] };
 const fail = (id: string, title: string, more: Partial<Failure> = {}): Failure => ({ id, kind: 'other', file: title, title, why: 'Why.', fix: 'Fix.', ...more });
 const LINE: Outline = rectangle(138, 138, 1.5);
 
@@ -243,41 +243,59 @@ test('the bar drags the window, from every empty part of it', async () => {
 /* the menu */
 
 test('the menu offers what fits: Call another only when out, Dismiss one only with copies', () => {
-  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none };
+  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none, talks: none };
   const words = (b: BuddyRow, maker = false) => buddyItems(b, maker, acts).map(i => i.words);
-  assert.deepStrictEqual(words(row('A')), ['Export to a file', 'Delete']);
-  assert.deepStrictEqual(words(row('A', 1)), ['Bring here', 'Call another', 'Export to a file', 'Delete']);
-  assert.deepStrictEqual(words(row('A', 2)), ['Bring here', 'Call another', 'Dismiss one', 'Export to a file', 'Delete']);
-  assert.deepStrictEqual(words(row('A', 2), true), ['Bring here', 'Call another', 'Dismiss one', 'Edit', 'Export to a file', 'Delete']);
+  assert.deepStrictEqual(words(row('A')), ['Talks', 'Export to a file', 'Delete']);
+  assert.deepStrictEqual(words(row('A', 1)), ['Bring here', 'Call another', 'Talks', 'Export to a file', 'Delete']);
+  assert.deepStrictEqual(words(row('A', 2)), ['Bring here', 'Call another', 'Dismiss one', 'Talks', 'Export to a file', 'Delete']);
+  assert.deepStrictEqual(words(row('A', 2), true), ['Bring here', 'Call another', 'Dismiss one', 'Talks', 'Edit', 'Export to a file', 'Delete']);
 });
 
 test('out, she can be brought here, and given a treat or chase the mouse only if she can do it', () => {
-  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none };
-  const words = (b: BuddyRow) => buddyItems(b, false, acts).map(i => i.words).filter(w => !['Export to a file', 'Delete'].includes(w));
+  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none, talks: none };
+  const words = (b: BuddyRow) => buddyItems(b, false, acts).map(i => i.words).filter(w => !['Talks', 'Export to a file', 'Delete'].includes(w));
   assert.deepStrictEqual(words(row('A', 1, 'a', ['eat', 'chase'])), ['Bring here', 'Give a treat', 'Chase my mouse', 'Call another']);
   assert.deepStrictEqual(words(row('A', 1, 'a', ['chase'])), ['Bring here', 'Chase my mouse', 'Call another']);
   assert.deepStrictEqual(words(row('A', 1, 'a', ['eat'])), ['Bring here', 'Give a treat', 'Call another']);
   assert.deepStrictEqual(words(row('A', 0, 'a', ['eat', 'chase'])), [], 'at home, none of it');
 });
 
-test('a line splits what she does on the desktop from her file, and only when both are there', () => {
-  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none };
+test('lines split what she does on the desktop, whether she talks, and her file', () => {
+  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, edit: none, exportIt: none, remove: none, talks: none };
   const ruled = (b: BuddyRow, maker = false) => buddyItems(b, maker, acts).filter(i => i.rule).map(i => i.words);
-  assert.deepStrictEqual(ruled(row('A')), [], 'at home it is all her file');
-  assert.deepStrictEqual(ruled(row('A'), true), []);
-  assert.deepStrictEqual(ruled(row('A', 2, 'a', ['eat', 'chase'])), ['Export to a file']);
-  assert.deepStrictEqual(ruled(row('A', 1), true), ['Edit']);
+  assert.deepStrictEqual(ruled(row('A')), ['Export to a file'], 'at home there is nothing above Talks');
+  assert.deepStrictEqual(ruled(row('A'), true), ['Edit']);
+  assert.deepStrictEqual(ruled(row('A', 2, 'a', ['eat', 'chase'])), ['Talks', 'Export to a file']);
+  assert.deepStrictEqual(ruled(row('A', 1), true), ['Talks', 'Edit']);
 });
 
 test('the menu draws the line as a separator the arrow keys step over', async () => {
   const v = await scripted({ buddies: [row('Ada', 1)] });
   await openMenu(v, 'Ada');
   const kids = [...v.one('.menu')!.children].map(e => e.getAttribute('role'));
-  assert.deepStrictEqual(kids, ['menuitem', 'menuitem', 'separator', 'menuitem', 'menuitem']);
+  assert.deepStrictEqual(kids, ['menuitem', 'menuitem', 'separator', 'menuitemcheckbox', 'separator', 'menuitem', 'menuitem']);
   assert.strictEqual(document.activeElement!.textContent, 'Bring here');
   v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  assert.strictEqual(document.activeElement!.textContent, 'Talks');
+  v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   assert.strictEqual(document.activeElement!.textContent, 'Export to a file');
+});
+
+test('Talks is ticked while she talks, and mutes or unmutes her', async () => {
+  const v = await scripted({ buddies: [row('Ada', 1)] });
+  await openMenu(v, 'Ada');
+  assert.strictEqual(v.button('Talks', '.menu').getAttribute('aria-checked'), 'true');
+  await click(v.button('Talks', '.menu'));
+  assert.deepStrictEqual(v.sent.at(-1), { k: 'talks', id: 'ada', on: false });
+  gone(v.one('.menu'));
+  await v.set({ buddies: [{ ...row('Ada', 1), talks: false }] });
+  await openMenu(v, 'Ada');
+  assert.strictEqual(v.button('Talks', '.menu').getAttribute('aria-checked'), 'false');
+  await v.set({ buddies: [row('Ada', 1)] });
+  assert.strictEqual(v.button('Talks', '.menu').getAttribute('aria-checked'), 'true', 'an open menu follows the hub');
+  await click(v.button('Talks', '.menu'));
+  assert.deepStrictEqual(v.sent.at(-1), { k: 'talks', id: 'ada', on: false });
 });
 
 test('each menu item sends its command, and closes the menu', async () => {
@@ -304,12 +322,13 @@ test('one menu at a time, and arrow keys walk it', async () => {
   const v = await scripted({ buddies: [row('Ada', 2), row('Mo')] });
   await openMenu(v, 'Ada'); await openMenu(v, 'Mo');
   assert.strictEqual(v.all('.menu').length, 1);
-  assert.deepStrictEqual(v.words('.menu button'), ['Export to a file', 'Delete']);
-  assert.strictEqual(document.activeElement!.textContent, 'Export to a file');
+  assert.deepStrictEqual(v.words('.menu button'), ['Talks', 'Export to a file', 'Delete']);
+  assert.strictEqual(document.activeElement!.textContent, 'Talks');
   v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  assert.strictEqual(document.activeElement!.textContent, 'Export to a file');
+  v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   assert.strictEqual(document.activeElement!.textContent, 'Delete');
-  v.one('.menu')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-  assert.strictEqual(document.activeElement!.textContent, 'Export to a file');
 });
 
 test('a menu follows the hub: more copies change it, the same state leaves it alone, and a deleted buddy closes it', async () => {
@@ -928,6 +947,27 @@ test('storage that fails means dark, and never stops the window', async () => {
   await click(v.button('Settings'));
   await click(v.button('Light', '.panel'));
   assert.strictEqual(document.documentElement.dataset.theme, 'light', 'it still changes for now');
+});
+
+/* Show names and Buddies talk */
+
+test('Show names and Buddies talk: on by default, under Theme, showing the hub, with a line about other apps', async () => {
+  const v = await scripted({ ready: false });
+  await click(v.button('Settings'));
+  const names = () => v.button('Show names', '.panel'), talk = () => v.button('Buddies talk', '.panel');
+  assert.deepStrictEqual([names(), talk()].map(b => [b.getAttribute('role'), b.getAttribute('aria-checked'), b.disabled]), [['switch', 'true', true], ['switch', 'true', true]]);
+  assert.deepStrictEqual(v.words('.panel .look-note'), ['Lines other apps send still show.']);
+  const order = [v.one('.panel [role=radiogroup]'), names(), talk(), v.button(FILES_SWITCH, '.panel')].map(e => [...v.all('.panel *')].indexOf(e!));
+  assert.ok(order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1]!)), `order ${order}`);
+  await v.set({ ready: true });
+  await click(names());
+  await click(talk());
+  assert.deepStrictEqual(v.sent, [{ k: 'names', on: false }, { k: 'talk', on: false }]);
+  assert.deepStrictEqual([names(), talk()].map(checked), ['true', 'true'], 'what the hub says, not what was clicked');
+  await v.set({ names: false, talk: false });
+  assert.deepStrictEqual([names(), talk()].map(checked), ['false', 'false']);
+  await click(talk());
+  assert.deepStrictEqual(v.sent.at(-1), { k: 'talk', on: true });
 });
 
 /* Walk on windows */

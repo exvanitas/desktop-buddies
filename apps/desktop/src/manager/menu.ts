@@ -5,14 +5,17 @@ import type { MenuItem } from '@buddies/peel/menu';
 
 export interface BuddyActions {
   bringHere(): void; treat(): void; chase(): void; another(): void; dismissOne(): void; edit(): void; exportIt(): void; remove(): void;
+  /* her own lines on or off: muted, she keeps them to herself */
+  talks(on: boolean): void;
   /* the desktop's alone: the Manager has Dismiss as a button on her sticker */
   dismiss?(): void;
 }
 
 /* What a buddy offers, in the Manager's ••• menu or when she's right-clicked on the desktop. Pure. A
    treat and a chase only when she has the art for them. What she does on the desktop comes first,
-   then her file, with a line between. On the desktop she's already where the click was, so Bring
-   here is for her other copies, and Dismiss is there, as the Manager's sticker has it. */
+   then whether she talks, then her file, each after a line. On the desktop she's already where the
+   click was, so Bring here is for her other copies, and Dismiss is there, as the Manager's sticker
+   has it. */
 export function buddyItems(b: BuddyRow, maker: boolean, a: BuddyActions, where: 'manager' | 'desktop' = 'manager'): MenuItem[] {
   const out = b.copies > 0, desktop = where === 'desktop';
   const desk: MenuItem[] = [
@@ -28,8 +31,9 @@ export function buddyItems(b: BuddyRow, maker: boolean, a: BuddyActions, where: 
     { words: 'Export to a file', act: a.exportIt },
     { words: 'Delete', act: a.remove, bad: true }
   ];
-  if (desk.length) file[0] = { ...file[0]!, rule: true };
-  return [...desk, ...file];
+  const voice: MenuItem[] = [{ words: 'Talks', act: () => a.talks(!b.talks), checked: b.talks, rule: desk.length > 0 }];
+  file[0] = { ...file[0]!, rule: true };
+  return [...desk, ...voice, ...file];
 }
 
 /* Cancel is the big, focused button, and Escape, a click away or a scroll all mean Cancel too. */

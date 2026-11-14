@@ -66,6 +66,7 @@ export function mountMenu(root: HTMLElement, io: MenuViewIO) {
       dismiss: then({ k: 'dismiss', id }),
       edit: then({ k: 'maker', id }),
       exportIt: then({ k: 'export', id }),
+      talks: on => then({ k: 'talks', id, on })(),
       /* Asks first, in this window, about only the her it named, as the Manager does. */
       remove: () => {
         if (!open) return;

@@ -127,6 +127,10 @@ export function createManagerClient(io: ClientIO) {
     setAutostart: (on: boolean) => send({ k: 'autostart', on }),
     setFiles: (on: boolean) => send({ k: 'files', on }),
     setWalk: (on: boolean) => send({ k: 'walk', on }),
+    setNames: (on: boolean) => send({ k: 'names', on }),
+    setTalk: (on: boolean) => send({ k: 'talk', on }),
+    /* One buddy's own lines: off mutes her. */
+    setTalks: (id: string, on: boolean) => send({ k: 'talks', id, on }),
     /* `on` keeps buddies off this app's windows. */
     setExcluded: (app: string, on: boolean) => send({ k: 'exclude', app, on }),
     /* Other apps asking buddies to do things: the switch, an answer to one that's waiting, and

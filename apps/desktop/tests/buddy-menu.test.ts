@@ -10,7 +10,7 @@ import { test } from 'vitest';
 import { DRAW_MS, FOCUS_MS, MENU, RETRY_MS, STEP_MS, UP_MS, WANT_MS, createBuddyMenu, isMenu } from '../src/buddy-menu';
 import { createHub } from '../src/hub-core';
 import type { Command, MenuToHub, Said } from '../src/manager-api';
-import type { Monitor } from '../src/shell';
+import { text, type Monitor } from '../src/shell';
 import { createFakeExe } from '../src/shell-fake';
 import { createBus } from '../src/wire';
 
@@ -272,6 +272,16 @@ test('a choice is only ever about her, and only what her menu offers', async () 
   assert.strictEqual(s.copies(), 0);
 });
 
+test('Talks from her menu mutes her, and only her', async () => {
+  const s = await setup();
+  await s.open();
+  await s.say(choose(s.n(), { k: 'talks', id: 'someone-else', on: false }));
+  assert.ok(!s.exe.logs.some(l => /^manager talks/.test(l)));
+  await s.say(choose(s.n(), { k: 'talks', id: SAMPLE_ID, on: false }));
+  assert.ok(s.exe.logs.some(l => l === `manager talks ${SAMPLE_ID}`));
+  assert.deepStrictEqual(JSON.parse(text(s.exe.files.get('settings.json')!)).quiet, [SAMPLE_ID]);
+});
+
 test('a right-click that arrives after Hide all is ignored', async () => {
   const s = await setup();
   s.exe.emit('tray', { id: 'hide' }); await s.done();
@@ -283,7 +293,7 @@ test('a right-click that arrives after Hide all is ignored', async () => {
 test('buddies hidden or paused by any way at all, between the drawing and the showing: it never shows', async () => {
   const exe = createFakeExe({ monitors: [monitor(0, 0)] }), heard: Said[] = [];
   let quiet = false;
-  const row = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out' as const, copies: 1, can: [], rev: 1 };
+  const row = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out' as const, copies: 1, can: [], rev: 1, talks: true };
   const menu = createBuddyMenu({ shell: exe.shell, post: m => heard.push(m), note: () => {}, after: () => {}, row: () => row, maker: () => true, monitors: () => [monitor(0, 0)], quiet: () => quiet, run: () => {} });
   const flush = async () => { for (let i = 0; i < 30; i++) await new Promise(r => setTimeout(r)); };
   menu.heard({ k: 'menu-ask', copy: 'ada', her: { x: 500, y: 400, w: 160, h: 160 }, at: { x: 580, y: 450 }, t: 0 }); await flush();

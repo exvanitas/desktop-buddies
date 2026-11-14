@@ -70,6 +70,8 @@ h1, h2 { font-family: DynaPuff, Lexend, var(--world); font-weight: 600; }
 .menu button:hover, .menu button:focus-visible { background: var(--edge); }
 .menu button:focus-visible { outline: 0; }
 .menu .bad { color: var(--warn); }
+.menu [role="menuitemcheckbox"] { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.menu [role="menuitemcheckbox"][aria-checked="true"]::after { content: ""; width: 9px; height: 5px; margin: 0 2px 3px 0; border: solid currentColor; border-width: 0 0 2px 2px; transform: rotate(-45deg); }
 .menu .rule { height: 1px; margin: 4px 7px; background: var(--edge); }
 .confirm { width: 228px; padding: 11px 12px 12px; display: grid; gap: 4px; }
 .confirm h2 { font-size: 15px; font-weight: 500; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

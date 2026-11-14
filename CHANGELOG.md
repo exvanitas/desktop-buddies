@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Mute.** Settings has Buddies talk, and each buddy's menu has Talks, in the Manager and when you right-click her. Off, she keeps her own lines to herself. Lines other apps send still show; you choose those per app in Settings.
+- **Show names.** A switch in Settings hides every buddy's name tag on the desktop.
 - **No "Upload files to this site?" for a Shimeji.** Importing a Shimeji no longer opens a folder picker, which made Windows ask that. Drag the folder in, or pick every image in its img folder.
 - **Lighter when hidden or paused.** Hidden, paused, or while you're away, the buddies' world stops ticking and their windows stop drawing, instead of doing both 60 times a second with nothing to show. They pick up where they were, and anything that changes meanwhile, like a buddy brought to you, still shows at once.
 - **Pip has a picture for every pose slot.** The Maker's sample now climbs, hangs, rolls, tumbles, struggles, stands up from each way down, and has a move of her own, all in her own drawings.

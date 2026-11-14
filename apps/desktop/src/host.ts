@@ -26,6 +26,7 @@ export type Message =
 | { k: 'bring'; id: string } /* to the monitor under the cursor */
 | { k: 'pause'; on: boolean }
 | { k: 'say'; id: string; text: string; from: string } /* a line another app asked for, marked with its name */
+| ({ k: 'look' } & Look)
 | ({ k: 'cursor' } & Cursor)
 /* from an overlay */
 | { k: 'join'; me: Area; n: number } /* `n`: which window this is, from its boot. Each the hub opens has its own */
@@ -35,6 +36,10 @@ export type Message =
 | { k: 'over'; id: string | null }
 | { k: 'act'; id: string; a: string }
 | { k: 'act-all'; a: string }; /* everyone at once: the desktop check asks for it */
+/* Settings for everyone: Show names, Buddies talk, and who's muted, by her library id, which is
+   her first copy's id and the start of every other's. */
+export interface Look { names: boolean; talk: boolean; quiet: string[] }
+export const LOOK: Look = { names: true, talk: true, quiet: [] };
 export interface Port { postMessage(m: unknown): void }
 /* What an overlay hears from the world: its place, a frame with its tick's time, and whether the world is still. */
 export type ToOverlay = { k: 'area'; area: Area } | { k: 'frame'; frame: Frame; t: number } | { k: 'still'; on: boolean };
@@ -99,7 +104,7 @@ export function same(a: unknown, b: unknown): boolean {
 
 export function createHost(io: HostIO) {
   const ports = new Map<Port, Overlay>(), hold = createHold(HOLD_MS, io.now);
-  let sim: Sim | null = null, drag: { id: string } | null = null, ticks = 0, pets: BuddyData[] = [], areas: Area[] = [];
+  let sim: Sim | null = null, drag: { id: string } | null = null, ticks = 0, pets: BuddyData[] = [], areas: Area[] = [], look = LOOK;
   /* Paused, hidden or away, the world is still, and nothing ticks: it costs nothing, however long.
      Whatever changes what it shows meanwhile (a bring, a line, a window that moved, an overlay that
      joined, a timer of its own) is drawn there and then, by one step. A hand holding someone keeps it
@@ -111,7 +116,8 @@ export function createHost(io: HostIO) {
 
   function sync(next: BuddyData[]) {
     pets = next;
-    world().sync({ pets, bubbles: true, names: true, chatter: 'normal' });
+    const quiet = new Set(look.quiet);
+    world().sync({ pets, bubbles: true, names: look.names, chatter: 'normal', talk: look.talk, quiet: pets.filter(p => quiet.has(p.id.split('~')[0]!)).map(p => p.id) });
     if (drag && !world().pets.has(drag.id)) { drag = null; hold.end(); }
   }
 
@@ -266,6 +272,8 @@ export function createHost(io: HostIO) {
       if (!ports.has(port)) return; /* an overlay that left can still have messages on the way */
       if (m.k === 'start') { if (!sim) start(m); return; }
       if (m.k === 'join') { const s = ports.get(port)!; s.i = m.me.i; s.n = m.n; place(port, s); io.note(`joined overlay ${m.me.i}`); if (stilled && s.vp) port.postMessage({ k: 'still', on: true }); if (sim) settle(); return; }
+      /* kept from before the world starts, which starts with it; a still world draws it at once */
+      if (m.k === 'look') { look = { names: m.names, talk: m.talk, quiet: m.quiet }; if (sim) { sync(pets); settle(); } return; }
       if (!sim) return;
       handle(port, m);
       /* the cursor alone moves nothing in a still world, unless a hand holds someone */

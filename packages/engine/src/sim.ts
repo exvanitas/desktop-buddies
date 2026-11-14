@@ -20,7 +20,7 @@ export function createSim(opt: SimOptions) {
   const terrain = opt.terrain;
   let fxId = 0;
   const world: WorldState = {
-    terrain, bubbles: true, names: true, chatter: 'normal', mouse: { x: -1e4, y: -1e4, still: 0 }, fx: [], random, now: opt.now, after: opt.after, cancel: opt.cancel, pace, tick: 0, planned: -1,
+    terrain, bubbles: true, names: true, chatter: 'normal', talk: true, quiet: new Set<string>(), mouse: { x: -1e4, y: -1e4, still: 0 }, fx: [], random, now: opt.now, after: opt.after, cancel: opt.cancel, pace, tick: 0, planned: -1,
     /* particles */
     spawn(kind: ParticleKind, x: number, y: number, o?: ParticleOptions) {
       const size = (o && o.size) || 20;
@@ -97,6 +97,7 @@ export function createSim(opt: SimOptions) {
     step(n = 1) { for (let i = 0; i < n; i++) step(1); },
     sync(state: SyncState) {
       world.bubbles = state.bubbles !== false; world.names = state.names !== false; world.chatter = state.chatter || 'normal';
+      world.talk = state.talk !== false; world.quiet = new Set(state.quiet);
       const ids = new Set(state.pets.map(p => p.id));
       pets.forEach((p, id) => { if (!ids.has(id)) pets.delete(id); });
       state.pets.forEach(d => { if (pets.has(d.id)) pets.get(d.id)!.update(d); else pets.set(d.id, createPet(world, d)); });

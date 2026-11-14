@@ -44,8 +44,9 @@ const RETRY_MS = 2000, RETRY_MAX_MS = 60000; /* what failed: try again, slower e
 const MAX_FAILURES = 20;
 /* noSeed: someone has deleted a buddy, so an empty library is what they want. walk: only there when
    false. exclude: apps to stay off, by exe name in lower case. api: only there when other apps may
-   ask, and apiApps the person's answer for each app that has. */
-interface Settings { out?: string[]; noSeed?: boolean; walk?: boolean; exclude?: string[]; api?: boolean; apiApps?: ApiApp[] }
+   ask, and apiApps the person's answer for each app that has. names and talk: Show names and
+   Buddies talk, only there when false. quiet: the buddies muted one by one, by id. */
+interface Settings { out?: string[]; noSeed?: boolean; walk?: boolean; exclude?: string[]; api?: boolean; apiApps?: ApiApp[]; names?: boolean; talk?: boolean; quiet?: string[] }
 const MAX_API_APPS = 100;
 /* A start for a request has this long to write its reply, then it quits. */
 const COLD_MS = 2000;
@@ -72,7 +73,8 @@ function parsed(body: string): Settings | null {
     const fine = s !== null && typeof s === 'object' && !Array.isArray(s) && (s.out === undefined || (Array.isArray(s.out) && s.out.every(id => typeof id === 'string')));
     if (!fine) return null;
     /* A bad exclude list costs that list, not who's out, and so does a bad list of apps. */
-    return { ...s, exclude: Array.isArray(s.exclude) ? s.exclude.filter(a => typeof a === 'string').map(a => a.toLowerCase()) : [], api: s.api === true, apiApps: apiAppsIn(s.apiApps) };
+    return { ...s, exclude: Array.isArray(s.exclude) ? s.exclude.filter(a => typeof a === 'string').map(a => a.toLowerCase()) : [], api: s.api === true, apiApps: apiAppsIn(s.apiApps),
+      quiet: Array.isArray(s.quiet) ? [...new Set(s.quiet.filter(id => typeof id === 'string'))] : [] };
   } catch { return null; }
 }
 /* Each app once, by its name in any case, with a real answer. */
@@ -141,6 +143,8 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   let restored = false, waitFailure: string | null = null;
   let noSeed = false, failures: Failure[] = [], failed = 0, saving = false;
   let walk = true, exclude: string[] = [], apps: string[] = [], seen: WindowEntry[] = [], lastSeq = 0;
+  /* Show names, Buddies talk, and who's muted one by one: what the world is told to show. */
+  let names = true, talk = true, quiet: string[] = [];
   let watching: boolean | null = null; /* null: nobody knows, so the next reconcile says which */
   /* The local API: on, what the person said about each app, and the apps waiting on them. */
   let apiOn = false, apiApps: ApiApp[] = [], asking: string[] = [];
@@ -177,10 +181,10 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   /* The tray and the Manager both read this, so they can't tell different stories. */
   const rows = (): BuddyRow[] => shelf.map(b => {
     const n = roster.count(b.id);
-    return { id: b.id, name: b.name, image: b.buddy.base.src, status: n ? 'out' : 'home', copies: n, can: PLAYS.filter(a => canDo(b.buddy, a)), rev: revisions.of(b.id) };
+    return { id: b.id, name: b.name, image: b.buddy.base.src, status: n ? 'out' : 'home', copies: n, can: PLAYS.filter(a => canDo(b.buddy, a)), rev: revisions.of(b.id), talks: !quiet.includes(b.id) };
   });
   const replacing = () => waiting.map(q => ({ ask: q.ask, id: q.id, name: shelf.find(b => b.id === q.id)?.name ?? q.was ?? q.called, called: q.called, file: q.file.name }));
-  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, packaged, files, walk, exclude, apps, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
+  const state = (): HubState => ({ ready: stocked, buddies: rows(), hidden, paused, autostart, packaged, files, walk, exclude, apps, names, talk, maker: true, failures, api: { on: apiOn, apps: apiApps, asking }, replacing: replacing() });
   const publish = () => wire.post({ k: 'state', state: state() });
   /* Her row from a copy's world id. With --buddies every copy is the first buddy. */
   const rowOf = (copy: string) => rows().find(r => r.id === (copies !== null ? shelf[0]?.id : copy.split('~')[0])) ?? null;
@@ -194,7 +198,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     trayStale = false;
   }
   async function saveSettings() {
-    await shell.dataWrite(SETTINGS, JSON.stringify({ out: roster.list(), ...(noSeed ? { noSeed } : {}), ...(walk ? {} : { walk }), ...(exclude.length ? { exclude } : {}), ...(apiOn ? { api: true } : {}), ...(apiApps.length ? { apiApps } : {}) } satisfies Settings));
+    await shell.dataWrite(SETTINGS, JSON.stringify({ out: roster.list(), ...(noSeed ? { noSeed } : {}), ...(walk ? {} : { walk }), ...(exclude.length ? { exclude } : {}), ...(apiOn ? { api: true } : {}), ...(apiApps.length ? { apiApps } : {}), ...(names ? {} : { names }), ...(talk ? {} : { talk }), ...(quiet.length ? { quiet } : {}) } satisfies Settings));
     unsaved = false;
   }
   /* No file is a first run, and nothing else is. A read says nothing structured about why it failed,
@@ -209,6 +213,8 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     return { noSeed: true };
   }
   const pauseWorld = () => send({ k: 'pause', on: paused || away || hidden });
+  /* The world hears it once it has started, and whenever it changes. */
+  const sendLook = () => { if (started) send({ k: 'look', names, talk, quiet }); };
 
   /* Windows skip the queue, which an import can hold for seconds: a window that moves can't wait
      for that. The host keeps only the latest. */
@@ -291,7 +297,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     let ok = true;
     const attempt = (p: Promise<void>) => p.catch(e => { ok = false; note(`library not ready: ${e}`); });
     let settings: Settings | null = null, recovered = false;
-    if (!restored) await attempt(loadSettings().then(s => { settings = s; noSeed ||= !!s.noSeed; walk = s.walk !== false; exclude = s.exclude ?? []; apiOn = !!s.api; apiApps = s.apiApps ?? []; }));
+    if (!restored) await attempt(loadSettings().then(s => { settings = s; noSeed ||= !!s.noSeed; walk = s.walk !== false; exclude = s.exclude ?? []; apiOn = !!s.api; apiApps = s.apiApps ?? []; names = s.names !== false; talk = s.talk !== false; quiet = s.quiet ?? []; sendLook(); }));
     await attempt((async () => {
       await library.recover();
       recovered = true;
@@ -333,7 +339,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       screensNow = list;
       const next = screens.areas(list), c = changes(wanted, next);
       wanted = next;
-      if (!started) { started = true; send({ k: 'start', all: next, pets: pets() }); pauseWorld(); }
+      if (!started) { started = true; send({ k: 'start', all: next, pets: pets() }); pauseWorld(); sendLook(); }
       else if (c.open.length || c.close.length || c.place.length) send({ k: 'monitors', all: next });
     } else note(started ? 'monitors: empty list ignored' : 'no monitors yet: waiting for them');
     await catchUp();
@@ -699,6 +705,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       for (const copy of roster.clear(id)) send({ k: 'dismiss', id: copy });
       revisions.changed(id);
       shelf = shelf.filter(x => x.id !== id);
+      if (quiet.includes(id)) { quiet = quiet.filter(x => x !== id); sendLook(); }
       forget(unread.get(id));
       unread.delete(id);
       note(`deleted ${id}`);
@@ -739,6 +746,23 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       feed();
       return outChanged();
     }),
+    /* Settings for everyone, and one buddy's own, kept with who's out. */
+    names: ({ on }) => whenRestored(async () => {
+      if (on === names) return OK;
+      names = on; sendLook();
+      return outChanged();
+    }),
+    talk: ({ on }) => whenRestored(async () => {
+      if (on === talk) return OK;
+      talk = on; sendLook();
+      return outChanged();
+    }),
+    talks: ({ id, on }) => whenRestored(() => withBuddy(id, async () => {
+      if (on === !quiet.includes(id)) return OK;
+      quiet = on ? quiet.filter(x => x !== id) : [...quiet, id];
+      sendLook();
+      return outChanged();
+    })),
     exclude: ({ app, on }) => whenRestored(async () => {
       const name = app.toLowerCase(), others = exclude.filter(a => a !== name);
       exclude = on ? [...others, name].sort() : others;

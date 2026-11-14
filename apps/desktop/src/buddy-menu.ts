@@ -95,7 +95,7 @@ export interface State {
 export const initial = (start: number): State => ({ n: 0, ids: 0, windows: 0, start, want: null, cur: null, shownOnce: false, owed: [], waiting: false, tries: 0, limbo: [], sweeping: false, busy: null });
 
 /* What her menu can ask for: about her, and nothing else. */
-const OFFERED: ReadonlySet<Command['k']> = new Set(['bring', 'act', 'another', 'dismiss-one', 'dismiss', 'maker', 'export', 'delete']);
+const OFFERED: ReadonlySet<Command['k']> = new Set(['bring', 'act', 'another', 'dismiss-one', 'dismiss', 'maker', 'export', 'delete', 'talks']);
 const offered = (cmd: Command, id: string) => OFFERED.has(cmd.k) && 'id' in cmd && cmd.id === id && (cmd.k !== 'act' || (PLAYS as readonly string[]).includes(cmd.action));
 const same = (a?: Rect, b?: Rect) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 const USER: ReadonlySet<Event['k']> = new Set(['ask', 'press', 'closed', 'choose']);

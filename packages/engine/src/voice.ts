@@ -42,6 +42,8 @@ export function createVoice(world: WorldState, me: Character, P: PetState, { pic
     line(key: string) { const k = key as Situation, own = me.data.lines && me.data.lines[k]; return pick(own && own.length ? own : LINES[k] || ['']); },
     say(t: string, from = '') {
       if (!world.bubbles || !t) return;
+      /* Muted, she keeps her own lines to herself. One another app sent is the person's choice for that app. */
+      if (!from && (!world.talk || world.quiet.has(me.data.id))) return;
       bubble.text = t; bubble.from = from; bubble.hidden = false; bubble.pop++;
       /* A line from an app can be long, so it stays long enough to read. */
       const ms = from ? Math.max(world.pace.bubbleMs, APP_LINE_MS + t.length * 40) : world.pace.bubbleMs;

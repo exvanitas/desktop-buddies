@@ -387,7 +387,7 @@ test('API 2: a quit while Close already waits on image work leaves the close in 
 test('the menu\'s window opens without the keyboard on API 2, and as before on API 1', async () => {
   for (const api of [1, 2]) {
     const exe = createFakeExe({ api, monitors: [monitor] });
-    const row = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out' as const, copies: 1, can: [], rev: 1 };
+    const row = { id: 'ada', name: 'Ada', image: 'x.png', status: 'out' as const, copies: 1, can: [], rev: 1, talks: true };
     const menu = createBuddyMenu({ shell: exe.shell, post: () => {}, note: () => {}, after: () => {}, row: () => row, maker: () => true, monitors: () => [monitor], quiet: () => false, run: () => {}, newer: () => api >= 2 });
     menu.heard({ k: 'menu-ask', copy: 'ada', her: { x: 500, y: 400, w: 160, h: 160 }, at: { x: 580, y: 450 }, t: 0 });
     for (let i = 0; i < 10; i++) await tick();

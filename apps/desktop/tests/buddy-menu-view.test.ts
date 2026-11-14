@@ -10,7 +10,7 @@ import { buddyItems } from '../src/manager/menu';
 import { createBus } from '../src/wire';
 
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r)); };
-const row = (name: string, copies = 1, can: BuddyRow['can'] = ['eat', 'chase'], id = name.toLowerCase()): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 7 });
+const row = (name: string, copies = 1, can: BuddyRow['can'] = ['eat', 'chase'], id = name.toLowerCase()): BuddyRow => ({ id, name, image: `library/${id}/base.png`, status: copies ? 'out' : 'home', copies, can, rev: 7, talks: true });
 /* this page's window */
 const ME = 'buddy-menu-41';
 const eq: (a: unknown, b: unknown, why?: string) => void = (a, b, why) => assert.deepStrictEqual(a, b, why);
@@ -56,8 +56,8 @@ test('the page says it\'s up, and again when the hub asks', async () => {
 test('her menu: what she does on the desktop, then her file, from the Manager\'s own list', async () => {
   const v = mount();
   const n = await v.show(row('Ada', 1));
-  eq(v.words(), ['Give a treat', 'Chase my mouse', 'Call another', 'Dismiss', 'Edit', 'Export to a file', 'Delete']);
-  eq(v.root.querySelectorAll('[role="separator"]').length, 1);
+  eq(v.words(), ['Give a treat', 'Chase my mouse', 'Call another', 'Dismiss', 'Talks', 'Edit', 'Export to a file', 'Delete']);
+  eq(v.root.querySelectorAll('[role="separator"]').length, 2);
   eq(v.root.querySelector('[role="menu"]')!.getAttribute('aria-label'), 'Ada');
   const r = v.of('menu-ready');
   eq(r.map(m => m.n), [n]);
@@ -140,9 +140,22 @@ test('a choice asks the hub to do it, once, for this showing, and asks for nothi
 test('copies: Bring here and Dismiss one join in', async () => {
   const v = mount();
   const n = await v.show(row('Ada', 3, []), false);
-  eq(v.words(), ['Bring here', 'Call another', 'Dismiss one', 'Dismiss', 'Export to a file', 'Delete']);
+  eq(v.words(), ['Bring here', 'Call another', 'Dismiss one', 'Dismiss', 'Talks', 'Export to a file', 'Delete']);
   v.button('Dismiss one').click(); await tick();
   eq(v.chosen(), [[n, { k: 'dismiss-one', id: 'ada' }]]);
+});
+
+test('Talks is ticked while she talks, and the choice mutes her', async () => {
+  const v = mount();
+  const n = await v.show(row('Ada', 1));
+  eq(v.button('Talks').getAttribute('role'), 'menuitemcheckbox');
+  eq(v.button('Talks').getAttribute('aria-checked'), 'true');
+  v.button('Talks').click(); await tick();
+  eq(v.chosen(), [[n, { k: 'talks', id: 'ada', on: false }]]);
+  const m = await v.show({ ...row('Ada', 1), talks: false });
+  eq(v.button('Talks').getAttribute('aria-checked'), 'false');
+  v.button('Talks').click(); await tick();
+  eq(v.chosen().at(-1), [m, { k: 'talks', id: 'ada', on: true }]);
 });
 
 test('Esc asks the hub to close it, and a click after that asks for nothing', async () => {
@@ -162,6 +175,8 @@ test('the arrow keys move along it, over the line', async () => {
   await v.key('ArrowDown');
   same(document.activeElement, v.button('Give a treat'));
   for (let i = 0; i < 4; i++) await v.key('ArrowDown');
+  same(document.activeElement, v.button('Talks'));
+  await v.key('ArrowDown');
   same(document.activeElement, v.button('Edit'));
 });
 
@@ -211,7 +226,7 @@ test('the next buddy\'s menu replaces the last', async () => {
   const v = mount();
   await v.show(row('Ada', 1, ['eat']));
   await v.show(row('Bo', 1, []));
-  eq(v.words(), ['Call another', 'Dismiss', 'Edit', 'Export to a file', 'Delete']);
+  eq(v.words(), ['Call another', 'Dismiss', 'Talks', 'Edit', 'Export to a file', 'Delete']);
   eq(v.root.querySelectorAll('[role="menu"]').length, 1);
 });
 
@@ -256,10 +271,10 @@ test('it follows the Manager\'s theme, read at each showing', async () => {
 });
 
 test('the desktop list: Bring here only for other copies, and Dismiss, which the Manager has as a button', () => {
-  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, dismiss: none, edit: none, exportIt: none, remove: none };
+  const none = () => {}, acts = { bringHere: none, treat: none, chase: none, another: none, dismissOne: none, dismiss: none, edit: none, exportIt: none, remove: none, talks: none };
   const words = (b: BuddyRow, maker = false) => buddyItems(b, maker, acts, 'desktop').map(i => i.words);
-  eq(words(row('A', 1, [])), ['Call another', 'Dismiss', 'Export to a file', 'Delete']);
-  eq(words(row('A', 2, ['eat']), true), ['Bring here', 'Give a treat', 'Call another', 'Dismiss one', 'Dismiss', 'Edit', 'Export to a file', 'Delete']);
+  eq(words(row('A', 1, [])), ['Call another', 'Dismiss', 'Talks', 'Export to a file', 'Delete']);
+  eq(words(row('A', 2, ['eat']), true), ['Bring here', 'Give a treat', 'Call another', 'Dismiss one', 'Dismiss', 'Talks', 'Edit', 'Export to a file', 'Delete']);
   eq(buddyItems(row('A', 2), false, acts).map(i => i.words).includes('Dismiss'), false, 'the Manager\'s is as it was');
-  eq(buddyItems(row('A', 1, []), false, acts, 'desktop').filter(i => i.rule).map(i => i.words), ['Export to a file']);
+  eq(buddyItems(row('A', 1, []), false, acts, 'desktop').filter(i => i.rule).map(i => i.words), ['Talks', 'Export to a file']);
 });

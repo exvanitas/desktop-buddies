@@ -9,7 +9,8 @@ export type Play = (typeof PLAYS)[number];
 /* One buddy in the library, as a view needs it. `image` works as an <img> src in any app page. `can`
    is what of PLAYS she has the art for. */
 /* `rev` changes with every write to her, so a confirm or a retry can say which of her it was about. */
-export interface BuddyRow { id: string; name: string; image: string; status: 'out' | 'home'; copies: number; can: Play[]; rev: number }
+/* `talks`: her own setting, which Buddies talk being off doesn't change. */
+export interface BuddyRow { id: string; name: string; image: string; status: 'out' | 'home'; copies: number; can: Play[]; rev: number; talks: boolean }
 export interface HubState {
   /* false until the library has been read and anything a crash left has been put back */
   ready: boolean;
@@ -23,6 +24,8 @@ export interface HubState {
   /* Walk on windows, the apps to stay off, and the apps in the latest snapshot, all by exe name in
      lower case */
   walk: boolean; exclude: string[]; apps: string[];
+  /* Show names and Buddies talk, for everyone. A buddy's own mute is her row's. */
+  names: boolean; talk: boolean;
   /* true when the Maker can be offered: a view shows New and Edit */
   maker: boolean;
   /* what went wrong and hasn't been cleared, oldest first */
@@ -59,6 +62,9 @@ export type Command =
 | { k: 'autostart'; on: boolean }
 | { k: 'files'; on: boolean } /* open .buddy files with this app */
 | { k: 'walk'; on: boolean }
+| { k: 'names'; on: boolean } /* Show names */
+| { k: 'talk'; on: boolean } /* Buddies talk */
+| { k: 'talks'; id: string; on: boolean } /* one buddy's own lines */
 | { k: 'exclude'; app: string; on: boolean } /* not `name` or `id`: the hub logs those, and an app's name stays out of the log */
 | { k: 'api'; on: boolean } /* let other apps ask */
 /* `app`, not `name`: the hub logs a name, and an app's stays out of the log */

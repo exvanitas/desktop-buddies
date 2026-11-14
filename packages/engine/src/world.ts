@@ -10,7 +10,9 @@ export interface Viewport { x: number; y: number; scale: number; w?: number; h?:
 /* a buddy as the world knows it: what a file holds, plus an id for this run */
 export type BuddyData = Buddy & { id: string };
 
-export interface SyncState { pets: BuddyData[]; bubbles?: boolean; names?: boolean; chatter?: Chatter }
+/* `talk`: whether buddies say their own lines at all, and `quiet` the ids of those who don't. A line
+   another app sent shows either way. Both leave the bubble to `bubbles`. */
+export interface SyncState { pets: BuddyData[]; bubbles?: boolean; names?: boolean; chatter?: Chatter; talk?: boolean; quiet?: string[] }
 export type Chatter = 'off' | 'low' | 'normal' | 'high';
 
 export type ParticleKind = 'heart' | 'star' | 'anger' | 'tear' | 'text' | 'puddle' | 'crumb';
@@ -29,7 +31,7 @@ export interface Particle extends ParticleOptions {
 }
 
 export interface WorldState {
-  terrain: Terrain; bubbles: boolean; names: boolean; chatter: Chatter;
+  terrain: Terrain; bubbles: boolean; names: boolean; chatter: Chatter; talk: boolean; quiet: ReadonlySet<string>;
   mouse: { x: number; y: number; still: number }; fx: Particle[];
   random: () => number; now: () => number; after: (ms: number, f: () => void) => number; cancel: (id: number) => void;
   pace: Pace; paused?: boolean;
