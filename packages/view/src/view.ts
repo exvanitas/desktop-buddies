@@ -18,8 +18,17 @@ export interface ViewOptions {
   /* the desktop host holds the mouse itself, and works out hover from its own hit test */
   pointerCapture?: boolean; hover?: boolean;
 }
+/* A new size that comes with a new picture waits for the picture. Set before it's loaded, the old picture
+   stays on screen at the new size until it is: stretched or squeezed for a frame or more, so a buddy whose
+   poses are cut at different sizes seemed to grow and shrink at random. The picture loads in an element of
+   its own first; once decoded, setting it shows it at once, with the new size. Past `WAIT_MS`, or if it
+   can't load, the change goes anyway, as before. */
+export const WAIT_MS = 250;
+/* pictures already decoded here, newest last, so a pose seen before changes at once */
+const KNOWN = 256;
+interface Loading { src: string; img: HTMLImageElement; ready: boolean; since: number }
 /* `fitted`: the bubble is where the view moved it, not where the engine wrote it */
-interface PetElements { el: HTMLElement; body: HTMLElement; img: HTMLImageElement; bub: HTMLElement; tag: HTMLElement; last: PetFrame | null; fitted: boolean }
+interface PetElements { el: HTMLElement; body: HTMLElement; img: HTMLImageElement; bub: HTMLElement; tag: HTMLElement; last: PetFrame | null; fitted: boolean; loading: Loading | null }
 interface FxElement { e: HTMLElement; opacity: number | null; tf: string | null }
 export type View = ReturnType<typeof createView>;
 
@@ -27,6 +36,24 @@ export function createView(opt: ViewOptions) {
   const { root, input, viewport: vp, onMenu } = opt;
   const doc = root.ownerDocument;
   const pets = new Map<string, PetElements>(), fx = new Map<number, FxElement>();
+  const known = new Set<string>();
+  const now = () => (doc.defaultView?.performance ?? performance).now();
+  /* A page that can't decode pictures ahead, like the golden traces' stand-in document, draws every
+     change at once, as before. */
+  const canWait = typeof doc.defaultView?.HTMLImageElement?.prototype?.decode === 'function';
+  function decoded(src: string) { known.delete(src); known.add(src); if (known.size > KNOWN) known.delete(known.values().next().value!); }
+  /* Is this picture ready to show the moment it's set? Starts loading it if not. */
+  function ready(v: PetElements, src: string) {
+    if (!canWait || known.has(src)) return true;
+    let l = v.loading;
+    if (!l || l.src !== src) {
+      const img = doc.createElement('img'); img.src = src;
+      const mine: Loading = l = v.loading = { src, img, ready: false, since: now() };
+      const done = () => { mine.ready = true; decoded(src); };
+      img.decode().then(done, done);
+    }
+    return l.ready || now() - l.since > WAIT_MS;
+  }
   const world = (e: PointerEvent | MouseEvent) => { const r = root.getBoundingClientRect(); return { x: (e.clientX - r.left) * vp.scale + vp.x, y: (e.clientY - r.top) * vp.scale + vp.y }; };
 
   function createPet(id: string): PetElements {
@@ -34,6 +61,8 @@ export function createView(opt: ViewOptions) {
     const body = doc.createElement('div'); body.className = 'db-body';
     const img = doc.createElement('img'); img.alt = ''; img.draggable = false;
     body.append(img); el.append(body);
+    /* a picture it has shown is one it can show again at once */
+    img.addEventListener('load', () => { const s = img.getAttribute('src'); if (s) decoded(s); });
     const bub = doc.createElement('div'); bub.className = 'db-bubble'; bub.hidden = true;
     const tag = doc.createElement('div'); tag.className = 'db-tag';
     root.append(el, bub, tag);
@@ -51,11 +80,14 @@ export function createView(opt: ViewOptions) {
     el.addEventListener('pointercancel', () => input.up(id));
     /* right-click menu, only when the host page asks for one (the exported desktop page does) */
     el.addEventListener('contextmenu', e => { if (!onMenu) return; e.preventDefault(); onMenu(id, e.clientX, e.clientY); });
-    return { el, body, img, bub, tag, last: null, fitted: false };
+    return { el, body, img, bub, tag, last: null, fitted: false, loading: null };
   }
 
   function applyPet(v: PetElements, f: PetFrame) {
     const was: Partial<PetFrame> = v.last || {};
+    /* Until the new picture can show, she's drawn as she was: size, picture, place and body together. */
+    if (f.size !== null && was.size && f.size !== was.size && f.src && f.src !== was.src && !ready(v, f.src))
+      f = { ...f, size: was.size, src: was.src, tf: was.tf ?? f.tf, origin: was.origin ?? f.origin, body: was.body ?? f.body, parts: was.parts ?? f.parts, box: was.box ?? f.box, grab: was.grab ?? f.grab };
     if (f.size !== null) {
       if (f.size !== was.size) v.el.style.width = v.el.style.height = f.size;
       if (f.tf !== was.tf) v.el.style.transform = f.tf!;

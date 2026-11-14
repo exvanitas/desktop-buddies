@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **No more growing and shrinking.** A buddy whose poses are cut at different sizes, like the Maker's Pip, could look bigger or smaller for a moment when she changed pose: her new size was drawn before her new picture had loaded. Now the two change together.
 - **No Microsoft Store version for now.** Desktop Buddies installs from GitHub, with the installer or the zip, and through winget once it's in the catalogue. They aren't signed, so 1.0.0's note on Windows' warnings still holds.
 
 ## 1.0.0 (2026-11-12)
