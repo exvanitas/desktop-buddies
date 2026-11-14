@@ -335,8 +335,12 @@ const phases: Record<string, (page: MakerPage & { postTimes: number[] }, client:
     page.maker.setName('Upgraded');
     t = performance.now();
     const upgraded = await saved(page), upgradeMs = Math.round(performance.now() - t), after = await tidy(p.character!);
-    const ok = first && one && upgraded && after.ok && (await manifest(p.character!)).name === 'Upgraded' && !withManager.includes(-1) && !without.includes(-1);
-    check('shaped', ok, { ...shape, firstSaveMs: firstMs, renameWithManagerMs: withManager, renameMs: without, oneImageMs: oneMs, upgradeSaveMs: upgradeMs, legacyWriteMs: legacyMs, after, postMs: page.postTimes });
+    /* The Maker waits on while the hub gets somewhere, so a slow save is judged here, not by a reply
+       timeout: her first save and her upgrade against the same files written one by one from this
+       page, on the same machine. One far past the other two is a stall. */
+    const judged = stalls([firstMs, upgradeMs, legacyMs]), stalled = judged.stalled.map(i => ['first', 'upgrade', 'legacy'][i]);
+    const ok = first && one && upgraded && after.ok && (await manifest(p.character!)).name === 'Upgraded' && !withManager.includes(-1) && !without.includes(-1) && !stalled.length;
+    check('shaped', ok, { ...shape, ...(stalled.length ? { stalled } : {}), firstSaveMs: firstMs, renameWithManagerMs: withManager, renameMs: without, oneImageMs: oneMs, upgradeSaveMs: upgradeMs, legacyWriteMs: legacyMs, after, postMs: page.postTimes });
     page.maker.select(p.id);
     page.maker.setName('Shaped Closed');
     await note.set('id', p.character!);

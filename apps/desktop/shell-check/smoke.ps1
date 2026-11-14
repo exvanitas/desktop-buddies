@@ -481,10 +481,10 @@ Expect 'maker.silent.close_anyway' (Wait-For 'the window to go' { (Maker-Window)
 # A buddy the shape of the largest real one, and what she costs.
 Expect 'maker.shaped' (Wait-For 'her saves' { Probed '(PASS|FAIL) shaped ' } 420)
 Expect 'maker.shaped_back' (Wait-For 'her read back' { Probed '(PASS|FAIL) shaped_back' } 120)
-# Five first saves of new buddies her shape, where the runner's stalls were. A stall fails, and the
-# hub's lines about slow saves are printed beside it, so it says where its time went.
+# Five first saves of new buddies her shape, where the runner's stalls were. A stall fails, here or in
+# her own saves above, and the hub's lines about slow saves are printed beside it.
 Expect 'maker.shaped_firsts' (Wait-For 'her first saves' { Probed '(PASS|FAIL) shaped_firsts' } 800)
-if (Probed 'FAIL shaped_firsts') {
+if ((Probed 'FAIL shaped_firsts') -or (Probed 'FAIL shaped ')) {
   (Log-Text) -split "`n" | Where-Object { $_ -match 'maker save of |library: a save took|PROBE (INFO shaped_first|FAIL shaped_firsts)' } | ForEach-Object { Write-Host "  trace: $($_.Trim())" }
 }
 

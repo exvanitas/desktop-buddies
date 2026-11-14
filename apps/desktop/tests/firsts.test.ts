@@ -23,3 +23,11 @@ test('both bounds, at their edges, and the median', () => {
   assert.strictEqual(median([4, 1, 2, 3]), 2.5);
   assert.strictEqual(median([]), 0);
 });
+
+test('makerprobe.shaped: her first save and upgrade beside the same files written one by one', () => {
+  /* a0e1bd8 and 5f6f944: the stalled first saves */
+  assert.deepStrictEqual(stalls([46500, 17300, 16700]).stalled, [0]);
+  assert.deepStrictEqual(stalls([75700, 16900, 18100]).stalled, [0]);
+  /* 3436aee's 30 s upgrade, on a machine where the same files took 16 s one by one: slow, not a stall */
+  assert.deepStrictEqual(stalls([9945, 30047, 16040]).stalled, []);
+});
