@@ -39,6 +39,9 @@ pnpm build          # apps/maker/dist, and apps/desktop/dist/app
 
 The exe is in `apps/desktop/src-tauri` (`cargo build --release` there, on Windows). Put `apps/desktop/dist/app` beside it as `app`. [apps/desktop/README.md](apps/desktop/README.md) has its flags and how the pieces fit.
 
+## Community
+Ask questions, report bugs and show off your buddies on the Milliways Discord server: [discord.gg/HNhFu4bDNj](https://discord.gg/HNhFu4bDNj). Desktop Buddies has its own channel there, #desktop-buddies. Report bugs in #orders, tagged desktop-buddies. [GitHub issues](https://github.com/exvanitas/desktop-buddies/issues) work too.
+
 ## Contributing
 Issues and pull requests are welcome. Before a pull request, run the checks:
 
