@@ -185,7 +185,7 @@ export function createLook(world: WorldState, me: Character, P: PetState, { bubb
       tf: drawn.size === null ? null : `translate(${l.toFixed(1)}px,${t.toFixed(1)}px)`,
       bubble: { text: bubble.text, ...(bubble.from ? { from: bubble.from } : {}), hidden: bubble.hidden || off, pop: bubble.pop, below: bubble.below, tf: bubble.placed ? `translate(${px(bubble.x, vp.x, s)}px,${px(bubble.y, vp.y, s)}px) ${bubble.below ? 'translate(-50%,0)' : 'translate(-50%,-100%)'}` : null,
         at: bubble.placed ? { x: px(bubble.x, vp.x, s), up: px(bubble.up, vp.y, s), down: px(bubble.down, vp.y, s), her: px(bubble.her, vp.x, s), mid: px(bubble.mid, vp.y, s) } : null },
-      tag: { text: tag.text, hidden: tag.hidden || off, tf: tag.placed ? `translate(${px(tag.x, vp.x, s)}px,${px(tag.y, vp.y, s)}px) translate(-50%,0)` : null }
+      tag: { text: tag.text, hidden: tag.hidden || off || !world.names, tf: tag.placed ? `translate(${px(tag.x, vp.x, s)}px,${px(tag.y, vp.y, s)}px) translate(-50%,0)` : null }
     };
   }
 

@@ -408,6 +408,21 @@ test('overlays are told when the world goes still and when it runs again, and on
   assert.deepStrictEqual([told(d.top), told(late)], [[true, false], [true, false]]);
 });
 
+test('still, Show names off is drawn at once, without a tick', () => {
+  const d = desk(); d.tick(200);
+  const frames = () => [d.top, d.low].flatMap(p => p.out.filter(m => m.k === 'frame'));
+  const tagHidden = () => (frames().pop()! as unknown as { frame: Frame }).frame.pets[0]!.tag.hidden;
+  assert.strictEqual(tagHidden(), false);
+  d.send(d.hub, { k: 'pause', on: true });
+  const n = frames().length;
+  d.send(d.hub, { k: 'look', names: false, talk: true, quiet: [] });
+  assert.ok(frames().length > n, 'drawn');
+  assert.strictEqual(tagHidden(), true);
+  d.send(d.hub, { k: 'look', names: true, talk: true, quiet: [] });
+  assert.strictEqual(tagHidden(), false, 'and back, as she was placed');
+  assert.strictEqual(d.running(), 0, 'and still nothing ticks');
+});
+
 test('still, a change is drawn at once by one step, and the cursor alone draws nothing', () => {
   const d = desk(); d.tick(200);
   d.send(d.hub, { k: 'pause', on: true });
