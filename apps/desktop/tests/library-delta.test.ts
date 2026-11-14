@@ -157,7 +157,7 @@ test('a slow save says where its time went, with counts and times and no names',
   await lib.add(write(bigBuddy()));
   const line = notes.find(l => l.startsWith('library: a save took'));
   assert.ok(line, notes.join('; '));
-  assert.match(line, /hashing \d+, 1146 images written 4 at a time in \d+, each \d+ median, \d+ p90, \d+ most$/);
+  assert.match(line, /hashing \d+, 1146 images written 4 at a time in \d+, each \d+ median, \d+ p90, \d+ most, then the manifest and the move \d+$/);
   assert.ok(!/cbig|Big|\.png|\//.test(line.slice('library: '.length)), line);
   notes.length = 0;
   await createLibrary(exe.shell, l => notes.push(l)).add(write({ ...bigBuddy(), name: 'Quick' }));

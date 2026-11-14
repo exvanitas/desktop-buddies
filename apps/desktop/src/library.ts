@@ -111,12 +111,14 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
       await t.writes([...files], ([name, bytes]) => shell.dataWrite(`${stage}/${name}`, bytes));
       await shell.dataWrite(`${stage}/${MANIFEST}`, manifest);
       await shell.dataMove(stage, home);
+      t.placed(true);
       t.done();
       return false;
     }
     const there = await shell.dataList(home), size = new Map(there.map(e => [e.name, e.size]));
     await t.writes([...files].filter(([name, bytes]) => size.get(name) !== bytes.length), ([name, bytes]) => shell.dataWrite(`${home}/${name}`, bytes));
     await shell.dataWrite(`${home}/${MANIFEST}`, manifest);
+    t.placed();
     /* A WebView can hold a file open, and then Windows won't delete it. That waits for the next save. */
     let left = 0, why = '';
     await t.deletes(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
@@ -129,14 +131,16 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
      Said only for a save slow enough to ask about. */
   function timer() {
     const start = now(), each: number[] = [];
-    let hashing = 0, writing = 0, deleting = 0, deleted = 0;
+    let hashing = 0, writing = 0, wrote = start, placing = 0, moved = false, deleting = 0, deleted = 0;
     return {
       hashed() { hashing = now() - start; },
       async writes<T>(items: T[], f: (item: T) => Promise<unknown>) {
         const a = now();
         await inFlight(items, IN_FLIGHT, async item => { const b = now(); await f(item); each.push(now() - b); });
-        writing = now() - a;
+        wrote = now(); writing = wrote - a;
       },
+      /* her manifest, and for a new buddy the move in */
+      placed(move = false) { placing = now() - wrote; moved = move; },
       async deletes<T>(items: T[], f: (item: T) => Promise<unknown>) {
         const a = now();
         await inFlight(items, IN_FLIGHT, f);
@@ -146,7 +150,7 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
         const all = now() - start;
         if (all < TIMED_MS) return;
         const ms = Math.round, sorted = each.sort((a, b) => a - b), at = (q: number) => ms(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0);
-        note(`library: a save took ${ms(all)} ms: hashing ${ms(hashing)}, ${each.length} images written ${IN_FLIGHT} at a time in ${ms(writing)}, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most` +
+        note(`library: a save took ${ms(all)} ms: hashing ${ms(hashing)}, ${each.length} images written ${IN_FLIGHT} at a time in ${ms(writing)}, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most, then the manifest${moved ? ' and the move' : ''} ${ms(placing)}` +
           (deleted ? `, and ${deleted} old ones deleted in ${ms(deleting)}` : ''));
       }
     };

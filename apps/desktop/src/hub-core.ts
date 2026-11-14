@@ -55,6 +55,8 @@ const OK: Answer<never> = { ok: true };
    only so many, and so much. The size is in characters of the file's text, which for a buddy file
    is about its bytes: it's JSON with its images in base64. */
 const MAX_WAITING = 50, MAX_WAITING_CHARS = 256e6;
+/* A Maker save this slow says in the log where its time went. */
+const SLOW_SAVE_MS = 1000;
 /* These wait on a person or on a page, and the tray, monitors and imports can't wait for that. */
 const OFF_QUEUE: ReadonlySet<Command['k']> = new Set(['export', 'maker', 'save-page']);
 
@@ -109,7 +111,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   /* The exe's contract, known once the hub starts. API 2 adds what docs/native-shell-design.md says. */
   let exeApi = MIN_API;
   const newer = () => exeApi >= 2;
-  const library = createLibrary(shell, note), screens = createScreens(), roster = createRoster(), manager = createManagerWindow(shell, newer);
+  const library = createLibrary(shell, note, now), screens = createScreens(), roster = createRoster(), manager = createManagerWindow(shell, newer);
   const revisions = createRevisions();
   const makers = createMakerWindows({ shell, post: m => wire.post(m), after, refuse: p => refuse(p), note, newer });
   const closing = new Set<string>(); /* Maker windows that have said they're going, so nobody's there to ask */
@@ -555,13 +557,16 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     lastWords.set(key, word);
     if (before?.failed && before.file === word.file) { forget(before.failed); publish(); }
   }
-  async function decideSave({ id, name, file, rev, session }: Extract<Command, { k: 'maker-save' }>, kept: () => void): Promise<Answer<MakerSaved>> {
-    const windowGone = () => closing.has(session);
+  async function decideSave(c: Extract<Command, { k: 'maker-save' }>, kept: () => void): Promise<Answer<MakerSaved>> {
+    const { id, name, file, rev, session } = c, windowGone = () => closing.has(session);
+    const t = phases(saveArrived.get(c));
+    saveArrived.delete(c);
     const no = (p: Problem) => { note(`maker save refused: ${p.why}`); return windowGone() ? refuse(lastEditLost(name)) : { ok: false as const, failure: { ...p, id: 'save' } }; };
     if (!stocked) return no(notReady());
     let there: boolean;
     try { there = await library.present(id); }
     catch (e) { note(`maker save failed: ${id}: ${reason(e)}`); return no(notWritten(name)); }
+    t.mark('looking');
     if (!revisions.accepts(id, rev, session, there)) {
       const conflict = there ? 'replaced' : 'deleted';
       note(`maker save refused: ${id} was ${conflict}`);
@@ -570,12 +575,17 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     let p: Prepared;
     try { p = library.prepare(file); } catch (e) { return no(notSaved(name, reason(e))); }
     if (p.id !== id) return no(broke('Saving'));
+    t.mark('reading');
     try { await library.store(p); }
     catch (e) { note(`maker save failed: ${id}: ${reason(e)}`); return no(notWritten(name)); }
+    t.mark('storing');
     const next = revisions.saved(id, session);
     await landed(id);
+    t.mark('reading back');
     sendPets();
     await changed();
+    t.mark('telling');
+    t.done(`maker save of ${id}`);
     /* She's saved. It keeps trying to read her back, and the Manager's list says so meanwhile. */
     if (unread.has(id)) {
       forget(unread.get(id));
@@ -583,6 +593,18 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     }
     note(`maker saved ${id}${windowGone() ? ' from a closing window' : ''}`);
     return { ok: true, value: { rev: next } };
+  }
+  /* Where a save's time went, from when it came in, said only when it took long enough to ask:
+     the queue it waited in, then each step. */
+  const saveArrived = new WeakMap<object, number>();
+  function phases(from = now()) {
+    const steps: string[] = [];
+    let last = now();
+    if (last - from >= 1) steps.push(`queued ${Math.round(last - from)}`);
+    return {
+      mark(what: string) { const t = now(); steps.push(`${what} ${Math.round(t - last)}`); last = t; },
+      done(what: string) { const all = now() - from; if (all >= SLOW_SAVE_MS) note(`${what} took ${Math.round(all)} ms: ${steps.join(', ')}`); }
+    };
   }
   async function keepBeside(name: string, file: string, kept: () => void): Promise<Answer<MakerSaved>> {
     try {
@@ -821,6 +843,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   async function answer(id: string, c: Command) {
     /* An import's name is a file's, and stays out. */
     note(`manager ${c.k} ${'id' in c ? c.id || '' : 'name' in c && c.k !== 'import' ? c.name : ''}`.trimEnd());
+    if (c.k === 'maker-save') saveArrived.set(c, now());
     const work = OFF_QUEUE.has(c.k) ? run(c)
       : c.k === 'import' ? Promise.resolve(admit(c, () => run(c)))
       : queued(() => run(c));
