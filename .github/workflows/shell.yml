@@ -76,7 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $run = gh run list --workflow shell.yml --branch $env:GITHUB_REF_NAME --status success --limit 20 --json databaseId,event --jq '[.[] | select(.event == "push")][0].databaseId'
+          $run = gh run list --workflow shell.yml --branch $env:GITHUB_REF_NAME --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId'
           if (-not $run) { throw 'no earlier build on this branch' }
           "using the exe from run $run"
           gh run download $run --name desktop-buddies-windows --dir exe
