@@ -48,10 +48,10 @@ export const lands = (exe: FakeExe, id: string) => exe.calls.filter(c => (c.cmd 
 export function createDisk(api = 1) { return createFakeExe({ monitors: [MONITOR], api }); }
 
 /* A run of the hub on this disk. */
-export async function hubOn(exe: FakeExe, seed = write(small('cseed', 'Seed')), bus = createBus<Said>()) {
+export async function hubOn(exe: FakeExe, seed = write(small('cseed', 'Seed')), bus = createBus<Said>(), io: { now?: () => number } = {}) {
   exe.revive();
   const sent: Message[] = [], timers: { ms: number; f: () => void }[] = [], hubWire = bus.wire();
-  const hub = createHub({ shell: exe.shell, send: m => sent.push(m), seed: async () => seed, after: (ms, f) => { timers.push({ ms, f }); }, wire: hubWire });
+  const hub = createHub({ shell: exe.shell, send: m => sent.push(m), seed: async () => seed, after: (ms, f) => { timers.push({ ms, f }); }, wire: hubWire, ...io });
   await hub.start();
   /* Time for everything that can happen to happen. A race, because a test can be holding the queue. */
   const done = async () => { for (let i = 0; i < 12; i++) { await tick(); await Promise.race([hub.settled, tick()]); } };

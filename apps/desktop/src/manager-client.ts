@@ -24,7 +24,7 @@ export interface ClientIO {
 const HELLO_MS = 500, ANSWER_MS = 30000;
 
 export function createManagerClient(io: ClientIO) {
-  const waiting = new Map<string, (a: Answer) => void>(), listeners = new Set<(s: HubState) => void>();
+  const waiting = new Map<string, (a: Answer) => void>(), working = new Map<string, () => void>(), listeners = new Set<(s: HubState) => void>();
   let hub: HubState | null = null, sent = 0, local: Failure[] = [], stopHello = () => {};
 
   const current = (): HubState | null => hub && { ...hub, failures: [...hub.failures, ...local] };
@@ -40,8 +40,11 @@ export function createManagerClient(io: ClientIO) {
   function send<T>(cmd: Command, patient = false) {
     const id = `${io.session}:${++sent}`;
     return new Promise<Answer<T>>(done => {
-      const stop = patient ? () => {} : io.after(ANSWER_MS, () => { waiting.delete(id); done(unanswered(cmd)); });
-      waiting.set(id, a => { stop(); waiting.delete(id); done(a as Answer<T>); });
+      const gaveUp = () => { waiting.delete(id); working.delete(id); done(unanswered(cmd)); };
+      let stop = patient ? () => {} : io.after(ANSWER_MS, gaveUp);
+      waiting.set(id, a => { stop(); waiting.delete(id); working.delete(id); done(a as Answer<T>); });
+      /* The hub says it's still on it and getting somewhere, so the wait starts again. */
+      if (!patient) working.set(id, () => { stop(); stop = io.after(ANSWER_MS, gaveUp); });
       io.wire.post({ k: 'do', id, cmd });
     });
   }
@@ -49,6 +52,7 @@ export function createManagerClient(io: ClientIO) {
   io.wire.listen(m => {
     if (m.k === 'state') { stopHello(); hub = m.state; tell(); }
     else if (m.k === 'done') waiting.get(m.id)?.(m.answer);
+    else if (m.k === 'working') working.get(m.id)?.();
   });
   /* The hub only speaks when something changes, so a new window has to ask. */
   (function hello() {

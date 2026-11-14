@@ -57,6 +57,8 @@ const OK: Answer<never> = { ok: true };
 const MAX_WAITING = 50, MAX_WAITING_CHARS = 256e6;
 /* A Maker save this slow says in the log where its time went. */
 const SLOW_SAVE_MS = 1000, SAVE_WATCH_MS = 10000;
+/* A page waits 30 s for an answer. While the hub gets somewhere it says so, at most this often. */
+export const WORKING_MS = 5000;
 /* These wait on a person or on a page, and the tray, monitors and imports can't wait for that. */
 const OFF_QUEUE: ReadonlySet<Command['k']> = new Set(['export', 'maker', 'save-page']);
 
@@ -111,7 +113,18 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   /* The exe's contract, known once the hub starts. API 2 adds what docs/native-shell-design.md says. */
   let exeApi = MIN_API;
   const newer = () => exeApi >= 2;
-  const library = createLibrary(shell, note, now), screens = createScreens(), roster = createRoster(), manager = createManagerWindow(shell, newer);
+  /* What's been asked and not answered yet, and when each asker last heard it's being worked on. Each
+     data call the library finishes, and each piece of queued work that ends, is progress, and tells
+     whoever hasn't heard in WORKING_MS. Nothing moving says nothing, so a real hang still times out.
+     No timer: a page whose timers are held back can't hold this back. */
+  const open = new Map<string, number>();
+  function progressed() {
+    const t = now();
+    for (const [id, told] of open) if (t - told >= WORKING_MS) { open.set(id, t); wire.post({ k: 'working', id }); }
+  }
+  const watched = <A extends unknown[], R>(f: (...a: A) => Promise<R>) => (...a: A) => f(...a).finally(progressed);
+  const libraryShell: Shell = { ...shell, dataWrite: watched(shell.dataWrite), dataDelete: watched(shell.dataDelete), dataMove: watched(shell.dataMove), dataList: watched(shell.dataList), dataRead: watched(shell.dataRead) };
+  const library = createLibrary(libraryShell, note, now), screens = createScreens(), roster = createRoster(), manager = createManagerWindow(shell, newer);
   const revisions = createRevisions();
   const makers = createMakerWindows({ shell, post: m => wire.post(m), after, refuse: p => refuse(p), note, newer });
   const closing = new Set<string>(); /* Maker windows that have said they're going, so nobody's there to ask */
@@ -170,7 +183,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
      work goes through one at a time. */
   let queue = Promise.resolve(), queueOn: string | null = null; /* what the queue is doing, for a slow save's log line */
   const later = (f: () => Promise<void>, what = 'hub work') => {
-    queue = queue.then(async () => { queueOn = what; try { await f(); } finally { queueOn = null; } }).catch(e => note(`hub error ${e}`));
+    queue = queue.then(async () => { queueOn = what; try { await f(); } finally { queueOn = null; progressed(); } }).catch(e => note(`hub error ${e}`));
     return queue;
   };
   const queued = <T>(f: () => Promise<T>, what?: string) => new Promise<T>((done, fail) => { void later(() => f().then(done, fail), what); });
@@ -862,12 +875,14 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   async function answer(id: string, c: Command) {
     /* An import's name is a file's, and stays out. */
     note(`manager ${c.k} ${'id' in c ? c.id || '' : 'name' in c && c.k !== 'import' ? c.name : ''}`.trimEnd());
+    open.set(id, now());
     const t = c.k === 'maker-save' ? phases(`maker save of ${c.id}`) : null;
     if (t) saveTraces.set(c, t);
     const work = OFF_QUEUE.has(c.k) ? run(c)
       : c.k === 'import' ? Promise.resolve(admit(c, () => run(c)))
       : queued(() => run(c), c.k);
     const done = await work.catch((e: unknown) => { note(`hub error ${e}`); return refuse(broke(c.k)); }).finally(() => t?.end());
+    open.delete(id);
     wire.post({ k: 'done', id, answer: done });
   }
   function heard(m: Said) {

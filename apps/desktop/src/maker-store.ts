@@ -61,7 +61,7 @@ const pending = (s: Slot) => !!s.out && !s.out.late;
 interface Shown { problem: Problem; actions: SaveAction[] }
 
 export function createHubStore(io: HubStoreIO) {
-  const slots = new Map<string, Slot>(), waiting = new Map<string, (a: Answer) => void>(), watchers = new Set<(s: SaveState) => void>();
+  const slots = new Map<string, Slot>(), waiting = new Map<string, (a: Answer) => void>(), onWorking = new Map<string, () => void>(), watchers = new Set<(s: SaveState) => void>();
   const saves: ((clean: boolean) => void)[] = [], flushes: ((clean: boolean) => void)[] = [], idlers: (() => void)[] = [];
   let latest: MakerState | null = null, sent = 0, dirty = false, gonePage = false, paused = false, discarding = false, handles = 0;
   let stop: (() => void) | null = null, cap: (() => void) | null = null;
@@ -78,20 +78,28 @@ export function createHubStore(io: HubStoreIO) {
   function waitQuiet() { stop?.(); stop = io.after(QUIET_MS, () => { stop = null; send(); }); }
   function waitCeiling() { cap ??= io.after(CEILING_MS, () => { cap = null; send(); }); }
 
-  function post<T>(cmd: Command, done: (a: Answer<T>) => void) {
+  /* `working`: the hub says it's still on this one and getting somewhere. */
+  function post<T>(cmd: Command, done: (a: Answer<T>) => void, working?: () => void) {
     const id = `${io.session}:${++sent}`;
-    waiting.set(id, a => { waiting.delete(id); done(a as Answer<T>); });
+    waiting.set(id, a => { waiting.delete(id); onWorking.delete(id); done(a as Answer<T>); });
+    if (working) onWorking.set(id, working);
     io.wire.post({ k: 'do', id, cmd });
+  }
+  /* A wait for an answer that starts again each time the hub says it's getting somewhere. */
+  function patience(ms: number, gaveUp: () => void) {
+    let cancel = io.after(ms, gaveUp);
+    return { stop: () => cancel(), again: () => { cancel(); cancel = io.after(ms, gaveUp); } };
   }
   /* For anything else than a save, which is allowed to answer late. */
   function ask<T>(cmd: Command, ms = ANSWER_MS) {
     return new Promise<Answer<T>>(done => {
-      const cancel = ms ? io.after(ms, () => done({ ok: false, failure: { ...silent('Desktop Buddies'), id: 'silent' } })) : () => {};
-      post<T>(cmd, a => { cancel(); done(a); });
+      const wait = ms ? patience(ms, () => done({ ok: false, failure: { ...silent('Desktop Buddies'), id: 'silent' } })) : null;
+      post<T>(cmd, a => { wait?.stop(); done(a); }, wait?.again);
     });
   }
   io.wire.listen(m => {
     if (m.k === 'done') waiting.get(m.id)?.(m.answer);
+    else if (m.k === 'working') onWorking.get(m.id)?.();
     else io.heard?.(m);
   });
 
@@ -120,7 +128,8 @@ export function createHubStore(io: HubStoreIO) {
     slot.out = mine;
     /* A reply can be lost, so this doesn't wait for ever. The next edit or a retry can go, and the
        hub takes it, because the last thing written to her was this window's own. */
-    const cancel = io.after(ANSWER_MS, () => {
+    /* While the hub says it's getting somewhere, the wait starts again: a slow disk isn't a lost reply. */
+    const wait = patience(ANSWER_MS, () => {
       mine.late = true;
       /* Nobody knows what's on disk now, so whatever's next goes, even if it's what she was. */
       if (slot.out === mine) { slot.base = null; slot.failure = silent('Saving'); slot.refused = text; }
@@ -129,7 +138,7 @@ export function createHubStore(io: HubStoreIO) {
     unanswered++;
     post<MakerSaved>(cmd, a => {
       if (--unanswered === 0) for (const f of idlers.splice(0)) f();
-      cancel();
+      wait.stop();
       const current = slot.out === mine;
       /* An older write answering late changes nothing: the one that replaced it will say what's so. */
       if (current) {
@@ -141,7 +150,7 @@ export function createHubStore(io: HubStoreIO) {
       for (const [c, s] of slots) if (!s.out && !latest?.pets.some(p => p.character === c)) drop(c, s);
       if (dirty && !stop) send();
       else { tell(); settle(); }
-    });
+    }, () => { if (!mine.late) wait.again(); });
   }
 
   /* The one way out. `force` tries again what failed, and `leaving` is a page's last word: nothing it

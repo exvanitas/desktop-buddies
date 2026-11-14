@@ -112,6 +112,7 @@ export type MenuToHub = { k: 'menu-ask'; copy: string; her: Rect; at: { x: numbe
 | { k: 'menu-choose'; n: number; label: string; cmd: Command }
 | { k: 'menu-closed'; n: number; why: string };
 export type FromHub = { k: 'state'; state: HubState } | { k: 'done'; id: string; answer: Answer }
+| { k: 'working'; id: string } /* still on it, and getting somewhere: whoever's waiting waits on */
 | { k: 'maker-edit'; n: number; id?: string; label: string } /* flush, then open this one, or none for a new buddy */
 | { k: 'maker-leave'; n: number; label: string } /* flush, and say if it can close */
 | { k: 'maker-stay'; n: number; label: string } /* that close isn't happening: the hub stopped waiting, or the window wouldn't go */
