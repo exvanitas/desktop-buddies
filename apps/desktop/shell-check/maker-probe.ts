@@ -335,12 +335,14 @@ const phases: Record<string, (page: MakerPage & { postTimes: number[] }, client:
     page.maker.setName('Upgraded');
     t = performance.now();
     const upgraded = await saved(page), upgradeMs = Math.round(performance.now() - t), after = await tidy(p.character!);
-    /* The Maker waits on while the hub gets somewhere, so a slow save is judged here, not by a reply
-       timeout: her first save and her upgrade against the same files written one by one from this
-       page, on the same machine. One far past the other two is a stall. */
-    const judged = stalls([firstMs, upgradeMs, legacyMs]), stalled = judged.stalled.map(i => ['first', 'upgrade', 'legacy'][i]);
-    const ok = first && one && upgraded && after.ok && (await manifest(p.character!)).name === 'Upgraded' && !withManager.includes(-1) && !without.includes(-1) && !stalled.length;
-    check('shaped', ok, { ...shape, ...(stalled.length ? { stalled } : {}), firstSaveMs: firstMs, renameWithManagerMs: withManager, renameMs: without, oneImageMs: oneMs, upgradeSaveMs: upgradeMs, legacyWriteMs: legacyMs, after, postMs: page.postTimes });
+    /* The Maker waits on while the hub gets somewhere, so a slow save is a stall, not a reply timeout:
+       her first save and her upgrade against the same files written one by one from this page, on
+       the same machine. One far past the other two is listed, and smoke.ps1's save-judge.mjs says
+       from the log whether it was the disk or us. */
+    const times = [firstMs, upgradeMs, legacyMs], kinds = ['first', 'upgrade', 'legacy'] as const;
+    const judged = stalls(times).stalled.map(i => ({ id: p.character!, kind: kinds[i]!, ms: times[i]! }));
+    const ok = first && one && upgraded && after.ok && (await manifest(p.character!)).name === 'Upgraded' && !withManager.includes(-1) && !without.includes(-1);
+    check('shaped', ok, { ...shape, stalls: judged, firstSaveMs: firstMs, renameWithManagerMs: withManager, renameMs: without, oneImageMs: oneMs, upgradeSaveMs: upgradeMs, legacyWriteMs: legacyMs, after, postMs: page.postTimes });
     page.maker.select(p.id);
     page.maker.setName('Shaped Closed');
     await note.set('id', p.character!);
@@ -364,8 +366,8 @@ const phases: Record<string, (page: MakerPage & { postTimes: number[] }, client:
   /* The runner's stalls were all a new big buddy's first save, so this makes five of them: each one
      new, saved straight after she's made, timed until the hub says she's in the library, which can
      be past the Maker's own wait for an answer. Each goes from this window once she's in, so the
-     page holds one at a time. A first save past STALL_MS and STALL_X times the median fails, and
-     smoke.ps1 prints the hub's trace lines beside it. */
+     page holds one at a time. A first save past STALL_MS and STALL_X times the median is a stall,
+     listed for smoke.ps1's save-judge.mjs; one that never lands fails here. */
   async shaped_firsts(page, client, id) {
     const firsts: { ms: number; ok: boolean; id: string }[] = [];
     for (let i = 0; i < 5; i++) {
@@ -380,8 +382,10 @@ const phases: Record<string, (page: MakerPage & { postTimes: number[] }, client:
       await page.settled();
       await pause(300);
     }
+    /* A stall is listed, not failed here: this page can't read the log, and smoke.ps1's save-judge.mjs
+       says from it whether that was the disk or us. One that never landed fails here. */
     const ms = firsts.map(f => f.ms), { median, stalled } = stalls(ms);
-    check('shaped_firsts', firsts.every(f => f.ok) && !stalled.length, { firstSaveMs: ms, median, stalled: stalled.map(i => firsts[i]!.id), failed: firsts.filter(f => !f.ok).map(f => f.id) });
+    check('shaped_firsts', firsts.every(f => f.ok), { firstSaveMs: ms, median, stalls: stalled.map(i => ({ id: firsts[i]!.id, kind: 'first', ms: firsts[i]!.ms })), failed: firsts.filter(f => !f.ok).map(f => f.id) });
     page.maker.select(page.maker.state.pets.find(p => p.character === id)?.id ?? page.maker.state.pets[0]!.id);
     await note.set('phase', 'big');
     await phases.big!(page, client, id);

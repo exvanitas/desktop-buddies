@@ -481,12 +481,9 @@ Expect 'maker.silent.close_anyway' (Wait-For 'the window to go' { (Maker-Window)
 # A buddy the shape of the largest real one, and what she costs.
 Expect 'maker.shaped' (Wait-For 'her saves' { Probed '(PASS|FAIL) shaped ' } 420)
 Expect 'maker.shaped_back' (Wait-For 'her read back' { Probed '(PASS|FAIL) shaped_back' } 120)
-# Five first saves of new buddies her shape, where the runner's stalls were. A stall fails, here or in
-# her own saves above, and the hub's lines about slow saves are printed beside it.
+# Five first saves of new buddies her shape, where the runner's stalls were. A stall, here or in her
+# own saves above, is judged from the log once the runs are over.
 Expect 'maker.shaped_firsts' (Wait-For 'her first saves' { Probed '(PASS|FAIL) shaped_firsts' } 800)
-if ((Probed 'FAIL shaped_firsts') -or (Probed 'FAIL shaped ')) {
-  (Log-Text) -split "`n" | Where-Object { $_ -match 'maker save of |library: a save took|PROBE (INFO shaped_first|FAIL shaped_firsts)' } | ForEach-Object { Write-Host "  trace: $($_.Trim())" }
-}
 
 # Still the second run: the largest allowed buddy, then the exe quits with a save of her in hand.
 Expect 'maker.second.reopened' (Wait-For 'the reopen' { Probed '(PASS|FAIL) hard_close_kept' } 30)
@@ -507,6 +504,16 @@ foreach ($line in $ktext -split "`n") {
 }
 foreach ($name in 'opens_through_the_hub', 'opened', 'holds_only_her', 'window_size', 'no_edit_no_write', 'autosave', 'rename_keeps_url', 'new_image_url', 'try_on_screen', 'stress', 'stress_who_is_out', 'stress_read_back', 'read_back_after_restart', 'minimized_kept', 'hard_close_kept', 'conflict_offers', 'keep_as_new', 'silent_asks', 'keep_editing', 'close_stops_input', 'shaped', 'shaped_back', 'shaped_firsts', 'largest', 'quit_left_her_whole', 'quit_left_nothing', 'quit_then_tidied') {
   Expect "makerprobe_ran.$name" ($ktext -match "PROBE (PASS|FAIL) $name\b")
+}
+# Each stall the probe listed, judged from the log by save-judge.mjs, where the rule is tested: the
+# runner's disk passes, with a note and the lines it went by; anything of ours fails.
+# A node that's missing or throws is a failed judge, not the end of the run.
+$judged = @(); $judgeExit = -1
+try { $judged = @(& node (Join-Path $PSScriptRoot 'save-judge.mjs') $mlog); $judgeExit = $LASTEXITCODE } catch { Write-Host "save-judge.mjs didn't run: $_" }
+Expect 'maker.stall_judge' ($judgeExit -eq 0 -and $judged.Count -gt 0) "exit $judgeExit"
+foreach ($line in $judged) {
+  if ("$line" -match '^(PASS|FAIL) (\S+) ?(.*)$') { Expect $Matches[2] ($Matches[1] -eq 'PASS') $Matches[3] }
+  else { Write-Host "$line" }
 }
 foreach ($cmd in 'maker', 'maker-open', 'maker-save', 'maker-try', 'export', 'save-page') {
   Expect "maker.hub_heard.$cmd" ($ktext -match "(?m)\bmanager $cmd\b")

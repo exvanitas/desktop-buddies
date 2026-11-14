@@ -445,17 +445,24 @@ test("shell.yml: the installer job builds as the release does, on the build job'
   assert.match(job, /name: installer-results\n          path: results\n/);
 });
 
-test('smoke.ps1: five first saves are judged, waited for long enough, and a stall prints the hub\'s trace lines', () => {
+test('smoke.ps1: five first saves are waited for long enough, and every stall the probe lists is judged from the log', () => {
   const ps = body(read('smoke.ps1')), probe = fs.readFileSync(new URL('maker-probe.ts', DIR), 'utf8');
   assert.match(ps, /Expect 'maker\.shaped_firsts' \(Wait-For 'her first saves' \{ Probed '\(PASS\|FAIL\) shaped_firsts' \} (\d+)\)/);
   const waited = Number(/Probed '\(PASS\|FAIL\) shaped_firsts' \} (\d+)\)/.exec(ps)![1]);
   assert.ok(waited >= 5 * 150, 'five first saves each waited for up to 150 s fit');
   const run = Number(/\$k = Start-Maker (\d+)\n(?:.*\n){0,3}.*second\.hub_up/.exec(ps)![1]);
   assert.ok(run >= waited + 300, `the second run's ${run} s outlasts that wait and the rest`);
-  assert.match(ps, /if \(\(Probed 'FAIL shaped_firsts'\) -or \(Probed 'FAIL shaped '\)\) \{\n\s*\(Log-Text\) -split "`n" \| Where-Object \{ \$_ -match 'maker save of \|library: a save took\|/);
   assert.match(ps, /'shaped_back', 'shaped_firsts', 'largest'/, 'and it has to have run');
-  assert.match(probe, /check\('shaped_firsts', firsts\.every\(f => f\.ok\) && !stalled\.length/);
-  assert.match(probe, /const judged = stalls\(\[firstMs, upgradeMs, legacyMs\]\)/, 'her own saves are judged for a stall too');
-  assert.match(probe, /!without\.includes\(-1\) && !stalled\.length;\n\s*check\('shaped', ok,/);
+  /* The judge runs once the Maker runs are over, over their whole log, and each line it prints is a result. */
+  const judge = ps.indexOf("try { $judged = @(& node (Join-Path $PSScriptRoot 'save-judge.mjs') $mlog); $judgeExit = $LASTEXITCODE } catch {");
+  assert.ok(judge > ps.indexOf("End-Run $k 'third'"), 'after the last Maker run');
+  assert.ok(judge > 0, 'a missing node is caught, not the end of the run');
+  assert.match(ps, /Expect 'maker\.stall_judge' \(\$judgeExit -eq 0 -and \$judged\.Count -gt 0\)/);
+  assert.match(ps, /foreach \(\$line in \$judged\) \{\n\s*if \("\$line" -match '\^\(PASS\|FAIL\) \(\\S\+\) \?\(\.\*\)\$'\) \{ Expect \$Matches\[2\] \(\$Matches\[1\] -eq 'PASS'\) \$Matches\[3\] \}/);
+  assert.ok(fs.existsSync(new URL('save-judge.mjs', DIR)), 'the judge is beside it');
+  /* The probe lists stalls and fails only what never landed; the judge says what a stall was. */
+  assert.match(probe, /check\('shaped_firsts', firsts\.every\(f => f\.ok\), \{ firstSaveMs: ms, median, stalls: stalled\.map\(i => \(\{ id: firsts\[i\]!\.id, kind: 'first', ms: firsts\[i\]!\.ms \}\)\)/);
+  assert.match(probe, /const judged = stalls\(times\)\.stalled\.map\(i => \(\{ id: p\.character!, kind: kinds\[i\]!, ms: times\[i\]! \}\)\)/, 'her own saves are listed too');
+  assert.match(probe, /check\('shaped', ok, \{ \.\.\.shape, stalls: judged,/);
   assert.match(probe, /until\(`first save \$\{i\}`, \(\) => client\.state\?\.buddies\.some\(b => b\.id === c\), 3000\)/, 'timed until the hub has her, past the Maker\'s own wait');
 });
