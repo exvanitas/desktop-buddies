@@ -61,6 +61,16 @@ The 120-minute run 43541724508, 2026-11-14, means over the steady part:
 
 What grows is one WebView2 renderer in each state, by 3 to 8 MB an hour; the exe, the browser process and the GPU process are flat. Its first half hour is the heap filling before a full collection (up to 1 MB a minute, then a drop of about 20 MB), which is why a 10-minute run reads 60 to 110 MB an hour. Handles change by under 15 an hour, GDI and USER objects not at all. Renderers own no GDI or USER objects at all: Chromium runs them locked out of the window system, so their 0 is real.
 
+### What changed after it
+
+The baseline found the app busy with nothing to show, and the app now isn't:
+
+- **A still world doesn't tick.** Paused, hidden or away, the world's 16 ms timer stops (`apps/desktop/src/host.ts`). A change that shows meanwhile, a bring, a line, a window that moved, an overlay that joined or a timer of the world's own, is drawn there and then by one step. A hand holding someone keeps it ticking until it lets go. Coming back, the first tick takes one tick's time, not the pause's.
+- **An overlay draws only when there's something to draw.** It asks for an animation frame only until the last frame that came is drawn (`pacing.ts`), and renews its hold on the mouse on a timer that runs only while it holds it (`capture.ts`). Hidden or still, it doesn't wake.
+- **Nothing changed is found out without writing it out.** The world compared each overlay's frame with the last one sent as JSON text, 62 times a second; it compares them where they lie (`same` in `host.ts`), with JSON's rules.
+
+Run locally, the world (host and engine, three buddies, on the sample) holds no memory over four simulated hours: 13.3 MB after a full collection at the start, 14.0 MB at the end, flat after the first hour. So the renderer's creep is the heap growing with garbage, not a leak in the world's code. Paused, the world made 330 MB of garbage in 15 minutes before, about none now; walking, about 11% less. The frames sent are the same, at the same ticks: an old and a new host over half an hour of walking, a drop and a line sent the same frames. The next 120-minute run measures what's left.
+
 ### Budgets
 
 `apps/desktop/shell-check/soak-budgets.json`, set from the baseline:

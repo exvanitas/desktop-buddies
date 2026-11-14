@@ -5,7 +5,7 @@ import { read } from '@buddies/buddy-file';
 import type { BuddyData, Frame, Pet } from '@buddies/engine';
 import type { Rectangle } from '@buddies/terrain';
 import { test } from 'vitest';
-import { createHold, createHost, viewport, type Area, type Message, type Port } from '../src/host';
+import { createHold, createHost, same, viewport, type Area, type Message, type Port } from '../src/host';
 import type { WindowEntry } from '../src/shell';
 import { whole } from './areas';
 
@@ -19,20 +19,22 @@ interface FakePort extends Port { out: { k: string; frame: Frame; area?: Area }[
 const AREAS: Area[] = [whole({ i: 0, x: 0, y: 0, w: 3440, h: 1392, scale: 1 }), whole({ i: 1, x: 720, y: 1440, w: 1920, h: 1008, scale: 1.5 })];
 
 function desk(areas = AREAS) {
-  const clock = { t: 0 }, timers: { at: number; f: () => void }[] = [], every: { ms: number; f: () => void; next: number }[] = [], notes: string[] = [];
+  const clock = { t: 0 }, timers: { at: number; f: () => void }[] = [], every: { ms: number; f: () => void; next: number; stopped?: boolean }[] = [], notes: string[] = [];
   const host = createHost({
     random: mulberry32(5), now: () => clock.t, note: t => { notes.push(t); },
     after: (ms, f) => { timers.push({ at: clock.t + ms, f }); return timers.length; }, cancel(id) { const t = timers[id - 1]; if (t) t.f = () => {}; },
-    every: (ms, f) => { every.push({ ms, f, next: ms }); }
+    every: (ms, f) => { const e = { ms, f, next: clock.t + ms, stopped: false }; every.push(e); return () => { e.stopped = true; }; }
   });
   const port = () => { const p: FakePort = { out: [], postMessage(m) { this.out.push(JSON.parse(JSON.stringify(m))); } }; host.connect(p); return p; };
   const hub = port(), top = port(), low = port();
   host.message(hub, { k: 'start', all: areas, pets: [BUDDY('b0')] });
   host.message(top, { k: 'join', me: areas[0], n: 0 });
   host.message(low, { k: 'join', me: areas[1], n: 1 });
-  const tick = (n = 1) => { for (let i = 0; i < n; i++) { clock.t += 16; for (const e of every) if (clock.t >= e.next) { e.next += e.ms; e.f(); } } };
+  const tick = (n = 1) => { for (let i = 0; i < n; i++) { clock.t += 16; for (const e of [...every]) if (!e.stopped && clock.t >= e.next) { e.next += e.ms; e.f(); } } };
   const send = (p: FakePort, m: Message) => host.message(p, m);
-  return { host, hub, top, low, tick, send, clock, notes, timers, pet: () => host.sim!.pets.get('b0')! };
+  /* the world's 16 ms timers that are running */
+  const running = () => every.filter(e => e.ms === 16 && !e.stopped).length;
+  return { host, hub, top, low, tick, send, clock, notes, timers, running, pet: () => host.sim!.pets.get('b0')! };
 }
 /* a desk with the buddy carried down to the low monitor and standing there */
 function onLow() {
@@ -372,6 +374,75 @@ test('copies are told apart: dismissing one leaves the other', () => {
   d.send(d.hub, { k: 'dismiss', id: 'b0~1' });
   d.timers.filter(x => x.at === d.clock.t + 900).at(-1)!.f();
   assert.deepStrictEqual([...d.host.sim!.pets.keys()], ['b0']);
+});
+
+test('a still world runs no timer, and takes up again by one tick, not the whole pause', () => {
+  const d = desk(); d.tick(100);
+  const pet = d.pet(); pet.go('walk', { dir: 1 }); pet.P.dur = 1e9; d.tick(2);
+  assert.strictEqual(d.running(), 1, 'ticking while it runs');
+  let x = pet.P.x; d.tick(); const step = pet.P.x - x;
+  assert.ok(step > 0);
+  d.send(d.hub, { k: 'pause', on: true });
+  assert.strictEqual(d.running(), 0, 'no timer while it\'s still');
+  const frames = d.top.out.length + d.low.out.length;
+  d.tick(1000);
+  assert.strictEqual(d.top.out.length + d.low.out.length, frames, 'and nothing sent');
+  d.send(d.hub, { k: 'pause', on: false });
+  assert.strictEqual(d.running(), 1);
+  x = pet.P.x; d.tick();
+  assert.ok(Math.abs(pet.P.x - x - step) < 1e-9, `one tick's walk, ${pet.P.x - x}, not the pause's: ${step}`);
+});
+
+test('still, a change is drawn at once by one step, and the cursor alone draws nothing', () => {
+  const d = desk(); d.tick(200);
+  d.send(d.hub, { k: 'pause', on: true });
+  const n = d.top.out.length;
+  d.send(d.top, { k: 'cursor', x: 1000, y: 500, down: false });
+  assert.strictEqual(d.top.out.length, n, 'the cursor moves nothing');
+  d.send(d.hub, { k: 'say', id: 'b0', text: 'Still here', from: 'Test' });
+  assert.strictEqual(d.top.out.length, n + 1, 'a line shows without a tick');
+  assert.strictEqual(lastFrame(d.top).pets[0]!.bubble.text, 'Still here');
+  assert.strictEqual(d.running(), 0);
+});
+
+test('a hand holding someone keeps a paused world ticking until it lets go', () => {
+  const d = onLow(), pet = d.pet();
+  d.send(d.hub, { k: 'pause', on: true });
+  assert.strictEqual(d.running(), 0);
+  d.send(d.low, { k: 'down', id: 'b0', x: pet.P.x, y: pet.P.y - 50, from: 1 });
+  assert.strictEqual(d.running(), 1, 'held');
+  d.send(d.top, { k: 'cursor', x: 1500, y: 2000, down: true }); d.tick(2);
+  d.send(d.top, { k: 'cursor', x: 1500, y: 2000, down: false }); d.tick(2);
+  assert.ok(d.notes.some(n => /^release b0/.test(n)));
+  assert.strictEqual(d.running(), 0, 'let go, it\'s still again');
+});
+
+test('a press the cursor never confirms still ends in a paused world', () => {
+  const d = onLow(), pet = d.pet();
+  d.send(d.hub, { k: 'pause', on: true });
+  d.send(d.low, { k: 'down', id: 'b0', x: pet.P.x, y: pet.P.y - 50, from: 1 });
+  d.tick(40);
+  assert.ok(d.notes.some(n => /^release b0/.test(n)));
+  assert.strictEqual(d.running(), 0);
+});
+
+test('frames are compared as JSON writes them, without writing them', () => {
+  const d = desk(); d.tick(300);
+  const frames: unknown[] = [];
+  for (let i = 0; i < 400; i++) { d.tick(); frames.push(d.host.sim!.frame(viewport(AREAS[0]!))); }
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1], b = frames[i];
+    assert.strictEqual(same(a, b), JSON.stringify(a) === JSON.stringify(b), `frames ${i - 1} and ${i}`);
+    assert.ok(same(a, JSON.parse(JSON.stringify(a))), 'a copy is the same');
+  }
+  const cases: [unknown, unknown, boolean][] = [
+    [{ a: 1, b: undefined }, { a: 1 }, true], [{ a: 1 }, { a: 1, b: null }, false], [[undefined], [null], true], [NaN, null, true], [Infinity, NaN, true],
+    [{ a: [1, 2] }, { a: [1, 2, 3] }, false], [{ a: '1' }, { a: 1 }, false], [[], {}, false], [{ a: { b: 'x' } }, { a: { b: 'y' } }, false], [-0, 0, true]
+  ];
+  for (const [a, b, want] of cases) {
+    assert.strictEqual(same(a, b), want, `${JSON.stringify(a)} ${JSON.stringify(b)}`);
+    assert.strictEqual(same(a, b), JSON.stringify(a) === JSON.stringify(b), 'as JSON has it');
+  }
 });
 
 test('pausing stops the world and resuming starts it', () => {

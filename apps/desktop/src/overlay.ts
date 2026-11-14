@@ -2,7 +2,7 @@
    visible pixels. The hub opens it and says which monitor it has. */
 import '@buddies/view/view.css';
 import { createView } from '@buddies/view';
-import { createCapture, RENEW_EVERY } from './capture';
+import { createCapture } from './capture';
 import { explain, huntLine, make, noteWith, pointed, under } from './hit';
 import { createHold, viewport, type Area, type Message } from './host';
 import { createDrawing } from './pacing';
@@ -27,8 +27,8 @@ const TRACE_MS = 250;
   log(`page up dpr=${devicePixelRatio} css=${innerWidth}x${innerHeight} mode=${modeSeen(boot.mode)}`);
   if (boot.mode === 'empty') return;
 
-  const capture = createCapture(on => { void shell.capture(on); }, () => performance.now());
-  setInterval(capture.tick, RENEW_EVERY);
+  const every = (ms: number, f: () => void) => { const id = setInterval(f, ms); return () => clearInterval(id); };
+  const capture = createCapture(on => { void shell.capture(on); }, () => performance.now(), every);
 
   const world = new SharedWorker('world.js', { name: 'world' }).port;
   const send = (m: Message) => world.postMessage(m);
@@ -84,11 +84,10 @@ const TRACE_MS = 250;
     if (id !== over) { over = id; send({ k: 'over', id }); }
   }
 
-  /* Frames are drawn on the display's beat, two ticks behind the world: pacing.ts. While the page's
-     animation frames have stopped, each frame is drawn whole as it comes. */
-  const drawing = createDrawing(f => { view.apply(f); check(); }, () => performance.now());
-  const beat = (now: number) => { drawing.beat(now); requestAnimationFrame(beat); };
-  requestAnimationFrame(beat);
+  /* Frames are drawn on the display's beat, two ticks behind the world: pacing.ts. It asks for
+     animation frames only while there's something to draw. While the page's animation frames have
+     stopped, each frame is drawn whole as it comes. */
+  const drawing = createDrawing(f => { view.apply(f); check(); }, () => performance.now(), f => { requestAnimationFrame(f); });
   world.onmessage = e => {
     const m = e.data;
     if (m.k === 'frame') {

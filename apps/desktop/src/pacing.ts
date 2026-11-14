@@ -87,19 +87,32 @@ export function blend(a: Frame, b: Frame, u: number): Frame {
 
 /* No animation frame for this long, and frames are drawn whole as they come. */
 export const STALLED_MS = 100;
-/* What an overlay does with the world's frames and the page's animation frames. */
-export function createDrawing(draw: (f: Frame) => void, clock: () => number) {
+/* What an overlay does with the world's frames and the page's animation frames. It asks for the next
+   animation frame only while it has something to draw. Once the last frame that came is drawn it
+   stops, and a frame that comes starts it again: a still or hidden world sends none, so its overlays
+   don't wake 60 times a second for nothing. `ask` is requestAnimationFrame. */
+export function createDrawing(draw: (f: Frame) => void, clock: () => number, ask: (beat: (now: number) => void) => void) {
   const pacer = createPacer();
-  let beaten = -Infinity;
+  let beaten = -Infinity, asked = false;
+  /* an animation frame, at its time */
+  function beat(now: number) {
+    asked = false; beaten = clock();
+    const f = pacer.frame(now); if (f) draw(f);
+    if (!pacer.settled()) { asked = true; ask(beat); }
+  }
   return {
-    /* an animation frame, at its time */
-    beat(now: number) { beaten = clock(); const f = pacer.frame(now); if (f) draw(f); },
-    /* a frame from the world, with its tick's time */
+    beat,
+    /* A frame from the world, with its tick's time. Asked for no animation frame, it asks, and counts
+       that as one: animation frames that don't come for STALLED_MS after that are a page that stopped
+       them, and each frame is drawn whole as it comes. */
     arrive(f: Frame, t: number) {
       pacer.receive(f, t, clock());
+      if (!asked) { asked = true; beaten = clock(); ask(beat); return; }
       if (clock() - beaten > STALLED_MS) { const n = pacer.newest(); if (n) draw(n); }
     },
-    reset: pacer.reset
+    reset: pacer.reset,
+    /* whether it's waiting on an animation frame, for tests */
+    get asking() { return asked; }
   };
 }
 
@@ -152,6 +165,8 @@ export function createPacer() {
     },
     /* how many buddies it remembers drawing, for tests */
     remembered: () => shown.size,
+    /* Nothing left to draw: the newest frame is drawn, and no one is drawn ahead of the rest. */
+    settled: () => settled,
     /* What to draw now, or null when what was last drawn still stands. */
     frame(now: number): Frame | null {
       if (!kept.length || settled) return null;

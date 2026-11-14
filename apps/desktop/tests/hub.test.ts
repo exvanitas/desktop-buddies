@@ -773,19 +773,25 @@ test('a scale change alone counts as a change', () => {
   assert.strictEqual(changes(a, b).place.length, 1);
 });
 
-test('the capture lease: asks on a change, renews while held, and goes quiet when let go', () => {
-  const clock = { t: 0 }, calls: boolean[] = [], c = createCapture(on => calls.push(on), () => clock.t);
-  c.set(false); c.tick();
+test('the capture lease: asks on a change, renews while held on a timer that runs only then, and goes quiet when let go', () => {
+  const clock = { t: 0 }, calls: boolean[] = [], timers: { ms: number; f: () => void }[] = [];
+  const c = createCapture(on => calls.push(on), () => clock.t, (ms, f) => { const e = { ms, f }; timers.push(e); return () => { timers.splice(timers.indexOf(e), 1); }; });
+  const run = (to: number) => { while (clock.t < to) { clock.t += 250; for (const e of [...timers]) e.f(); } };
+  c.set(false); run(1000);
   assert.deepStrictEqual(calls, [], 'nothing to say yet');
+  assert.strictEqual(timers.length, 0, 'and no timer');
   c.set(true); c.set(true);
   assert.deepStrictEqual(calls, [true]);
-  clock.t = 400; c.tick();
+  assert.deepStrictEqual(timers.map(e => e.ms), [250], 'one timer while held');
+  run(1250);
   assert.strictEqual(calls.length, 1, 'too soon');
-  clock.t = 500; c.tick();
-  clock.t = 1000; c.tick();
+  run(1500); run(2000);
   assert.deepStrictEqual(calls, [true, true, true]);
-  c.set(false); clock.t = 5000; c.tick();
+  c.set(false);
+  assert.strictEqual(timers.length, 0, 'let go, the timer stops');
+  run(6000);
   assert.deepStrictEqual(calls, [true, true, true, false]);
+  assert.strictEqual(c.timed, false);
 });
 
 test('renewing runs well inside the exe\'s 1.5 s lease', () => {

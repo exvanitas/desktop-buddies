@@ -1,10 +1,11 @@
 /* The desktop host's world: one simulation for every overlay. It knows nothing of workers or
  windows. The hub starts it, feeds it the cursor and tells it what changes. Overlays join it, and
  it sends each one a frame for its own viewport. World units are physical pixels. */
-import { GOODBYE_MS, createSim, lively, type BuddyData, type Sim, type Viewport } from '@buddies/engine';
+import { GOODBYE_MS, createSim, lively, type BuddyData, type Frame, type Sim, type Viewport } from '@buddies/engine';
 import { createTerrain, type Rectangle } from '@buddies/terrain';
 import type { Rect, WindowEntry } from './shell';
 import { overlayRect } from './overlay-rect';
+import { TICK_MS } from './pacing';
 import { windowRects } from './window-terrain';
 
 /* A monitor in physical pixels on the virtual desktop, with a number that lasts the run. x y w h are its
@@ -38,10 +39,11 @@ export interface Port { postMessage(m: unknown): void }
 export interface HostIO {
 random(): number; now(): number;
 after(ms: number, f: () => void): number; cancel(id: number): void;
-every(ms: number, f: () => void): void;
+/* A timer that runs every `ms`, and what stops it. One that gives nothing back can't be stopped, and runs on. */
+every(ms: number, f: () => void): (() => void) | void;
 note(text: string): void;
 }
-interface Overlay { i: number | null; n: number | null; vp: Viewport | null; sent: Map<string, string | null | undefined>; last: string; over: string | null }
+interface Overlay { i: number | null; n: number | null; vp: Viewport | null; sent: Map<string, string | null | undefined>; last: Frame | null; over: string | null }
 
 const HOLD_MS = 500; /* a press the cursor stream never confirms ends here */
 
@@ -72,9 +74,35 @@ export function createHold(ms: number, now: () => number) {
   };
 }
 
+/* Whether two frames say the same, as JSON would write them: plain data, where a key left undefined is
+   no key, and a number that isn't finite, or undefined in a list, is null. It reads them where they
+   lie, so a world that ticks 62 times a second makes no garbage to find out that nothing changed. */
+const json = (v: unknown) => (typeof v === 'number' && !Number.isFinite(v)) || v === undefined ? null : v;
+export function same(a: unknown, b: unknown): boolean {
+  a = json(a); b = json(b);
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!same(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>;
+  let keys = 0;
+  for (const k in x) { if (x[k] === undefined) continue; keys++; if (y[k] === undefined || !same(x[k], y[k])) return false; }
+  for (const k in y) if (y[k] !== undefined) keys--;
+  return keys === 0;
+}
+
 export function createHost(io: HostIO) {
   const ports = new Map<Port, Overlay>(), hold = createHold(HOLD_MS, io.now);
   let sim: Sim | null = null, drag: { id: string } | null = null, ticks = 0, pets: BuddyData[] = [], areas: Area[] = [];
+  /* Paused, hidden or away, the world is still, and nothing ticks: it costs nothing, however long.
+     Whatever changes what it shows meanwhile (a bring, a line, a window that moved, an overlay that
+     joined, a timer of its own) is drawn there and then, by one step. A hand holding someone keeps it
+     ticking, so a drag goes on as it did. */
+  let ticking = false, stopTicks: (() => void) | null = null;
   let windows: Extract<Message, { k: 'windows' }> | null = null, windowsStale = false;
   const homes = new Map<string, string>(), leaving = new Map<string, number>(); /* who's saying goodbye, and the timer that ends it */
   const world = () => sim!;
@@ -96,7 +124,7 @@ export function createHost(io: HostIO) {
      change while a page loads. It's told the current one. */
   function place(port: Port, s: Overlay) {
     const a = areas.find(m => m.i === s.i);
-    s.vp = a ? viewport(a) : null; s.last = '';
+    s.vp = a ? viewport(a) : null; s.last = null;
     if (a) port.postMessage({ k: 'area', area: a });
   }
 
@@ -104,12 +132,34 @@ export function createHost(io: HostIO) {
     areas = m.all;
     sim = createSim({
       terrain: createTerrain(m.all.map(toRect)), pace: lively,
-      random: io.random, now: io.now, after: io.after, cancel: io.cancel
+      random: io.random, now: io.now, after: later, cancel: io.cancel
     });
     sync(m.pets);
     for (const [port, s] of ports) place(port, s);
-    io.every(16, step);
+    clock();
     io.every(10000, () => io.note(`rate ticks=${ticks}`));
+  }
+
+  const still = () => !!sim && !!world().world.paused && !drag && !hold.active;
+  /* Ticks while the world runs, or a hand holds someone; stops when it's still. */
+  function clock() {
+    if (!still()) {
+      if (!ticking) { ticking = true; const stop = io.every(TICK_MS, step); stopTicks = typeof stop === 'function' ? stop : null; }
+    } else if (ticking && stopTicks) { stopTicks(); stopTicks = null; ticking = false; }
+  }
+  /* After anything that can change what's shown: a still world, its timer stopped, takes the one step
+     that shows it. A timer that can't be stopped ticks on and shows it, as it always did. */
+  function settle() {
+    clock();
+    if (!ticking) update(io.now());
+  }
+  /* The world's own timers, and the host's, are followed by that step too. */
+  function later(ms: number, f: () => void) { return io.after(ms, () => { f(); if (sim) settle(); }); }
+  /* Coming back, the world's clock is moved on to now while it's still paused, so its first tick
+     after the pause takes one tick's time, not the whole pause's. */
+  function pause(on: boolean) {
+    if (!on && world().world.paused) world().advance(io.now());
+    world().world.paused = on;
   }
 
   /* Screens and windows are one list, so neither can undo the other. */
@@ -119,7 +169,11 @@ export function createHost(io: HostIO) {
   }
 
   function step() {
-    const t = io.now(); ticks++;
+    ticks++;
+    update(io.now());
+    clock();
+  }
+  function update(t: number) {
     if (hold.expired()) release();
     if (windowsStale) refit();
     world().advance(t);
@@ -143,9 +197,8 @@ export function createHost(io: HostIO) {
         if (f.off || s.sent.get(f.id) === f.src) delete f.src;
         else s.sent.set(f.id, f.src);
       }
-      const text = JSON.stringify(frame);
-      if (text === s.last) continue;
-      s.last = text;
+      if (s.last && same(frame, s.last)) continue;
+      s.last = frame;
       port.postMessage({ k: 'frame', frame, t });
     }
   }
@@ -168,7 +221,7 @@ export function createHost(io: HostIO) {
   function dismiss(id: string) {
     const pet = world().pets.get(id); if (!pet || leaving.has(id)) return;
     pet.farewell();
-    leaving.set(id, io.after(GOODBYE_MS, () => { world().poof(id); leaving.delete(id); sync(pets.filter(p => p.id !== id)); }));
+    leaving.set(id, later(GOODBYE_MS, () => { world().poof(id); leaving.delete(id); sync(pets.filter(p => p.id !== id)); }));
   }
 
   /* She drops in near the top of the monitor under the cursor, at its x. A hand that held her lets go,
@@ -200,29 +253,35 @@ export function createHost(io: HostIO) {
   const hovered = () => new Set([...ports.values()].flatMap(s => s.over ? [s.over] : []));
 
   return {
-    connect(port: Port) { ports.set(port, { i: null, n: null, vp: null, sent: new Map(), last: '', over: null }); },
+    connect(port: Port) { ports.set(port, { i: null, n: null, vp: null, sent: new Map(), last: null, over: null }); },
     message(port: Port, m: Message) {
       if (!ports.has(port)) return; /* an overlay that left can still have messages on the way */
       if (m.k === 'start') { if (!sim) start(m); return; }
-      if (m.k === 'join') { const s = ports.get(port)!; s.i = m.me.i; s.n = m.n; place(port, s); io.note(`joined overlay ${m.me.i}`); return; }
+      if (m.k === 'join') { const s = ports.get(port)!; s.i = m.me.i; s.n = m.n; place(port, s); io.note(`joined overlay ${m.me.i}`); if (sim) settle(); return; }
       if (!sim) return;
-      if (m.k === 'cursor') cursor(m);
-      else if (m.k === 'monitors') monitors(m.all);
-      /* Only the latest counts, and it lands on the next tick, however many came before it. */
-      else if (m.k === 'windows') { windows = m; windowsStale = true; }
-      else if (m.k === 'leave') leave(m.i, m.n);
-      else if (m.k === 'pets') wanted(m.pets);
-      else if (m.k === 'dismiss') dismiss(m.id);
-      else if (m.k === 'bring') bring(m.id);
-      else if (m.k === 'pause') world().world.paused = m.on;
-      else if (m.k === 'down') press(m);
-      else if (m.k === 'move') { if (!drag) world().input.move(m.id, m.x, m.y); }
-      else if (m.k === 'up') { if (drag && drag.id === m.id) release(); }
-      else if (m.k === 'over') over(port, m.id);
-      else if (m.k === 'act') world().act(m.id, m.a);
-      else if (m.k === 'say') world().say(m.id, m.text, m.from);
-      else if (m.k === 'act-all') world().actAll(m.a);
+      handle(port, m);
+      /* the cursor alone moves nothing in a still world, unless a hand holds someone */
+      if (m.k !== 'cursor' || ticking) settle();
     },
     get sim() { return sim; }
   };
+
+  function handle(port: Port, m: Message) {
+    if (m.k === 'cursor') cursor(m);
+    else if (m.k === 'monitors') monitors(m.all);
+    /* Only the latest counts, and it lands on the next tick, however many came before it. */
+    else if (m.k === 'windows') { windows = m; windowsStale = true; }
+    else if (m.k === 'leave') leave(m.i, m.n);
+    else if (m.k === 'pets') wanted(m.pets);
+    else if (m.k === 'dismiss') dismiss(m.id);
+    else if (m.k === 'bring') bring(m.id);
+    else if (m.k === 'pause') pause(m.on);
+    else if (m.k === 'down') press(m);
+    else if (m.k === 'move') { if (!drag) world().input.move(m.id, m.x, m.y); }
+    else if (m.k === 'up') { if (drag && drag.id === m.id) release(); }
+    else if (m.k === 'over') over(port, m.id);
+    else if (m.k === 'act') world().act(m.id, m.a);
+    else if (m.k === 'say') world().say(m.id, m.text, m.from);
+    else if (m.k === 'act-all') world().actAll(m.a);
+  }
 }

@@ -9,7 +9,7 @@ let hub: WorkerPort | null = null; /* whoever starts the world hears its notes *
 const host = createHost({
   random: Math.random, now: () => performance.now(),
   after: (ms, f) => setTimeout(f, ms) as unknown as number, cancel: id => clearTimeout(id),
-  every: (ms, f) => { setInterval(f, ms); },
+  every: (ms, f) => { const id = setInterval(f, ms); return () => clearInterval(id); },
   note: text => hub?.postMessage({ k: 'note', text })
 });
 scope.onconnect = e => {

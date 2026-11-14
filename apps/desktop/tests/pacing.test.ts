@@ -315,17 +315,49 @@ test('a landing is a new stage, so the fall is never blended into it', () => {
 test('with no animation frames, each frame is drawn whole as it comes, and they pick up from there', () => {
   const w = world(); w.run(3000); w.host.message(w.hub, { k: 'act-all', a: 'drop' }); w.run(3600);
   const g = w.got.filter(x => x.t > 3000), clock = { t: 0 }, drew: Frame[] = [];
-  const d = createDrawing(f => drew.push(f), () => clock.t);
-  d.beat(0);
-  for (const x of g.slice(0, 20)) { clock.t = x.t; d.arrive(x.frame, x.t); }
-  assert.strictEqual(drew.length, 20, 'every frame, as it came');
-  assert.ok(g.slice(0, 20).every((x, k) => drew[k]!.pets[0] === x.frame.pets[0]), 'each one whole');
+  let asks = 0;
+  const d = createDrawing(f => drew.push(f), () => clock.t, () => { asks++; });
+  /* the first frame asks for an animation frame, which never comes; from STALLED_MS on, frames are drawn whole */
+  const late = g.findIndex(x => x.t - g[0]!.t > STALLED_MS);
+  assert.ok(late > 0);
+  for (const x of g.slice(0, late + 20)) { clock.t = x.t; d.arrive(x.frame, x.t); }
+  assert.strictEqual(asks, 1, 'asked once');
+  assert.strictEqual(drew.length, 20, 'every frame from then, as it came');
+  assert.ok(g.slice(late, late + 20).every((x, k) => drew[k]!.pets[0] === x.frame.pets[0]), 'each one whole');
   /* animation frames come back: she never goes back from the last one drawn */
   const y = drew[drew.length - 1]!.pets[0]!.box.t;
-  clock.t = g[19]!.t + 1; d.beat(clock.t);
-  for (const x of g.slice(20, 30)) { clock.t = x.t; d.arrive(x.frame, x.t); d.beat(x.t); d.beat(x.t + 8); }
+  clock.t = g[late + 19]!.t + 1; d.beat(clock.t);
+  for (const x of g.slice(late + 20, late + 30)) { clock.t = x.t; d.arrive(x.frame, x.t); d.beat(x.t); d.beat(x.t + 8); }
   assert.ok(drew.slice(20).every(f => f.pets[0]!.box.t >= y), 'never back up');
   assert.ok(STALLED_MS <= 100);
+});
+
+/* The overlay asks for animation frames only while it has something to draw. On a 60 Hz display it
+   draws exactly what it drew asking on every one, through a pause and back. */
+test('asking only while there\'s something to draw draws what asking every display frame drew', () => {
+  const w = world(); w.run(3000);
+  w.host.message(w.hub, { k: 'act-all', a: 'drop' }); w.run(4000);
+  w.host.message(w.hub, { k: 'pause', on: true }); w.run(5000);
+  w.host.message(w.hub, { k: 'pause', on: false }); w.run(6500);
+  const g = w.got.filter(x => x.t > 3000);
+  const play = (every: boolean) => {
+    const clock = { t: 0 }, drew: string[] = [];
+    let pending: ((now: number) => void) | null = null, beats = 0, paused = 0;
+    const d = createDrawing(f => drew.push(`${clock.t.toFixed(2)} ${JSON.stringify(f)}`), () => clock.t, b => { pending = b; });
+    let k = 0;
+    for (let v = 3000; v < 6500; v += 1000 / 60) {
+      for (; k < g.length && g[k]!.t <= v; k++) { clock.t = g[k]!.t; d.arrive(g[k]!.frame, g[k]!.t); }
+      clock.t = v;
+      if (every) { pending = null; beats++; d.beat(v); }
+      else if (pending) { const b: (now: number) => void = pending; pending = null; beats++; if (v > 4100 && v < 5000) paused++; b(v); }
+    }
+    return { drew, beats, paused };
+  };
+  const all = play(true), some = play(false);
+  assert.ok(all.drew.length > 100);
+  assert.deepStrictEqual(some.drew, all.drew);
+  assert.strictEqual(some.paused, 0, 'no animation frame asked for while paused');
+  assert.ok(some.beats < all.beats * 0.8, `${some.beats} animation frames against ${all.beats}`);
 });
 
 test('one who leaves is forgotten: her image is sent again when she comes back, and kept for no one else', () => {
