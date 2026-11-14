@@ -95,14 +95,17 @@ test('closing on a save that lands slowly: Close anyway is offered at 5 s as eve
   await page.pass(1300);
   page.host.window!.close();
   await r.done();
-  const offered: string[][] = [], open: boolean[] = [];
+  const offered: string[][] = [], open: boolean[] = [], landed: boolean[] = [], at: number[] = [];
+  let since = 1300;
   for (const go of holds) {
     clock.t += STEP_MS; go(); await r.done();
-    await page.pass(STEP_MS);
-    offered.push(page.closing.labels()); open.push(exe.windows.has(page.label));
+    await page.pass(STEP_MS); since += STEP_MS;
+    offered.push(page.closing.labels()); open.push(exe.windows.has(page.label)); landed.push(!!saved(exe, made.character!)); at.push(since);
   }
   assert.ok(offered[0]!.includes('Close anyway'), JSON.stringify(offered[0]));
-  assert.ok(open[3], 'still open while she lands, with the way out offered');
-  assert.ok(!open.at(-1), 'gone by itself once she has');
+  const past = at.findIndex(ms => ms > 30000);
+  assert.ok(past >= 0 && open[past] && !landed[past], `still open ${at[past]} ms in, past 30 s, while she lands`);
+  const first = landed.indexOf(true);
+  assert.ok(first > past && !open.at(-1), 'gone by itself once she has');
   assert.strictEqual(saved(exe, made.character!)!.name, 'Slow');
 });

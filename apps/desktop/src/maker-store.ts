@@ -78,12 +78,13 @@ export function createHubStore(io: HubStoreIO) {
   function waitQuiet() { stop?.(); stop = io.after(QUIET_MS, () => { stop = null; send(); }); }
   function waitCeiling() { cap ??= io.after(CEILING_MS, () => { cap = null; send(); }); }
 
-  /* `working`: the hub says it's still on this one and getting somewhere. */
+  /* `working`: the hub says it's still on this one and getting somewhere. Returns the ask's id. */
   function post<T>(cmd: Command, done: (a: Answer<T>) => void, working?: () => void) {
     const id = `${io.session}:${++sent}`;
     waiting.set(id, a => { waiting.delete(id); onWorking.delete(id); done(a as Answer<T>); });
     if (working) onWorking.set(id, working);
     io.wire.post({ k: 'do', id, cmd });
+    return id;
   }
   /* A wait for an answer that starts again each time the hub says it's getting somewhere. */
   function patience(ms: number, gaveUp: () => void) {
@@ -93,8 +94,10 @@ export function createHubStore(io: HubStoreIO) {
   /* For anything else than a save, which is allowed to answer late. */
   function ask<T>(cmd: Command, ms = ANSWER_MS) {
     return new Promise<Answer<T>>(done => {
-      const wait = ms ? patience(ms, () => done({ ok: false, failure: { ...silent('Desktop Buddies'), id: 'silent' } })) : null;
-      post<T>(cmd, a => { wait?.stop(); done(a); }, wait?.again);
+      let id = '';
+      /* Given up on, it's forgotten: a late answer or a later `working` finds nobody. */
+      const wait = ms ? patience(ms, () => { waiting.delete(id); onWorking.delete(id); done({ ok: false, failure: { ...silent('Desktop Buddies'), id: 'silent' } }); }) : null;
+      id = post<T>(cmd, a => { wait?.stop(); done(a); }, wait?.again);
     });
   }
   io.wire.listen(m => {
@@ -129,14 +132,17 @@ export function createHubStore(io: HubStoreIO) {
     /* A reply can be lost, so this doesn't wait for ever. The next edit or a retry can go, and the
        hub takes it, because the last thing written to her was this window's own. */
     /* While the hub says it's getting somewhere, the wait starts again: a slow disk isn't a lost reply. */
+    let id = '';
     const wait = patience(ANSWER_MS, () => {
       mine.late = true;
+      /* Its answer is still wanted, however late, but the hub's `working` no longer is. */
+      onWorking.delete(id);
       /* Nobody knows what's on disk now, so whatever's next goes, even if it's what she was. */
       if (slot.out === mine) { slot.base = null; slot.failure = silent('Saving'); slot.refused = text; }
       tell(); settle();
     });
     unanswered++;
-    post<MakerSaved>(cmd, a => {
+    id = post<MakerSaved>(cmd, a => {
       if (--unanswered === 0) for (const f of idlers.splice(0)) f();
       wait.stop();
       const current = slot.out === mine;
@@ -289,6 +295,8 @@ export function createHubStore(io: HubStoreIO) {
     ...store, takeBack, flush, lastGasp, pause, discard,
     /* Nothing waiting to go and nothing out. */
     settled: () => !dirty && !stop && !cap && ![...slots.values()].some(pending),
+    /* How many asks wait for an answer, and how many for the hub's `working`: for tests. */
+    held: () => ({ answers: waiting.size, working: onWorking.size }),
     /* When every write sent has been answered, however late. */
     idle: () => new Promise<void>(done => { if (unanswered) idlers.push(done); else done(); }),
     /* Something changed, maybe an edit, maybe a panel: telling those apart means comparing, which is
