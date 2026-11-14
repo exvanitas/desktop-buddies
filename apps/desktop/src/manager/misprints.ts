@@ -1,6 +1,6 @@
 /* Failures: a dashed misprint at the top of the sheet saying what happened, why, and what to do.
    A drop of twenty bad files mustn't push everyone out of sight, so only the first few show. */
-import { ANOTHER_FILE, ANOTHER_FOLDER, type Failure } from '../failures';
+import { ANOTHER_FILE, ANOTHER_SHIMEJI, type Failure } from '../failures';
 import { button, h } from '@buddies/peel/dom';
 import { misprintOf } from '@buddies/peel/misprint';
 
@@ -8,16 +8,16 @@ export const SHOWN = 2;
 
 export interface MisprintIO {
   pickFile(then: () => void): void;
-  pickFolder(then: () => void): void;
+  pickShimeji(then: () => void): void;
   clear(id: string): void;
   clearAll(): void;
 }
 
 /* What the `again` button does, or null if there's nothing this window can truly do. */
-export function againFor(f: Failure, io: Pick<MisprintIO, 'pickFile' | 'pickFolder' | 'clear'>, retry?: () => void): (() => void) | null {
+export function againFor(f: Failure, io: Pick<MisprintIO, 'pickFile' | 'pickShimeji' | 'clear'>, retry?: () => void): (() => void) | null {
   if (!f.again) return null;
   if (f.again === ANOTHER_FILE) return () => io.pickFile(() => io.clear(f.id));
-  if (f.again === ANOTHER_FOLDER) return () => io.pickFolder(() => io.clear(f.id));
+  if (f.again === ANOTHER_SHIMEJI) return () => io.pickShimeji(() => io.clear(f.id));
   return retry ? () => { io.clear(f.id); retry(); } : null;
 }
 

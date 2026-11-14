@@ -2,7 +2,7 @@
    dotted line is the one a sticker leaves, here saying where this one will go. */
 import { SAMPLES, type Maker } from '@buddies/maker-core';
 import { button, h, s } from '@buddies/peel/dom';
-import type { Pickers } from './pickers';
+import { SHIMEJI_TIP, type Pickers } from './pickers';
 
 export function createEmpty(maker: Maker, pickers: Pickers, busy: <T>(work: () => Promise<T>) => Promise<T | undefined>) {
   const samples = h('div', { class: 'first-samples' });
@@ -19,7 +19,8 @@ export function createEmpty(maker: Maker, pickers: Pickers, busy: <T>(work: () =
       h('h3', {}, 'Already have one?'),
       h('div', { class: 'row' },
         button('Import buddy file', () => pickers.open('buddyFile'), { class: 'btn sm', 'data-first': 'buddy' }),
-        button('Import Shimeji folder', () => pickers.open('shimeji'), { class: 'btn sm', 'data-first': 'shimeji' })),
+        button('Import Shimeji images', () => pickers.open('shimeji'), { class: 'btn sm', 'data-first': 'shimeji' })),
+      h('p', { class: 'first-tip' }, SHIMEJI_TIP),
       h('p', { class: 'first-tip' }, 'You can paste a picture too.')));
   let filled = false;
   return {

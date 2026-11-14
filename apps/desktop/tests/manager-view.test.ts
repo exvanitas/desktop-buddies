@@ -6,7 +6,7 @@ import { rectangle, type Outline } from '@buddies/art/outline';
 import { write, type Buddy } from '@buddies/buddy-file';
 import assert, { gone, same } from '@buddies/test-support/dom-assert';
 import { beforeEach, test, vi } from 'vitest';
-import { ANOTHER_FILE, ANOTHER_FOLDER, badFile, makerHolding, notDeleted, notReady, notStored, type Failure } from '../src/failures';
+import { ANOTHER_FILE, ANOTHER_SHIMEJI, badFile, makerHolding, notDeleted, notReady, notStored, type Failure } from '../src/failures';
 import { createHub } from '../src/hub-core';
 import { createLibrary } from '../src/library';
 import type { Answer, BuddyRow, Command, HubState, Replacing, Said } from '../src/manager-api';
@@ -593,19 +593,19 @@ test('a failure with no fix doesn\'t leave a gap', async () => {
 });
 
 test('again shows for a picker, because that can truly be reopened', async () => {
-  const f = { ...badFile('a.buddy', 'not a buddy file'), id: 'f1' }, g = { id: 'f2', kind: 'import', file: 'Mochi', title: 'Mochi', why: 'W', fix: 'F', again: ANOTHER_FOLDER } as Failure;
+  const f = { ...badFile('a.buddy', 'not a buddy file'), id: 'f1' }, g = { id: 'f2', kind: 'import', file: 'Mochi', title: 'Mochi', why: 'W', fix: 'F', again: ANOTHER_SHIMEJI } as Failure;
   const v = await scripted({ failures: [f, g] });
-  assert.deepStrictEqual(v.words('.misprint .go'), [ANOTHER_FILE, ANOTHER_FOLDER]);
+  assert.deepStrictEqual(v.words('.misprint .go'), [ANOTHER_FILE, ANOTHER_SHIMEJI]);
   const opened: string[] = [];
   for (const i of v.all<HTMLInputElement>('input[data-pick]')) i.addEventListener('click', () => opened.push(i.dataset.pick!));
-  await click(v.button(ANOTHER_FILE)); await click(v.button(ANOTHER_FOLDER));
-  assert.deepStrictEqual(opened, ['file', 'folder']);
+  await click(v.button(ANOTHER_FILE)); await click(v.button(ANOTHER_SHIMEJI));
+  assert.deepStrictEqual(opened, ['file', 'shimeji']);
   assert.deepStrictEqual(v.sent, [], 'it stays until something is picked');
 });
 
 test('Try again shows only where this window can really do it again', async () => {
   const f = { ...notDeleted('Ada', 'files'), id: 'f1' };
-  assert.strictEqual(againFor(f, { pickFile() {}, pickFolder() {}, clear() {} }), null);
+  assert.strictEqual(againFor(f, { pickFile() {}, pickShimeji() {}, clear() {} }), null);
   const from = await scripted({ failures: [f], buddies: [row('Ada')] });
   assert.deepStrictEqual(from.words('.misprint button'), ['Clear'], 'it came from elsewhere, so there\'s nothing to repeat');
 });
@@ -730,19 +730,22 @@ test('Import offers a file or a folder, and each opens its picker', async () => 
   const v = await scripted({ buddies: [row('Ada')] });
   const opened: string[] = [];
   for (const i of v.all<HTMLInputElement>('input[data-pick]')) i.addEventListener('click', () => opened.push(i.dataset.pick!));
-  assert.ok(v.one<HTMLInputElement>('input[data-pick=folder]')!.hasAttribute('webkitdirectory'));
+  /* A folder picker makes the browser ask "Upload N files to this site?". Neither is one. */
+  for (const i of v.all<HTMLInputElement>('input[data-pick]')) assert.ok(!i.hasAttribute('webkitdirectory'), i.dataset.pick);
+  assert.strictEqual(v.one<HTMLInputElement>('input[data-pick=shimeji]')!.accept, 'image/*');
   await click(v.button('Import'));
+  assert.match(v.one('.import-tip')!.textContent!, /Pick every image in its img folder, or drag the whole folder in\./);
   await click(v.button('A .buddy file', '.menu'));
   gone(v.one('.menu'));
   await click(v.button('Import'));
-  await click(v.button('A Shimeji folder', '.menu'));
-  assert.deepStrictEqual(opened, ['file', 'folder']);
+  await click(v.button('Shimeji images', '.menu'));
+  assert.deepStrictEqual(opened, ['file', 'shimeji']);
 });
 
 test('the empty sheet\'s Import offers the same choice', async () => {
   const v = await scripted();
   await click(v.button('Import', '.welcome'));
-  assert.deepStrictEqual(v.words('.menu button'), ['A .buddy file', 'A Shimeji folder']);
+  assert.deepStrictEqual(v.words('.menu button'), ['A .buddy file', 'Shimeji images']);
 });
 
 const dragged = (type: string, types = ['Files'], target: EventTarget = document.body) => {

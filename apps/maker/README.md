@@ -31,7 +31,7 @@ The **Signature move** is a character's own: give it frames, and a `signature` e
 Frames drawn on the same canvas size as the main image keep a consistent scale automatically. Every pose also has its own Speed (fps) and Scale sliders.
 
 ## Shimeji import
-Click **Import Shimeji folder** and pick a folder that contains `shime1.png … shime46.png`. You can also drop those files on **+ Add**. The standard Shimeji-ee numbering is mapped to poses (see `SHIMEJI_MAP` in `packages/engine/src/data.ts`). The mapping is approximate, so adjust any pose afterwards.
+Drag a Shimeji folder in, or click **Import Shimeji images** and pick every image in its `img` folder (`shime1.png … shime46.png`). A dragged folder names the buddy after itself; picked images make one called Shimeji. The standard Shimeji-ee numbering is mapped to poses (see `SHIMEJI_MAP` in `packages/engine/src/data.ts`). The mapping is approximate, so adjust any pose afterwards.
 
 ## Prompt kit (AI assets + dialogue)
 Open a buddy, then open **Prompt kit**. Two fields drive everything:

@@ -22,7 +22,7 @@ The downloads aren't signed. Windows may say "Windows protected your PC": click 
 - **On the desktop,** one world spans all your monitors. Buddies walk on your windows and ride along when you move one. Drag them, throw them, and right-click one to give her a treat, have her chase your mouse, or call another copy.
 - **The Maker,** from New buddy in the Manager, makes a buddy from one picture or a full set of poses. Write what she says for each mood and moment, set how she sits on floors, walls and ceilings, and try her out on your screen. Pip, the sample, shows what a full set can do.
 - **Sharing:** a buddy is one `.buddy` file. Export her from the Manager, and Import adds one. Turn on Open .buddy files with Desktop Buddies in Settings, and a double-click on one adds her too.
-- **Shimeji:** Import takes a Shimeji folder and makes a buddy of it.
+- **Shimeji:** drag a Shimeji folder onto the Manager, or use Import, Shimeji images, and pick every image in its `img` folder. Either way it's a new buddy.
 
 ## Community
 Ask questions, report bugs and show off your buddies on the Milliways Discord server: [discord.gg/HNhFu4bDNj](https://discord.gg/HNhFu4bDNj). Desktop Buddies has its own channel there, #desktop-buddies. Report bugs in #orders, tagged desktop-buddies. [GitHub issues](https://github.com/exvanitas/desktop-buddies/issues) work too.

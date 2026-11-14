@@ -59,8 +59,13 @@ function dataUrl(f: Blob) {
   });
 }
 export const fromFile = (f: File, path = f.webkitRelativePath || f.name): Handed => ({ name: f.name, path, size: f.size, text: () => f.text(), url: () => dataUrl(f) });
-/* From <input type=file>, with or without webkitdirectory. */
+/* From <input type=file>. */
 export const fromInput = (list: Iterable<File>) => [...list].map(f => fromFile(f));
+/* A Shimeji's images, picked as files because a folder picker makes the browser ask "Upload N
+   files to this site?". They came from one folder with no name to give, so they're sorted as one:
+   only the numbered images count, and nothing else picked with them is refused. */
+export const SHIMEJI = 'Shimeji';
+export const fromImages = (list: Iterable<File>) => [...list].map(f => fromFile(f, `${SHIMEJI}/${f.name}`));
 
 async function walk(entry: FileSystemEntry, out: Handed[]) {
   if (entry.isFile) {

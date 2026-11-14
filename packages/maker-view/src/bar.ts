@@ -6,6 +6,7 @@ import { DRAG, windowControls } from '@buddies/peel/window';
 import { mainSlot } from './art';
 import type { View } from './context';
 import { drawArt } from './draw-art';
+import { SHIMEJI_TIP } from './pickers';
 
 export function createBar(v: Pick<View, 'maker' | 'host' | 'popover' | 'pickers' | 'busy'>, chip: HTMLElement, working: HTMLElement) {
   const { maker, host } = v, drag = host.window ? DRAG : {};
@@ -19,7 +20,8 @@ export function createBar(v: Pick<View, 'maker' | 'host' | 'popover' | 'pickers'
       h('h3', {}, 'Add a buddy'),
       button('From an image', () => { v.popover.close(); v.pickers.open('buddies'); }, { class: 'pick', 'data-add-from': 'image' }),
       button('Import buddy file', () => { v.popover.close(); v.pickers.open('buddyFile'); }, { class: 'pick', 'data-add-from': 'buddy' }),
-      button('Import Shimeji folder', () => { v.popover.close(); v.pickers.open('shimeji'); }, { class: 'pick', 'data-add-from': 'shimeji' }),
+      button('Import Shimeji images', () => { v.popover.close(); v.pickers.open('shimeji'); }, { class: 'pick', 'data-add-from': 'shimeji' }),
+      h('p', { class: 'pick-tip' }, SHIMEJI_TIP),
       h('h3', {}, 'Samples'),
       h('div', { class: 'first-samples tiny' }, ...SAMPLES.map(d => {
         const img = h('img', { alt: '', draggable: 'false' });

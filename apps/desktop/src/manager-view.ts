@@ -10,7 +10,7 @@ import { createPopover } from '@buddies/peel/popover';
 import { readTheme, saveTheme, showTheme, type Store, type Theme } from '@buddies/peel/theme';
 import { FIND_FROM, createFind } from './manager/find';
 import { createFooter } from './manager/footer';
-import { createPickers, watchDrops } from './manager/importing';
+import { SHIMEJI_TIP, createPickers, watchDrops } from './manager/importing';
 import { buddyItems, confirmOf } from './manager/menu';
 import { createMisprints } from './manager/misprints';
 import type { Outlines } from './manager/outlines';
@@ -108,10 +108,10 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
 
   function offerImport(anchor: HTMLElement) {
     if (popover.anchor === anchor) { popover.close(); return; }
-    popover.show(menuOf([
+    popover.show(h('div', { class: 'import' }, menuOf([
       { words: 'A .buddy file', act: () => { popover.close(); pickers.pickFile(); } },
-      { words: 'A Shimeji folder', act: () => { popover.close(); pickers.pickFolder(); } }
-    ], 'Import'), anchor);
+      { words: 'Shimeji images', act: () => { popover.close(); pickers.pickShimeji(); } }
+    ], 'Import'), h('p', { class: 'import-tip' }, SHIMEJI_TIP)), anchor);
   }
   const walk = createWalkSetting({ walk: on => act(() => client.setWalk(on)), exclude: (app, on) => act(() => client.setExcluded(app, on)) });
   const files = createFilesSetting(on => act(() => client.setFiles(on)));
@@ -142,7 +142,7 @@ export function mountView(root: HTMLElement, client: ManagerClient, io: ViewIO) 
   const newBuddy = () => act(() => client.newBuddy());
   const bar = createTitlebar({ find: find.el, importIt: offerImport, newBuddy, minimize: () => void io.minimize(), close: () => void client.close() });
   const misprints = createMisprints({
-    pickFile: pickers.pickFile, pickFolder: pickers.pickFolder,
+    pickFile: pickers.pickFile, pickShimeji: pickers.pickShimeji,
     clear: id => { retries.delete(id); void client.clearFailure(id); },
     clearAll: () => { retries.clear(); void client.clearFailures(); }
   }, retries);

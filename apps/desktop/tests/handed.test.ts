@@ -1,7 +1,7 @@
 /* Sorting what's handed to the Manager, with made-up files and a made-up drop. */
 import assert from 'node:assert';
 import { test } from 'vitest';
-import { fromDrop, fromFile, sortHanded, type Handed, type Job } from '../src/handed';
+import { fromDrop, fromFile, fromImages, sortHanded, type Handed, type Job } from '../src/handed';
 
 const f = (path: string): Handed => ({ name: path.split('/').pop()!, path, size: 1, text: async () => '', url: async () => 'data:' });
 const shapes = (jobs: Job[]) => jobs.map(j => j.k === 'file' ? `file ${j.file.path}` : j.k === 'shimeji' ? `shimeji ${j.folder} ${j.files.length}` : `refused ${j.problem.file}: ${j.problem.why}`);
@@ -22,6 +22,16 @@ test('a Shimeji folder is one buddy, named for its folder', () => {
 test('art in an img folder takes the name from above it, and the rest of the pack is ignored', () => {
   const files = ['Mochi/img/shime1.png', 'Mochi/img/shime2.png', 'Mochi/conf/actions.xml', 'Mochi/Shimeji.exe'].map(f);
   assert.deepStrictEqual(shapes(sortHanded(files)), ['shimeji Mochi 2']);
+});
+
+test('Shimeji images picked as files are one buddy called Shimeji, and the other images are passed over', () => {
+  const picked = fromImages(['shime1.png', 'shime2.png', 'icon.png'].map(n => new File(['x'], n, { type: 'image/png' })));
+  assert.deepStrictEqual(shapes(sortHanded(picked)), ['shimeji Shimeji 2']);
+});
+
+test('images picked with no shime1.png among them say so, about the images', () => {
+  const picked = fromImages([new File(['x'], 'icon.png', { type: 'image/png' })]);
+  assert.deepStrictEqual(shapes(sortHanded(picked)), ['refused Shimeji (folder): No shime1.png in that folder.']);
 });
 
 test('an img folder picked by itself has no name to give', () => {

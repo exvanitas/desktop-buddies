@@ -105,10 +105,11 @@ await group('checklist', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shime-')), inner = path.join(dir, 'Mochi', 'img');
     fs.mkdirSync(inner, { recursive: true });
     ['pip/stand_1.webp', 'pip/walk_1.webp', 'pip/run_1.webp', 'pip/sit_1.webp'].forEach((f, i) => fs.copyFileSync(art(f), path.join(inner, `shime${i + 1}.png`)));
-    await r.page.setInputFiles('input[data-pick=shimeji]', path.join(dir, 'Mochi'));
+    /* Every image in its img folder, picked as files: no folder to name her after. */
+    await r.page.setInputFiles('input[data-pick=shimeji]', fs.readdirSync(inner).map(n => path.join(inner, n)));
     await r.page.waitForSelector('.board');
     const p = await pet(r.page);
-    ok('panel.js import Shimeji folder: named after the folder, with poses', p.name === 'Mochi' && Object.keys(p.poses).length > 0, p.name);
+    ok('panel.js import Shimeji images: called Shimeji, with poses', p.name === 'Shimeji' && Object.keys(p.poses).length > 0, p.name);
     fs.rmSync(dir, { recursive: true, force: true });
     await clean(r, 'import Shimeji'); }
   { const r = await h.open({ fixture: 'empty' });

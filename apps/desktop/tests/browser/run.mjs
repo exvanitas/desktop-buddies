@@ -429,11 +429,13 @@ if (!ONLY || ONLY === 'clicks') {
     ok('picking clears the old failure', await r.page.locator('.misprint').count() === 1);
     await r.page.locator('.misprint .btn:not(.go)').click();
     await r.page.getByRole('button', { name: 'Import' }).first().click();
-    ok('Import offers a file or a folder', (await text(r.page, '.menu button')).join() === 'A .buddy file,A Shimeji folder');
+    ok('Import offers a file or Shimeji images', (await text(r.page, '.menu button')).join() === 'A .buddy file,Shimeji images');
+    ok('and says a whole folder can be dragged in', /drag the whole folder in/.test(await r.page.locator('.import-tip').textContent()));
     chooser = r.page.waitForEvent('filechooser');
-    await r.page.getByRole('menuitem', { name: 'A Shimeji folder' }).click();
+    await r.page.getByRole('menuitem', { name: 'Shimeji images' }).click();
     c = await chooser;
-    ok('the folder choice opens a folder picker', await c.element().evaluate(i => i.webkitdirectory));
+    /* a folder picker is what makes the browser ask "Upload N files to this site?" */
+    ok('the Shimeji choice opens a plain picker of images, not a folder picker', c.isMultiple() && await c.element().evaluate(i => !i.webkitdirectory && i.accept === 'image/*'));
     await r.ctx.close();
   }
   { /* real files on disk, through the real pickers and the real art */
@@ -443,15 +445,18 @@ if (!ONLY || ONLY === 'clicks') {
     fs.mkdirSync(`${dir}/Mochi/img`, { recursive: true }); fs.mkdirSync(`${dir}/Mochi/conf`); fs.mkdirSync(`${dir}/Empty`);
     for (const n of [1, 2, 3, 4]) fs.writeFileSync(`${dir}/Mochi/img/shime${n}.png`, Buffer.from(png, 'base64'));
     fs.writeFileSync(`${dir}/Mochi/conf/actions.xml`, '<x/>'); fs.writeFileSync(`${dir}/Empty/readme.txt`, 'x'); fs.writeFileSync(`${dir}/bad.buddy`, '{"app":"nope"}');
-    await r.page.setInputFiles('input[data-pick=folder]', `${dir}/Mochi`);
-    const mochi = r.page.locator('.st', { hasText: 'Mochi' });
+    /* every image in its img folder, and something else picked with them, which is passed over */
+    fs.writeFileSync(`${dir}/Mochi/img/icon.png`, Buffer.from(png, 'base64'));
+    await r.page.setInputFiles('input[data-pick=shimeji]', fs.readdirSync(`${dir}/Mochi/img`).map(n => `${dir}/Mochi/img/${n}`));
+    const mochi = r.page.locator('.st', { hasText: 'Shimeji' });
     await mochi.waitFor();
-    ok('a real Shimeji folder comes in through the picker, named for its folder, and at home', /At home/.test(await mochi.textContent()), await mochi.textContent());
-    ok('and lands in the library', await r.hub.evaluate(() => { const c = H.state().buddies.find(b => b.name === 'Mochi'); return !!c && !!H.file(`library/${c.id}/buddy.json`); }));
+    ok('real Shimeji images come in through the picker, called Shimeji, and at home', /At home/.test(await mochi.textContent()), await mochi.textContent());
+    ok('and land in the library', await r.hub.evaluate(() => { const c = H.state().buddies.find(b => b.name === 'Shimeji'); return !!c && !!H.file(`library/${c.id}/buddy.json`); }));
     ok('its image loads from the library', await mochi.locator('img').evaluate(i => new Promise(done => { if (i.complete) done(i.naturalWidth > 0); else { i.onload = () => done(true); i.onerror = () => done(false); } })));
-    await r.page.setInputFiles('input[data-pick=folder]', `${dir}/Empty`);
+    ok('the other image picked with them is passed over', await r.page.locator('.misprint').count() === 0);
+    await r.page.setInputFiles('input[data-pick=shimeji]', `${dir}/Mochi/img/icon.png`);
     await r.page.waitForSelector('.misprint');
-    ok('a folder with no art says so', /Empty didn't come in/.test(await r.page.locator('.misprint').textContent()) && /No shime1\.png in that folder\./.test(await r.page.locator('.misprint').textContent()), await r.page.locator('.misprint').textContent());
+    ok('images with no shime1.png say so', /Shimeji didn't come in/.test(await r.page.locator('.misprint').textContent()) && /No shime1\.png in that folder\./.test(await r.page.locator('.misprint').textContent()), await r.page.locator('.misprint').textContent());
     await r.page.setInputFiles('input[data-pick=file]', `${dir}/bad.buddy`);
     const misprint = r.page.locator('.misprint', { hasText: "bad didn't come in" });
     await misprint.waitFor();

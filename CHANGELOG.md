@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **No "Upload files to this site?" for a Shimeji.** Importing a Shimeji no longer opens a folder picker, which made Windows ask that. Drag the folder in, or pick every image in its img folder.
 - **Lighter when hidden or paused.** Hidden, paused, or while you're away, the buddies' world stops ticking and their windows stop drawing, instead of doing both 60 times a second with nothing to show. They pick up where they were, and anything that changes meanwhile, like a buddy brought to you, still shows at once.
 - **Pip has a picture for every pose slot.** The Maker's sample now climbs, hangs, rolls, tumbles, struggles, stands up from each way down, and has a move of her own, all in her own drawings.
 - **Double-click a .buddy file.** A new switch in Settings, Open .buddy files with Desktop Buddies, makes Windows open `.buddy` files with the app, so a double-click imports her. It's off until you turn it on, it's for your Windows account only, and turning it off removes it.

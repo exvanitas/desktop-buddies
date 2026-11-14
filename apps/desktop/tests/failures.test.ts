@@ -70,13 +70,14 @@ test('what the exe says about a file it couldn\'t read', () => {
   assert.match(badFile('x.buddy', 'The system cannot find the file specified.').why, /may be damaged/);
 });
 
-test('the prototypes\' example, word for word', () => {
+/* The prototypes' words, but for the fix and its button: nothing picks a folder now. */
+test('the prototypes\' example', () => {
   const p = noShime1('Mochi');
   assert.strictEqual(p.title, "Mochi didn't come in");
   assert.strictEqual(p.why, 'No shime1.png in that folder.');
-  assert.match(p.fix, /^Pick the folder with the numbered images in it\./);
+  assert.match(p.fix, /^Use the folder with the numbered images in it, often called img: drag it in, or pick every image in it\.$/);
   assert.strictEqual(p.file, 'Mochi (folder)');
-  assert.strictEqual(p.again, 'Pick another folder');
+  assert.strictEqual(p.again, 'Pick Shimeji images');
 });
 
 test('a file is called what a person would call it', () => {

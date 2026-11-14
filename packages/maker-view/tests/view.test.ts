@@ -1389,10 +1389,11 @@ test('files that can\'t be read leave the first step where it was, saying so', a
   assert.ok(v.shown(v.q('.first:not(.waiting)')));
 });
 
-test('a buddy file and a Shimeji folder come in from the buddies menu', async () => {
+test('a buddy file and Shimeji images come in from the buddies menu', async () => {
   const v = await mount();
   v.click('[data-who]');
-  assert.deepStrictEqual(v.words('.buddies .pick'), ['From an image', 'Import buddy file', 'Import Shimeji folder']);
+  assert.deepStrictEqual(v.words('.buddies .pick'), ['From an image', 'Import buddy file', 'Import Shimeji images']);
+  assert.match(v.q('.buddies .pick-tip')!.textContent!, /pick every image in its img folder, or drag the whole folder in/);
   v.click('[data-who]');
   gone(v.q('.buddies'));
   await v.choose('shimeji', ...['shime1.png', 'shime2.png'].map(n => file(n)));
@@ -2008,7 +2009,7 @@ test('a name with none shows as such in the buddies menu', async () => {
 
 test('the buddies menu closes as its picker opens', async () => {
   const v = await mount();
-  for (const words of ['From an image', 'Import buddy file', 'Import Shimeji folder']) {
+  for (const words of ['From an image', 'Import buddy file', 'Import Shimeji images']) {
     v.click('[data-who]');
     v.press(words, '.buddies');
     gone(v.q('.buddies'));
@@ -2021,8 +2022,9 @@ test('the file pickers ask for what each wants', async () => {
   assert.ok(pick('main').hidden);
   for (const k of ['buddies', 'frames', 'generated', 'shimeji']) assert.ok(pick(k).hasAttribute('multiple'), k);
   for (const k of ['main', 'buddyFile']) assert.ok(!pick(k).hasAttribute('multiple'), k);
-  assert.ok(pick('shimeji').hasAttribute('webkitdirectory'));
-  assert.ok(!pick('buddies').hasAttribute('webkitdirectory'));
+  /* A folder picker makes the browser ask "Upload N files to this site?". None does. */
+  for (const i of document.querySelectorAll('input[type=file]')) assert.ok(!i.hasAttribute('webkitdirectory'), i.getAttribute('data-pick')!);
+  assert.strictEqual(pick('shimeji').getAttribute('accept'), 'image/*');
   assert.strictEqual(pick('buddyFile').getAttribute('accept'), '.buddy,.json,application/json');
   assert.strictEqual(pick('frames').getAttribute('accept'), 'image/*');
 });

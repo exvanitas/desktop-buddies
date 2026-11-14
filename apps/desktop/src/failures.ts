@@ -19,7 +19,7 @@ export interface Failure extends Problem { id: string }
 export const stem = (name: string) => name.replace(/\.buddy\.json$/i, '').replace(/\.[^.]+$/, '') || name;
 
 export const ANOTHER_FILE = 'Pick another file';
-export const ANOTHER_FOLDER = 'Pick another folder';
+export const ANOTHER_SHIMEJI = 'Pick Shimeji images';
 const NOT_A_BUDDY = 'Pick a .buddy file. If this is one, export it again.';
 const SAVE_AGAIN = 'Open it in the Maker and save it again.';
 const UPDATE = 'Update Desktop Buddies, then try again.';
@@ -79,9 +79,9 @@ export const wrongKind = (name: string, image: boolean): Problem => ({
 });
 
 const shimeji = (folder: string, why: string, fix: string): Problem => ({
-  kind: 'import', file: `${folder} (folder)`, title: `${folder} didn't come in`, why, fix, again: ANOTHER_FOLDER
+  kind: 'import', file: `${folder} (folder)`, title: `${folder} didn't come in`, why, fix, again: ANOTHER_SHIMEJI
 });
-export const noShime1 = (folder: string) => shimeji(folder, 'No shime1.png in that folder.', 'Pick the folder with the numbered images in it. It is often called img.');
+export const noShime1 = (folder: string) => shimeji(folder, 'No shime1.png in that folder.', 'Use the folder with the numbered images in it, often called img: drag it in, or pick every image in it.');
 export const badShime = (folder: string) => shimeji(folder, "Its images wouldn't open.", 'Check that the numbered images are real PNG files, then try again.');
 
 export const notExported = (name: string, why: 'read' | 'save'): Problem => ({

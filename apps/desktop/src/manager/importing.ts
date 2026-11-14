@@ -1,16 +1,19 @@
 /* The ways in: the two file pickers behind Import, and drops anywhere on the window. */
-import { fromInput, takeDrops, type Handed } from '../handed';
+import { fromImages, fromInput, takeDrops, type Handed } from '../handed';
 import { h } from '@buddies/peel/dom';
 
 const FILES = '.buddy,.json';
+/* What the Shimeji choice asks for, said where it's offered. A folder picker would make the
+   browser ask "Upload N files to this site?", and a dragged folder never does. */
+export const SHIMEJI_TIP = 'Pick every image in its img folder, or drag the whole folder in.';
 
 /* Hidden inputs, opened by a click. `then` runs only if something was picked. */
 export function createPickers(took: (files: Handed[]) => void) {
   let after: () => void = () => {};
-  const input = (kind: string, attrs: Record<string, string | boolean>) => {
+  const input = (kind: string, attrs: Record<string, string | boolean>, read: (list: Iterable<File>) => Handed[] = fromInput) => {
     const i = h('input', { type: 'file', multiple: true, hidden: true, 'data-pick': kind, ...attrs });
     i.addEventListener('change', () => {
-      const files = fromInput(i.files || []);
+      const files = read(i.files || []);
       i.value = '';
       if (!files.length) return;
       after(); after = () => {};
@@ -18,12 +21,12 @@ export function createPickers(took: (files: Handed[]) => void) {
     });
     return i;
   };
-  const file = input('file', { accept: FILES }), folder = input('folder', { webkitdirectory: true });
+  const file = input('file', { accept: FILES }), shimeji = input('shimeji', { accept: 'image/*' }, fromImages);
   const open = (i: HTMLInputElement, then: () => void) => { after = then; i.click(); };
   return {
-    els: [file, folder],
+    els: [file, shimeji],
     pickFile: (then: () => void = () => {}) => open(file, then),
-    pickFolder: (then: () => void = () => {}) => open(folder, then)
+    pickShimeji: (then: () => void = () => {}) => open(shimeji, then)
   };
 }
 
