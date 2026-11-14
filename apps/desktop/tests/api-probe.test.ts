@@ -102,6 +102,32 @@ test('the probe turns Open .buddy files on and off by its switch in Settings, an
   assert.strictEqual(s.exe.fileAssoc, false);
 });
 
+test('the probe turns Show names and Buddies talk off and on by their switches, and Talks in her menu', async () => {
+  const { s, run } = await onManager();
+  const facts = async () => (await run({ do: 'state' })).detail as { hub: { showNames: boolean; talk: boolean; quiet: string[] } };
+  const first = (await facts()).hub;
+  assert.deepStrictEqual([first.showNames, first.talk, first.quiet], [true, true, []]);
+  for (const what of ['names', 'talk'] as const) {
+    const off = await run({ do: what, on: false });
+    assert.ok(off.ok, ascii(off.detail));
+    assert.strictEqual(s.state[what], false);
+    assert.strictEqual(document.querySelector('.panel'), null, 'Settings closed again');
+    const again = await run({ do: what, on: false });
+    assert.ok(again.ok && (again.detail as { already?: boolean }).already, ascii(again.detail));
+  }
+  const mute = await run({ do: 'talks', buddy: SAMPLE_ID, on: false });
+  assert.ok(mute.ok, ascii(mute.detail));
+  assert.strictEqual(document.querySelector('.menu'), null, 'her menu closed with the choice');
+  assert.deepStrictEqual((await facts()).hub.quiet, [SAMPLE_ID]);
+  for (const t of [{ do: 'talks', buddy: SAMPLE_ID, on: true }, { do: 'names', on: true }, { do: 'talk', on: true }] as Unnumbered[]) {
+    const r = await run(t);
+    assert.ok(r.ok, ascii(r.detail));
+  }
+  assert.deepStrictEqual(JSON.parse(text(s.exe.files.get('settings.json')!)), { out: [SAMPLE_ID] }, 'back to the defaults, with nothing written for them');
+  const nobody = await run({ do: 'talks', buddy: 'nobody', on: false });
+  assert.ok(!nobody.ok);
+});
+
 test('a click counts only once the hub says it took: one it never takes fails', async () => {
   const { s, client } = await onManager();
   await s.command({ k: 'api', on: true });
@@ -111,7 +137,7 @@ test('a click counts only once the hub says it took: one it never takes fails', 
   await s.done();
   const root = document.body.firstElementChild!;
   const deaf = { root, state: () => client.state, until: async () => false };
-  for (const t of [{ do: 'pause', on: true }, { do: 'hide', on: true }, { do: 'on', on: false }, { do: 'files', on: true }, { do: 'answer', app: 'E2E Other', allow: true }, { do: 'forget', app: 'E2E Check' }] as Unnumbered[]) {
+  for (const t of [{ do: 'pause', on: true }, { do: 'hide', on: true }, { do: 'on', on: false }, { do: 'files', on: true }, { do: 'names', on: false }, { do: 'talk', on: false }, { do: 'talks', buddy: SAMPLE_ID, on: false }, { do: 'answer', app: 'E2E Other', allow: true }, { do: 'forget', app: 'E2E Check' }] as Unnumbered[]) {
     const r = await perform({ ...t, n: 1 } as Task, deaf);
     assert.ok(!r.ok, `${t.do}: ${ascii(r.detail)}`);
   }
@@ -136,11 +162,11 @@ function overlay(isWave: (name: string) => boolean = () => false) {
   const root = document.createElement('div');
   document.body.replaceChildren(root);
   const view = createView({ root, input, viewport: { x: 0, y: 0, scale: 1, w: 1920, h: 1040 } });
-  const said: string[] = [], waves: number[] = [], cannot: string[] = [];
+  const said: string[] = [], waves: number[] = [], cannot: string[] = [], tags: string[] = [];
   const answers = new Map<Element, Seen>();
   let all: Seen = 'yes';
   const look: Look = { settle: async () => {}, seen: el => answers.get(el) ?? all };
-  const w = watchOverlay(root, { said: (f, t) => said.push(`${hex(f)} ${hex(t)}`), waved: n => waves.push(n), isWave, cannot: why => cannot.push(why) }, look);
+  const w = watchOverlay(root, { said: (f, t) => said.push(`${hex(f)} ${hex(t)}`), waved: n => waves.push(n), isWave, cannot: why => cannot.push(why), tags: (n, of) => tags.push(`${n} ${of}`) }, look);
   const settle = async () => { for (let i = 0; i < 8; i++) { await tick(); w.flush(); } };
   const show = async (f: Frame) => { view.apply(f); await settle(); };
   const img = () => root.querySelector<HTMLImageElement>('.db-pet > .db-body > img')!;
@@ -153,7 +179,7 @@ function overlay(isWave: (name: string) => boolean = () => false) {
     await settle();
   };
   const recheck = async () => { w.recheck(); await settle(); };
-  return { root, view, said, waves, cannot, answers, set all(s: Seen) { all = s; }, w, show, picture, img, bubble, recheck };
+  return { root, view, said, waves, cannot, tags, answers, set all(s: Seen) { all = s; }, w, show, picture, img, bubble, recheck };
 }
 const LINE = 'He said "hi" \\ café \u{1F44B} a | b end\\';
 const SAID = `${hex('E2E Check')} ${hex(LINE)}`;
@@ -214,6 +240,26 @@ test('a page that can\'t judge says so once, and tells nothing at all', async ()
   assert.deepStrictEqual(o.said, []);
   assert.deepStrictEqual(o.waves, []);
   assert.strictEqual(o.cannot.length, 1, o.cannot.join());
+  o.w.stop();
+});
+
+/* A name tag the view hides isn't seen; this look stands in for the browser's own. */
+const named = (hidden: boolean): Frame => { const f = pet({}); f.pets[0]!.tag = { text: 'Olive', hidden, tf: null }; return f; };
+test('name tags: how many are seen, of how many, told each time that changes', async () => {
+  const o = overlay();
+  await o.show(named(false));
+  const tag = () => o.root.querySelector('.db-tag')!;
+  await o.recheck();
+  o.answers.set(tag(), 'no');
+  await o.show(named(true));
+  await o.recheck();
+  o.answers.delete(tag());
+  await o.show(named(false));
+  await o.recheck();
+  assert.deepStrictEqual(o.tags, ['1 1', '0 1', '1 1'], 'once each time, not on every look');
+  o.all = 'unknown';
+  await o.recheck();
+  assert.deepStrictEqual(o.tags, ['1 1', '0 1', '1 1'], 'a page that can\'t judge tells nothing');
   o.w.stop();
 });
 

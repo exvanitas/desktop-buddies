@@ -4,7 +4,8 @@
    - Manager: the driver writes e2e/task-<n>.json in the data folder; this does it with the real
      view's buttons, as the person would, and says PROBE DID <n> PASS|FAIL <detail>.
    - Overlay: each line an app asked her to say, as the bubble shows it, PROBE SAID <from> <text> in
-     UTF-8 hex, and PROBE WAVED <n> each time she starts a wave. */
+     UTF-8 hex, PROBE WAVED <n> each time she starts a wave, and PROBE TAGS <seen> <of> each time
+     the number of name tags seen changes. */
 import { readManifest } from '@buddies/buddy-file';
 import type { HubState } from '../src/manager-api';
 import { createManagerClient } from '../src/manager-client';
@@ -72,7 +73,8 @@ async function overlay() {
     said: (from, line) => { void say(`SAID ${hex(from)} ${hex(line)}`); },
     waved: n => { void say(`WAVED ${n}`); },
     isWave: name => { refresh(); return waves.has(name); },
-    cannot: why => { void say(`CANNOT ${ascii(why)}`); }
+    cannot: why => { void say(`CANNOT ${ascii(why)}`); },
+    tags: (seen, of) => { void say(`TAGS ${seen} ${of}`); }
   });
   /* What changes outside the overlay's elements, or an animation ending, is seen at the next look. */
   setInterval(w.recheck, 1000);

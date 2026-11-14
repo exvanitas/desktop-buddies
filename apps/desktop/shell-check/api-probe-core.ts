@@ -25,6 +25,9 @@ export type Task =
   | { n: number; do: 'pause'; on: boolean }
   | { n: number; do: 'hide'; on: boolean }
   | { n: number; do: 'files'; on: boolean }
+  | { n: number; do: 'names'; on: boolean }
+  | { n: number; do: 'talk'; on: boolean }
+  | { n: number; do: 'talks'; buddy: string; on: boolean }
   | { n: number; do: 'look'; app: string }
   | { n: number; do: 'forget'; app: string }
   | { n: number; do: 'answer'; app: string; allow: boolean }
@@ -39,7 +42,8 @@ export interface ManagerIO {
 
 /* What the hub says about what a task touches. Apps' names are the driver's own, all plain ASCII;
    buddies' names come from files, and ascii() escapes them in the log. */
-const facts = (s: HubState | null) => s ? { on: s.api.on, paused: s.paused, hidden: s.hidden, asking: s.api.asking, apps: s.api.apps, files: s.files, names: s.buddies.map(b => b.name) } : null;
+const facts = (s: HubState | null) => s ? { on: s.api.on, paused: s.paused, hidden: s.hidden, asking: s.api.asking, apps: s.api.apps, files: s.files, names: s.buddies.map(b => b.name),
+  showNames: s.names, talk: s.talk, quiet: s.buddies.filter(b => !b.talks).map(b => b.id) } : null;
 
 export async function perform(t: Task, io: ManagerIO): Promise<Done> {
   const { root } = io;
@@ -83,6 +87,27 @@ export async function perform(t: Task, io: ManagerIO): Promise<Done> {
     if (!c.clicked) return { ok: false, detail: c.why };
     return done(s => s.files === t.on);
   }
+  /* Show names and Buddies talk: switches in Settings, labelled by their words. */
+  if (t.do === 'names' || t.do === 'talk') {
+    if (now[t.do] === t.on) return { ok: true, detail: { already: true, hub: facts(now) } };
+    const words = t.do === 'names' ? 'Show names' : 'Buddies talk';
+    const c = await inSettings(p => buttonIn(p, words), `${words} switch`);
+    if (!c.clicked) return { ok: false, detail: c.why };
+    return done(s => s[t.do] === t.on);
+  }
+  /* Talks, in her own ••• menu on her sticker. */
+  if (t.do === 'talks') {
+    const her = now.buddies.find(b => b.id === t.buddy);
+    if (!her) return { ok: false, detail: { why: 'no such buddy', hub: facts(now) } };
+    if (her.talks === t.on) return { ok: true, detail: { already: true, hub: facts(now) } };
+    const dots = buttonIn(root, `More for ${her.name}`);
+    if (!dots) return { ok: false, detail: `no menu for her: ${buttonsIn(root).join(', ')}` };
+    dots.click();
+    const menu = root.querySelector('.menu'), b = buttonIn(menu, 'Talks');
+    if (!b) { if (root.querySelector('.menu')) dots.click(); return { ok: false, detail: `no Talks in her menu: ${buttonsIn(menu).join(', ')}` }; }
+    b.click();
+    return done(s => s.buddies.some(x => x.id === t.buddy && x.talks === t.on));
+  }
   if (t.do === 'look') {
     const ask = askFor(root, t.app);
     const words = ask?.querySelector('b')?.textContent ?? null;
@@ -118,6 +143,8 @@ export interface OverlayIO {
   isWave(name: string): boolean;
   /* Nothing can be judged on this page, so nothing will be told. Said once. */
   cannot(why: string): void;
+  /* How many name tags with a name are seen, of how many there are, each time that changes. */
+  tags?(seen: number, of: number): void;
 }
 
 /* Whether a person could see an element now. 'unknown' when the page can't say, which tells nothing. */
@@ -235,8 +262,21 @@ export function watchOverlay(root: Element, io: OverlayIO, look: Look = platform
     if (b) bubble(b);
     if (img) image(img);
   };
+  /* Name tags: those with a name, and how many of them are seen. Told when that changes. */
+  let lastTags = '';
+  const tags = () => {
+    if (!io.tags) return;
+    const named = [...root.querySelectorAll('.db-tag')].filter(t => (t.textContent ?? '').trim());
+    const seen = named.map(t => look.seen(t));
+    if (seen.includes('unknown')) return unknown();
+    const now = `${seen.filter(x => x === 'yes').length} ${named.length}`;
+    if (now === lastTags) return;
+    lastTags = now;
+    io.tags(seen.filter(x => x === 'yes').length, named.length);
+  };
   /* Everything about the buddy an element belongs to; anything else, everyone. */
   const judge = (t: Element) => {
+    tags();
     const b = t.closest('.db-bubble'), p = t.closest('.db-pet');
     if (b && root.contains(b)) { bubble(b); const before = petBefore(b); if (before) pet(before); return; }
     if (p && root.contains(p)) return pet(p);

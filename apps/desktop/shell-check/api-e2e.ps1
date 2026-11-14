@@ -11,6 +11,9 @@
 #   refused: a link, an over-long line, bad JSON, a key too many; and nothing wedged after
 #   paused, hidden, Not now until Remove, the MCP server over stdio, then off again, then a flood of
 #   requests to fill every reply slot twice
+#   quiet: Buddies talk off, then her own Talks off: an app's line still shows with its badge each
+#   time. names: Show names off hides her name tag in the overlay, and on shows it. Both back to the
+#   defaults, which write nothing to settings.json
 #   files: Open .buddy files turned on in Settings writes this user's .buddy keys, a shell open of a
 #   fresh .buddy imports her into the running app, and off removes both keys. Left alone if this
 #   user already has .buddy keys, so a PC's own are never touched.
@@ -269,6 +272,13 @@ try {
       return $false
     }
     function Waves { return Count-In $log 'PROBE WAVED \d+' }
+    # The overlay's PROBE TAGS <seen> <of> records written after `from` characters of the log.
+    function Tags-Since($from) {
+      $text = Read-Log $log
+      if ($from -gt $text.Length) { return @() }
+      return @([regex]::Matches($text.Substring($from), '(?m)PROBE TAGS (\d+) (\d+)\r?$') | ForEach-Object { [pscustomobject]@{ seen = [int]$_.Groups[1].Value; of = [int]$_.Groups[2].Value } })
+    }
+    function Tags-Said($records) { return (@($records | ForEach-Object { "$($_.seen)/$($_.of)" }) -join ' ') }
     function Done-Count($what) { return Count-In $log "api ${what}: done" }
 
     # ---------- cold: nothing running, so the launch starts the app, which answers and quits
@@ -343,6 +353,38 @@ try {
     $shown = Wait-For 'her bubble' { Has-Said $asker $tricky } 6
     $seen = @([regex]::Matches((Read-Log $log), $saidRecord) | ForEach-Object { $_.Value.Trim() })
     Expect 'allowed.say_byte_for_byte' $shown "want PROBE SAID $(Hex $asker) $(Hex $tricky); the bubble showed: $(if ($seen.Count) { $seen[-1] } else { 'nothing' })$(if ((Read-Log $log) -match 'PROBE CANNOT ([^\r\n]*)') { '; the probe cannot judge: ' + $Matches[1] })"
+
+    # ---------- quiet: muted, all of them or her alone, an app's line still shows with its badge
+    if (Task 'talk_off' @{ 'do' = 'talk'; on = $false }) {
+      Expect 'quiet.talk_saved' (Wait-For 'settings.json' { $s = Settings; $s -and $s.talk -eq $false } 10)
+      $line = 'Still said with Buddies talk off'
+      $r = Send $asker 'say' ($bj + ',"text":' + (J $line))
+      Expect 'quiet.talk_off_say' ((Err $r) -eq 'ok') (Err $r)
+      Expect 'quiet.talk_off_line_shown' (Wait-For 'her bubble' { Has-Said $asker $line } 6) "PROBE SAID $(Hex $asker) $(Hex $line)"
+      [void](Task 'talk_on' @{ 'do' = 'talk'; on = $true })
+    }
+    if (Task 'talks_off' @{ 'do' = 'talks'; buddy = $her.id; on = $false }) {
+      Expect 'quiet.talks_saved' (Wait-For 'settings.json' { $s = Settings; $s -and @($s.quiet) -contains $her.id } 10)
+      $line = 'Still said with her Talks off'
+      $r = Send $asker 'say' ($bj + ',"text":' + (J $line))
+      Expect 'quiet.talks_off_say' ((Err $r) -eq 'ok') (Err $r)
+      Expect 'quiet.talks_off_line_shown' (Wait-For 'her bubble' { Has-Said $asker $line } 6) "PROBE SAID $(Hex $asker) $(Hex $line)"
+      [void](Task 'talks_on' @{ 'do' = 'talks'; buddy = $her.id; on = $true })
+    }
+    Expect 'quiet.back_to_defaults' (Wait-For 'settings.json' { $s = Settings; $s -and -not ($s.PSObject.Properties.Name -contains 'talk') -and -not ($s.PSObject.Properties.Name -contains 'quiet') } 10) "$(if (Settings) { (Settings) | ConvertTo-Json -Compress -Depth 4 })"
+
+    # ---------- names: Show names off hides her name tag in the overlay, and on shows it again
+    Expect 'names.shown_at_first' (Wait-For 'a name tag seen' { @(Tags-Since 0 | Where-Object { $_.seen -gt 0 }).Count -gt 0 } 10) (Tags-Said (Tags-Since 0))
+    $mark = (Read-Log $log).Length
+    if (Task 'names_off' @{ 'do' = 'names'; on = $false }) {
+      Expect 'names.off_saved' (Wait-For 'settings.json' { $s = Settings; $s -and $s.names -eq $false } 10)
+      Expect 'names.off_hides_tags' (Wait-For 'the tags hidden' { @(Tags-Since $mark | Where-Object { $_.seen -eq 0 -and $_.of -gt 0 }).Count -gt 0 } 10) (Tags-Said (Tags-Since $mark))
+      $mark = (Read-Log $log).Length
+      if (Task 'names_on' @{ 'do' = 'names'; on = $true }) {
+        Expect 'names.on_shows_tags' (Wait-For 'the tags shown' { @(Tags-Since $mark | Where-Object { $_.seen -gt 0 }).Count -gt 0 } 10) (Tags-Said (Tags-Since $mark))
+        Expect 'names.back_to_defaults' (Wait-For 'settings.json' { $s = Settings; $s -and -not ($s.PSObject.Properties.Name -contains 'names') } 10)
+      }
+    }
 
     # ---------- refused, and nothing wedged after
     $r = Send $asker 'say' ($bj + ',"text":' + (J $linked))
