@@ -328,7 +328,7 @@ test('saved but not read back: it\'s saved, the Manager says it isn\'t showing y
   assert.strictEqual(page.saveState.kind, 'saved');
   assert.ok(m.s().failures.some(f => /isn't showing yet/.test(f.title)), JSON.stringify(m.s().failures));
   stop();
-  r.timers.shift()?.f();
+  r.fire(2000); /* the hub's retry, not a slow save's watch */
   await r.done();
   assert.deepStrictEqual(m.s().failures, []);
   assert.strictEqual(m.s().buddies.find(b => b.id === id)!.name, 'Bea');

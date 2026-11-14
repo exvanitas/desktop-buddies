@@ -56,7 +56,7 @@ const OK: Answer<never> = { ok: true };
    is about its bytes: it's JSON with its images in base64. */
 const MAX_WAITING = 50, MAX_WAITING_CHARS = 256e6;
 /* A Maker save this slow says in the log where its time went. */
-const SLOW_SAVE_MS = 1000;
+const SLOW_SAVE_MS = 1000, SAVE_WATCH_MS = 10000;
 /* These wait on a person or on a page, and the tray, monitors and imports can't wait for that. */
 const OFF_QUEUE: ReadonlySet<Command['k']> = new Set(['export', 'maker', 'save-page']);
 
@@ -168,9 +168,12 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
 
   /* Monitor changes and imports arrive whenever they like, and opening a window takes time, so
      work goes through one at a time. */
-  let queue = Promise.resolve();
-  const later = (f: () => Promise<void>) => { queue = queue.then(f).catch(e => note(`hub error ${e}`)); return queue; };
-  const queued = <T>(f: () => Promise<T>) => new Promise<T>((done, fail) => { void later(() => f().then(done, fail)); });
+  let queue = Promise.resolve(), queueOn: string | null = null; /* what the queue is doing, for a slow save's log line */
+  const later = (f: () => Promise<void>, what = 'hub work') => {
+    queue = queue.then(async () => { queueOn = what; try { await f(); } finally { queueOn = null; } }).catch(e => note(`hub error ${e}`));
+    return queue;
+  };
+  const queued = <T>(f: () => Promise<T>, what?: string) => new Promise<T>((done, fail) => { void later(() => f().then(done, fail), what); });
 
   const data = (b: Shelved, id = b.id): BuddyData => ({ ...b.buddy, id });
   function pets(): BuddyData[] {
@@ -328,7 +331,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     if (await reconcile() && stocked) { retry = RETRY_MS; return; }
     if (retrying) return;
     retrying = true;
-    after(retry, () => { retrying = false; void later(() => catchUp(true)); });
+    after(retry, () => { retrying = false; void later(() => catchUp(true), 'a retry'); });
     retry = Math.min(retry * 2, RETRY_MAX_MS);
   }
 
@@ -483,12 +486,12 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     const chars = f.content?.length ?? 0;
     if (!room(chars)) return importFailed(f, tooManyWaiting(f.name), 'too many waiting');
     inbound++; inboundChars += chars;
-    return queued(() => { inbound--; inboundChars -= chars; return job(); });
+    return queued(() => { inbound--; inboundChars -= chars; return job(); }, 'an import');
   }
   /* One sent from outside that's refused at the door shows the Manager, as any failure of one does. */
   function arrived(f: Opened) {
     if (admit(f, () => launched(f)) instanceof Promise) return;
-    if (!wantManager) { wantManager = true; void later(catchUp); }
+    if (!wantManager) { wantManager = true; void later(catchUp, 'raising the Manager'); }
   }
   /* A file from outside, with no window open to say what's wrong with it, or to ask. */
   async function launched(f: Opened) {
@@ -558,15 +561,20 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     if (before?.failed && before.file === word.file) { forget(before.failed); publish(); }
   }
   async function decideSave(c: Extract<Command, { k: 'maker-save' }>, kept: () => void): Promise<Answer<MakerSaved>> {
-    const { id, name, file, rev, session } = c, windowGone = () => closing.has(session);
-    const t = phases(saveArrived.get(c));
-    saveArrived.delete(c);
+    const t = saveTraces.get(c) ?? phases(`maker save of ${c.id}`);
+    saveTraces.delete(c);
+    t.to('looking');
+    try { return await deciding(c, t, kept); }
+    finally { t.end(); }
+  }
+  async function deciding({ id, name, file, rev, session }: Extract<Command, { k: 'maker-save' }>, t: ReturnType<typeof phases>, kept: () => void): Promise<Answer<MakerSaved>> {
+    const windowGone = () => closing.has(session);
     const no = (p: Problem) => { note(`maker save refused: ${p.why}`); return windowGone() ? refuse(lastEditLost(name)) : { ok: false as const, failure: { ...p, id: 'save' } }; };
     if (!stocked) return no(notReady());
     let there: boolean;
     try { there = await library.present(id); }
     catch (e) { note(`maker save failed: ${id}: ${reason(e)}`); return no(notWritten(name)); }
-    t.mark('looking');
+    t.to('reading');
     if (!revisions.accepts(id, rev, session, there)) {
       const conflict = there ? 'replaced' : 'deleted';
       note(`maker save refused: ${id} was ${conflict}`);
@@ -575,17 +583,16 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     let p: Prepared;
     try { p = library.prepare(file); } catch (e) { return no(notSaved(name, reason(e))); }
     if (p.id !== id) return no(broke('Saving'));
-    t.mark('reading');
+    t.to('storing');
     try { await library.store(p); }
     catch (e) { note(`maker save failed: ${id}: ${reason(e)}`); return no(notWritten(name)); }
-    t.mark('storing');
+    t.to('reading back');
     const next = revisions.saved(id, session);
     await landed(id);
-    t.mark('reading back');
+    t.to('telling');
     sendPets();
     await changed();
-    t.mark('telling');
-    t.done(`maker save of ${id}`);
+    t.done();
     /* She's saved. It keeps trying to read her back, and the Manager's list says so meanwhile. */
     if (unread.has(id)) {
       forget(unread.get(id));
@@ -594,16 +601,26 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
     note(`maker saved ${id}${windowGone() ? ' from a closing window' : ''}`);
     return { ok: true, value: { rev: next } };
   }
-  /* Where a save's time went, from when it came in, said only when it took long enough to ask:
-     the queue it waited in, then each step. */
-  const saveArrived = new WeakMap<object, number>();
-  function phases(from = now()) {
-    const steps: string[] = [];
-    let last = now();
-    if (last - from >= 1) steps.push(`queued ${Math.round(last - from)}`);
+  /* Where a save's time went, from when it came in: the queue it waited in, then each step. Said
+     when it's over, if it took long enough to ask, and every SAVE_WATCH_MS while it runs, with what
+     the library is doing, so a save that never ends says where it is. Counts and times only. */
+  const saveTraces = new WeakMap<object, ReturnType<typeof phases>>();
+  function phases(what: string) {
+    const from = now(), steps: string[] = [], ms = Math.round;
+    let step = 'queued', since = from, over = false;
+    const to = (next: string) => { const t = now(); steps.push(`${step} ${ms(t - since)}`); step = next; since = t; };
+    const watch = () => after(SAVE_WATCH_MS, () => {
+      if (over) return;
+      const lib = library.busy();
+      note(`${what} still going after ${ms(now() - from)} ms: ${step} for ${ms(now() - since)}` +
+        (step === 'queued' ? `, the queue on ${queueOn ?? 'nothing'}` : '') + (lib.length ? `; library: ${lib.join('; ')}` : ''));
+      watch();
+    });
+    watch();
     return {
-      mark(what: string) { const t = now(); steps.push(`${what} ${Math.round(t - last)}`); last = t; },
-      done(what: string) { const all = now() - from; if (all >= SLOW_SAVE_MS) note(`${what} took ${Math.round(all)} ms: ${steps.join(', ')}`); }
+      to,
+      done() { to(''); const all = now() - from; if (all >= SLOW_SAVE_MS) note(`${what} took ${ms(all)} ms: ${steps.join(', ')}`); },
+      end() { over = true; }
     };
   }
   async function keepBeside(name: string, file: string, kept: () => void): Promise<Answer<MakerSaved>> {
@@ -675,7 +692,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       if (asking.length >= LIMITS.asking) return 'busy';
       asking = [...asking, app];
       publish();
-      void later(showManager);
+      void later(showManager, 'showing the Manager');
       return 'asked';
     },
     buddies: () => shelf.map(b => ({ id: b.id, name: b.name, out: roster.count(b.id) > 0, copies: roster.count(b.id), can: API_ACTIONS.filter(a => canDo(b.buddy, a)) })),
@@ -828,7 +845,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       saving = true; /* before anything waits, so a second dialog can't start in the gap */
       try { return { ok: true, value: { name: b.name, file: await library.packed(id) } }; }
       catch (e) { saving = false; note(`export failed: ${id}: ${reason(e)}`); return refuse(notExported(b.name, 'read')); }
-    }));
+    }), 'an export');
     if (!packed.ok) return packed;
     const { name, file } = packed.value!;
     try {
@@ -843,11 +860,12 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   async function answer(id: string, c: Command) {
     /* An import's name is a file's, and stays out. */
     note(`manager ${c.k} ${'id' in c ? c.id || '' : 'name' in c && c.k !== 'import' ? c.name : ''}`.trimEnd());
-    if (c.k === 'maker-save') saveArrived.set(c, now());
+    const t = c.k === 'maker-save' ? phases(`maker save of ${c.id}`) : null;
+    if (t) saveTraces.set(c, t);
     const work = OFF_QUEUE.has(c.k) ? run(c)
       : c.k === 'import' ? Promise.resolve(admit(c, () => run(c)))
-      : queued(() => run(c));
-    const done = await work.catch((e: unknown) => { note(`hub error ${e}`); return refuse(broke(c.k)); });
+      : queued(() => run(c), c.k);
+    const done = await work.catch((e: unknown) => { note(`hub error ${e}`); return refuse(broke(c.k)); }).finally(() => t?.end());
     wire.post({ k: 'done', id, answer: done });
   }
   function heard(m: Said) {
@@ -898,7 +916,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
   }
   function system(s: System) {
     const now = s.userState === 'away';
-    if (now !== away) { away = now; note(`user ${now ? 'away' : 'back'}`); pauseWorld(); void later(catchUp); }
+    if (now !== away) { away = now; note(`user ${now ? 'away' : 'back'}`); pauseWorld(); void later(catchUp, 'away or back'); }
     /* API 2: buddies are kept on top while nothing is full screen, so a game or a presentation never
        has them pushed over it. */
     if (newer()) { raiseWant = s.userState === 'normal'; void sendRaise(); }
@@ -944,9 +962,9 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
       wire.listen(heard);
       menuWire?.listen(m => { if (m.k.startsWith('menu-')) buddyMenu.heard(m); });
       await shell.on('cursor', c => send({ k: 'cursor', ...c }));
-      await shell.on('monitors', list => { void later(() => monitors(list)); });
-      await shell.on('tray', e => { void later(() => trayItem(e.id)); });
-      await shell.on('tray-click', () => { void later(showManager); });
+      await shell.on('monitors', list => { void later(() => monitors(list), 'monitors'); });
+      await shell.on('tray', e => { void later(() => trayItem(e.id), 'a tray item'); });
+      await shell.on('tray-click', () => { void later(showManager, 'showing the Manager'); });
       await shell.on('system', system);
       try { await windows.listen(windowsSeen); } catch { note('windows listen failed'); }
       await shell.on('open-file', arrived);
@@ -955,7 +973,7 @@ export function createHub({ shell, send, seed, after, wire, menuWire, windows = 
         const asked = apiArg(e.args);
         if (asked !== null) return apiLaunch(asked);
         note(`second launch: ${argsSeen(e.args)}`);
-        if (!e.args.some(isBuddyFile)) void later(showManager);
+        if (!e.args.some(isBuddyFile)) void later(showManager, 'showing the Manager');
       });
 
       stocked = await stock();

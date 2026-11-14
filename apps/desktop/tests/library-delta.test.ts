@@ -157,9 +157,26 @@ test('a slow save says where its time went, with counts and times and no names',
   await lib.add(write(bigBuddy()));
   const line = notes.find(l => l.startsWith('library: a save took'));
   assert.ok(line, notes.join('; '));
-  assert.match(line, /hashing \d+, 1146 images written 4 at a time in \d+, each \d+ median, \d+ p90, \d+ most, then the manifest and the move \d+$/);
+  assert.match(line, /: hashing \d+, settling \d+, clearing staging \d+, writing \d+, the manifest \d+, the move \d+; 1146 images, 4 at a time, each \d+ median, \d+ p90, \d+ most$/);
   assert.ok(!/cbig|Big|\.png|\//.test(line.slice('library: '.length)), line);
   notes.length = 0;
   await createLibrary(exe.shell, l => notes.push(l)).add(write({ ...bigBuddy(), name: 'Quick' }));
   assert.deepStrictEqual(notes, [], 'a quick save says nothing');
 }, 60000);
+
+test('a save in progress says what it is doing, and one that ended says nothing', async () => {
+  const exe = createFakeExe(), lib = createLibrary(exe.shell, () => {});
+  /* one write that never comes back while the rest land */
+  const release = exe.hold('data_write');
+  const going = lib.add(write(bigBuddy()));
+  await new Promise(r => setTimeout(r, 20));
+  const [now, ...rest] = lib.busy();
+  assert.deepStrictEqual(rest, []);
+  assert.match(now ?? '', /^writing for \d+ ms, 1145 of 1146 written, 1 out, the oldest for \d+ ms$/);
+  release();
+  await going;
+  assert.deepStrictEqual(lib.busy(), []);
+  exe.failNext('data_write', 'disk full');
+  await assert.rejects(lib.add(write(bigBuddy('cbig2'))));
+  assert.deepStrictEqual(lib.busy(), [], 'a failed one is over too');
+});

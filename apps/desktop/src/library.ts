@@ -102,59 +102,76 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
      goes at the next save. A new buddy is written aside and moved in, because a folder with no
      manifest isn't a buddy. True if it replaced a buddy. */
   async function store(p: Prepared): Promise<boolean> {
-    const t = timer(), home = `${ROOT}/${p.id}`, { manifest, files } = await named(p);
-    t.hashed();
-    await settle(p.id);
-    if (!await has(ROOT, p.id)) {
-      const stage = `${ROOT}/${STAGING}/${p.id}`;
-      await shell.dataDelete(stage);
-      await t.writes([...files], ([name, bytes]) => shell.dataWrite(`${stage}/${name}`, bytes));
-      await shell.dataWrite(`${stage}/${MANIFEST}`, manifest);
-      await shell.dataMove(stage, home);
-      t.placed(true);
+    const t = trace(), home = `${ROOT}/${p.id}`;
+    try {
+      const { manifest, files } = await named(p);
+      t.to('settling');
+      await settle(p.id);
+      if (!await has(ROOT, p.id)) {
+        const stage = `${ROOT}/${STAGING}/${p.id}`;
+        t.to('clearing staging');
+        await shell.dataDelete(stage);
+        await t.writes([...files], ([name, bytes]) => shell.dataWrite(`${stage}/${name}`, bytes));
+        t.to('the manifest');
+        await shell.dataWrite(`${stage}/${MANIFEST}`, manifest);
+        t.to('the move');
+        await shell.dataMove(stage, home);
+        t.done();
+        return false;
+      }
+      t.to('listing');
+      const there = await shell.dataList(home), size = new Map(there.map(e => [e.name, e.size]));
+      await t.writes([...files].filter(([name, bytes]) => size.get(name) !== bytes.length), ([name, bytes]) => shell.dataWrite(`${home}/${name}`, bytes));
+      t.to('the manifest');
+      await shell.dataWrite(`${home}/${MANIFEST}`, manifest);
+      /* A WebView can hold a file open, and then Windows won't delete it. That waits for the next save. */
+      let left = 0, why = '';
+      t.to('deleting');
+      await inFlight(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), IN_FLIGHT, e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
+      if (left) note(`library: ${left} old files of ${p.id} left for the next save: ${why}`);
       t.done();
-      return false;
-    }
-    const there = await shell.dataList(home), size = new Map(there.map(e => [e.name, e.size]));
-    await t.writes([...files].filter(([name, bytes]) => size.get(name) !== bytes.length), ([name, bytes]) => shell.dataWrite(`${home}/${name}`, bytes));
-    await shell.dataWrite(`${home}/${MANIFEST}`, manifest);
-    t.placed();
-    /* A WebView can hold a file open, and then Windows won't delete it. That waits for the next save. */
-    let left = 0, why = '';
-    await t.deletes(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
-    if (left) note(`library: ${left} old files of ${p.id} left for the next save: ${why}`);
-    t.done();
-    return true;
+      return true;
+    } finally { t.end(); }
   }
 
-  /* Where a save's time goes: hashing, the image writes with each one's round trip, and the deletes.
-     Said only for a save slow enough to ask about. */
-  function timer() {
-    const start = now(), each: number[] = [];
-    let hashing = 0, writing = 0, wrote = start, placing = 0, moved = false, deleting = 0, deleted = 0;
-    return {
-      hashed() { hashing = now() - start; },
-      async writes<T>(items: T[], f: (item: T) => Promise<unknown>) {
-        const a = now();
-        await inFlight(items, IN_FLIGHT, async item => { const b = now(); await f(item); each.push(now() - b); });
-        wrote = now(); writing = wrote - a;
-      },
-      /* her manifest, and for a new buddy the move in */
-      placed(move = false) { placing = now() - wrote; moved = move; },
-      async deletes<T>(items: T[], f: (item: T) => Promise<unknown>) {
-        const a = now();
-        await inFlight(items, IN_FLIGHT, f);
-        deleting = now() - a; deleted = items.length;
-      },
-      done() {
-        const all = now() - start;
-        if (all < TIMED_MS) return;
-        const ms = Math.round, sorted = each.sort((a, b) => a - b), at = (q: number) => ms(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0);
-        note(`library: a save took ${ms(all)} ms: hashing ${ms(hashing)}, ${each.length} images written ${IN_FLIGHT} at a time in ${ms(writing)}, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most, then the manifest${moved ? ' and the move' : ''} ${ms(placing)}` +
-          (deleted ? `, and ${deleted} old ones deleted in ${ms(deleting)}` : ''));
+  /* Where a save's time goes, step by step, and each image write's round trip. Said once it's over,
+     if it took long enough to ask about, and asked for while it runs by `busy`, so a save that never
+     ends can say where it is. Counts and times only. */
+  const running = new Set<{ now(): string }>();
+  function trace() {
+    const start = now(), steps: string[] = [], each: number[] = [], out = new Map<number, number>();
+    let step = 'hashing', since = start, of = 0, calls = 0;
+    const ms = Math.round;
+    const to = (next: string) => { const t = now(); steps.push(`${step} ${ms(t - since)}`); step = next; since = t; };
+    const me = {
+      now() {
+        const t = now(), oldest = Math.min(t, ...out.values());
+        return `${step} for ${ms(t - since)} ms` + (step === 'writing' ? `, ${each.length} of ${of} written, ${out.size} out, the oldest for ${ms(t - oldest)} ms` : '');
       }
     };
+    running.add(me);
+    return {
+      to,
+      async writes<T>(items: T[], f: (item: T) => Promise<unknown>) {
+        to('writing'); of = items.length;
+        await inFlight(items, IN_FLIGHT, async item => {
+          const n = calls++, b = now(); out.set(n, b);
+          try { await f(item); } finally { out.delete(n); }
+          each.push(now() - b);
+        });
+      },
+      done() {
+        to('');
+        const all = now() - start;
+        if (all < TIMED_MS) return;
+        const sorted = each.sort((a, b) => a - b), at = (q: number) => ms(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0);
+        note(`library: a save took ${ms(all)} ms: ${steps.join(', ')}; ${each.length} images, ${IN_FLIGHT} at a time, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most`);
+      },
+      end() { running.delete(me); }
+    };
   }
+  /* What each save still running is doing now. */
+  const busy = () => [...running].map(r => r.now());
 
   /* Is she on disk exactly as this file would put her? Images are named by their bytes, so the same
      manifest names the same images, and each of those has to be there at its size. A file damaged
@@ -196,6 +213,6 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
     return file;
   }
 
-  return { list, get, add, prepare, store, remove, packed, recover, empty, present, same };
+  return { list, get, add, prepare, store, remove, packed, recover, empty, present, same, busy };
 }
 export type Library = ReturnType<typeof createLibrary>;
