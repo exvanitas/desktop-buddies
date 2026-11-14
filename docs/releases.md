@@ -69,4 +69,4 @@ The step's values:
 - `wait-for-completion` and `wait-for-completion-timeout-in-seconds`: the job waits up to an hour for an approver.
 - `output-artifact-directory`: `signed`, where the signed exe lands for packing.
 
-Once signing is on, the README's and `preview/README.txt`'s lines about unsigned builds need updating too.
+Once signing is on, the lines about unsigned builds in the README, `docs/install.md` and `preview/README.txt` need updating too.

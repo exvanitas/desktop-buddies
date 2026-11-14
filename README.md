@@ -1,32 +1,37 @@
 # Desktop Buddies
 
-Little characters that live on your Windows desktop. They walk along your windows, climb the sides, hang underneath, nap, chat and get thrown about. Make your own in the Maker from one picture or a full set of poses, or bring in a Shimeji folder.
+Little characters that live on your Windows desktop. They walk along your windows, climb the sides, hang underneath, nap, chat and get thrown about. Make your own from one picture or a full set of poses, or bring in a Shimeji folder.
 
-No buddies are included. To get one, import a `.buddy` file someone shared, make one in the Maker, or bring in a Shimeji folder. A public gallery to find buddies in is planned.
+![Three buddies on a desktop: one talking on top of a window, one on another window, one climbing a window's side](docs/store/screenshots/03-desktop.png)
 
-- **The desktop app:** one world across all your monitors, a Manager to call and dismiss buddies, and the Maker built in.
-- **The web Maker:** the same Maker in a browser, which can also export a standalone page with your buddies on it.
+Free and open source, for Windows 10 and 11. No buddies come with it: make one, open a `.buddy` file someone shared, or bring in a Shimeji folder. [CHANGELOG.md](CHANGELOG.md) says what's in each version.
 
-Free and open source. See [CHANGELOG.md](CHANGELOG.md) for what's in each version.
+## Download
+From [the latest release](https://github.com/exvanitas/desktop-buddies/releases/latest):
 
-## Install
-Windows 10 or 11, 64-bit, with Microsoft Edge WebView2, which draws the app's windows. It comes with Windows 11 and most up-to-date Windows 10 PCs, and the installer downloads it from Microsoft if it's missing. If the zip version won't open on Windows 10, install the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) from Microsoft, then start it again. Pick one:
+- **Installer:** `desktop-buddies-X.Y.Z-setup-x64.exe`. Installs for you alone, with no admin prompt, and adds Desktop Buddies to the Start menu.
+- **Portable zip:** `desktop-buddies-X.Y.Z-windows-x64.zip`. Unzip the whole folder somewhere you'll keep it, and run `desktop-buddies.exe` with the `app` folder beside it.
+- **winget** (coming soon): `winget install --id exvanitas.DesktopBuddies -e`
 
-- **winget** (coming soon), once it's in the winget catalogue:
-  ```
-  winget install --id exvanitas.DesktopBuddies -e
-  ```
-- **The installer** from [Releases](https://github.com/exvanitas/desktop-buddies/releases): `desktop-buddies-X.Y.Z-setup-x64.exe`. It installs for you alone, with no admin prompt, into `%LOCALAPPDATA%\Desktop Buddies`, and adds Desktop Buddies to the Start menu. A winget upgrade, or a newer setup run with `/S`, installs over the old version and keeps your buddies and Start with Windows. A newer setup run by hand removes the old version first: your buddies stay, but Start with Windows goes off, so turn it back on in the app. Files the new version no longer has may stay in the program folder, which does no harm. Remove it from Installed apps in Windows Settings.
-- **The portable zip** from [Releases](https://github.com/exvanitas/desktop-buddies/releases). Unzip the whole folder somewhere you'll keep it, like Documents, keep the `app` folder next to `desktop-buddies.exe`, and run the exe. To remove it, turn Start with Windows off if you turned it on, quit from the tray and delete the folder.
+The downloads aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. With Smart App Control on, Windows may block a new version outright. Please don't turn it off for this.
 
-The installer and the zip aren't signed. Windows may say "Windows protected your PC": click More info, then Run anyway. If Smart App Control is on, Windows checks each unsigned version with Microsoft's cloud service and may block it outright, with no way past, and a new version can be blocked where an older one ran. Please don't turn Smart App Control off for this. winget installs the same unsigned installer, so it gets the same checks.
+[docs/install.md](docs/install.md) has the rest: WebView2, updating, removing, and where your buddies are kept.
 
-The first start opens the Manager on an empty library: Import brings in a `.buddy` file or a Shimeji folder, and New buddy opens the Maker. The tray icon, near the clock, opens the Manager again.
+## Using it
+- **The Manager** opens on first start, and from the tray icon near the clock. Call buddies out and send them home, call more copies, and import, export or delete them. Settings can keep buddies off windows or off one program, and start the app with Windows.
+- **On the desktop,** one world spans all your monitors. Buddies walk on your windows and ride along when you move one. Drag them, throw them, and right-click one to give her a treat, have her chase your mouse, or call another copy.
+- **The Maker,** from New buddy in the Manager, makes a buddy from one picture or a full set of poses. Write what she says for each mood and moment, set how she sits on floors, walls and ceilings, and try her out on your screen. Pip, the sample, shows what a full set can do.
+- **Sharing:** a buddy is one `.buddy` file. Export her from the Manager, and Import adds one.
+- **Shimeji:** Import takes a Shimeji folder and makes a buddy of it.
 
-Your buddies and settings are in `%APPDATA%\dev.exvanitas.desktop-buddies`. Removing the app leaves them there, unless you tick the uninstaller's box to delete them, and you can delete the folder yourself. Before you delete the zip version's folder, turn Start with Windows off, so its startup entry goes too. [PRIVACY.md](PRIVACY.md) has the details.
+## Community
+Ask questions, report bugs and show off your buddies on the Milliways Discord server: [discord.gg/HNhFu4bDNj](https://discord.gg/HNhFu4bDNj). Desktop Buddies has its own channel there, #desktop-buddies. Report bugs in #orders, tagged desktop-buddies. [GitHub issues](https://github.com/exvanitas/desktop-buddies/issues) work too.
 
-## Network use
-None from Desktop Buddies itself. Its own code, in the app, the Maker and exported pages, fetches nothing and sends nothing: no accounts, analytics, update checks or telemetry. The desktop app draws its windows with Microsoft Edge WebView2, a Windows component Microsoft runs: it updates itself, sends Microsoft diagnostic data as Windows' Diagnostic data setting allows, and sends a crash report if it crashes. See Microsoft's [WebView2 data and privacy](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/data-privacy). To use your windows as terrain, the app reads which windows are open, where they are, their order and states (maximized, always on top and the like), each one's class and which program it belongs to, never their titles or contents, and none of it leaves your PC. Other apps on your PC can ask buddies to wave or talk only if you turn that on in Settings. See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+## For other apps
+A local API, off until you turn it on in Settings. Then apps and AI agents on your PC can ask buddies to wave or say a short line, after you allow each app in the Manager. Nothing outside your PC can reach it. An MCP server for it is in [tools/mcp](tools/mcp). [docs/local-api.md](docs/local-api.md) has the details.
+
+## Privacy and security
+Desktop Buddies' own code sends nothing anywhere: no accounts, ads, analytics, update checks or telemetry, in the app, the Maker or a page it exports. To use your windows as terrain it reads which windows are open, where they are, their order and states, and which program each belongs to, never their titles or contents, and none of it leaves your PC. It draws its windows with Microsoft Edge WebView2, which follows Windows' own diagnostic data and update settings. [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) have the details.
 
 ## Build from source
 You need Node 22 and pnpm 10. The exe also needs Rust and Windows; the app folder builds anywhere.
@@ -37,10 +42,7 @@ pnpm dev            # the web Maker, with live reload
 pnpm build          # apps/maker/dist, and apps/desktop/dist/app
 ```
 
-The exe is in `apps/desktop/src-tauri` (`cargo build --release` there, on Windows). Put `apps/desktop/dist/app` beside it as `app`. [apps/desktop/README.md](apps/desktop/README.md) has its flags and how the pieces fit.
-
-## Community
-Ask questions, report bugs and show off your buddies on the Milliways Discord server: [discord.gg/HNhFu4bDNj](https://discord.gg/HNhFu4bDNj). Desktop Buddies has its own channel there, #desktop-buddies. Report bugs in #orders, tagged desktop-buddies. [GitHub issues](https://github.com/exvanitas/desktop-buddies/issues) work too.
+The exe is in `apps/desktop/src-tauri`: run `cargo build --release` there, on Windows, and put `apps/desktop/dist/app` beside it as `app`. [apps/desktop/README.md](apps/desktop/README.md) has its flags and how the pieces fit. The web Maker is the same Maker in a browser, and can export a page with your buddies on it.
 
 ## Contributing
 Issues and pull requests are welcome. Before a pull request, run the checks:
@@ -53,21 +55,12 @@ pnpm test:manager     # headless, the Manager on the real hub and a fake exe
 pnpm test:maker-view  # headless, the Maker's view
 ```
 
-The browser checks need a Chromium that's already installed: set `CHROME_PATH`, or they look in Playwright's cache. They download nothing.
+The browser checks use a Chromium that's already installed: set `CHROME_PATH`, or they look in Playwright's cache. The golden traces in `apps/maker/tests/golden` record what the engine painted, frame for frame, and they're never re-recorded to make a test pass.
 
-The golden traces in `apps/maker/tests/golden` record what the engine painted, frame for frame. The engine must match them exactly, and they're never re-recorded to make a test pass. [docs/project-structure.md](docs/project-structure.md) has the layout and the rules, and [docs/README.md](docs/README.md) lists the docs.
-
-By contributing, you agree your contribution is under the MIT licence.
-
-## Code signing policy
-The installer and the zip on GitHub aren't signed: a free open-source signing service may be applied for again later.
-
-Committers, reviewers and approvers: the maintainer, Severian (@severian-dev).
-
-Desktop Buddies' own code doesn't transfer any information to other networked systems unless the person using it asks. Microsoft's WebView2 runtime, which it draws with, has its own diagnostics and updates: see [PRIVACY.md](PRIVACY.md). The release workflow is in [docs/releases.md](docs/releases.md).
+[docs/README.md](docs/README.md) lists the docs, [docs/project-structure.md](docs/project-structure.md) has the layout and the rules, and [docs/releases.md](docs/releases.md) how releases are made. By contributing, you agree your contribution is under the MIT licence.
 
 ## Plans
-Next: the winget package, a sample buddy that fills every pose slot, and a settled `.buddy` format. Later, a wider local API, and a Desktop Buddies site: a landing page, a public gallery of uploaded buddies with moderation, links, and a short guide to making your own buddy and to the local API and MCP.
+Next: a sample buddy with a picture for every pose, a settled `.buddy` format, and a wider local API. Later: a site with a gallery of buddies to download.
 
 ## Licence
 The code is under the [MIT licence](LICENSE). The Desktop Buddies name, logo and mascot are not: see [TRADEMARKS.md](TRADEMARKS.md). Buddies you make are yours. The bundled fonts (DynaPuff, Lexend and Nunito) are under the SIL Open Font License 1.1.
