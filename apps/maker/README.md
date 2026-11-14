@@ -12,7 +12,7 @@ From the repository root, `pnpm dev`. To build, `pnpm build`, which puts a stati
 - `src/panel.js` is the settings panel, including the pose-frame editor. It's DOM only, and stays plain JavaScript because the Peel Maker's view replaces it.
 - `src/app.ts` is page glue: the world, and the browser's half of the Maker's I/O.
 
-`packages/maker-core` is what the Maker does, with no page of its own: the state and every change to it, saving and loading (IndexedDB, or memory in tests), the file flows, the prompt kit, and the code-drawn samples (Pip, Pudding and Sprout; Pip has a full pose set). A first start holds no buddy: the samples are offered, never added. The desktop app can host the Maker because of this split: a new view only needs `createMaker()`.
+`packages/maker-core` is what the Maker does, with no page of its own: the state and every change to it, saving and loading (IndexedDB, or memory in tests), the file flows, the prompt kit, and the code-drawn sample (Pip, with a full pose set). A first start holds no buddy: the samples are offered, never added. The desktop app can host the Maker because of this split: a new view only needs `createMaker()`.
 
 The simulation, terrain, drawing and file format live in `packages/` too.
 

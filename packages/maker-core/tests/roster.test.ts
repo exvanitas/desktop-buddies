@@ -56,8 +56,8 @@ test('the ninth buddy is refused, and nothing changes', async () => {
 
 test('samples come in through the same door', async () => {
   const h = await started();
-  const p = await h.maker.addSample('sprout');
-  assert.strictEqual(p!.name, 'sprout');
+  const p = await h.maker.addSample('pip');
+  assert.strictEqual(p!.name, 'pip');
   assert.strictEqual(h.maker.current(), p);
 });
 

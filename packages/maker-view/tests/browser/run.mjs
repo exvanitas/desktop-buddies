@@ -83,7 +83,7 @@ await group('checklist', async () => {
     await r.page.waitForSelector('.board');
     ok('panel.js add by paste: an image pasted with no buddy makes one', await count(r.page) === 1);
     await clean(r, 'add by paste'); }
-  for (const kind of ['pip', 'pudding', 'sprout']) {
+  for (const kind of ['pip']) {
     const r = await h.open({ fixture: 'empty' });
     await r.page.locator(`.first-more [data-sample="${kind}"]`).click();
     await r.page.waitForSelector('.board');
@@ -94,7 +94,7 @@ await group('checklist', async () => {
   }
   { const r = await h.open({ fixture: 'olive' });
     await r.page.locator('[data-who]').click();
-    await r.page.locator('.buddies [data-sample="pudding"]').click();
+    await r.page.locator('.buddies [data-sample="pip"]').click();
     await r.page.waitForFunction(() => H.maker.state.pets.length === 2);
     ok('panel.js sample: also from the buddies menu, with a buddy open', true);
     await r.page.locator('[data-who]').click();

@@ -68,7 +68,7 @@ const watch=(page,errs)=>{page.on('pageerror',e=>errs.push('pageerror '+e.messag
   // a first start holds no buddy: the samples are offered, and she's added from one
   await page.goto(maker.origin+'/');await page.waitForSelector('.pn-count:not(:empty)');await page.waitForTimeout(300);
   const first=await page.evaluate(`({pets:document.querySelectorAll('.db-pet').length,tabs:document.querySelectorAll('.pn-pet').length,count:document.querySelector('.pn-count').textContent,editor:document.querySelector('.pn-ed').hidden,samples:[...document.querySelectorAll('.pn-sample')].map(b=>b.getAttribute('aria-label')),add:!!document.querySelector('.pn-add'),world:buddies.pets.size})`);
-  ok('a first start holds no buddy, and offers the samples and Add',first.pets===0&&first.tabs===0&&first.world===0&&/^0 \//.test(first.count)&&first.editor&&first.add&&first.samples.length===3&&first.samples.map(l=>l.split(' ')[1]).join()==='Pip,Pudding,Sprout',JSON.stringify(first));
+  ok('a first start holds no buddy, and offers the samples and Add',first.pets===0&&first.tabs===0&&first.world===0&&/^0 \//.test(first.count)&&first.editor&&first.add&&first.samples.length===1&&first.samples.map(l=>l.split(' ')[1]).join()==='Pip',JSON.stringify(first));
   await page.click('.pn-sample >> nth=0');await page.waitForSelector('.db-pet');await page.waitForTimeout(1200);
   const a=await page.evaluate(`({n:document.querySelectorAll('.db-pet').length,tf:document.querySelector('.db-pet').style.transform,src:document.querySelector('.db-pet img').src.slice(0,22),count:document.querySelector('.pn-count').textContent,k:[...buddies.pets.values()][0].P.k,surf:[...buddies.pets.values()][0].P.surf})`);
   ok('maker shows Pip',a.n===1&&a.src.startsWith('data:image/png'),JSON.stringify(a));
@@ -78,7 +78,7 @@ const watch=(page,errs)=>{page.on('pageerror',e=>errs.push('pageerror '+e.messag
   await page.screenshot({path:SP+'/shots/maker.png'});
   const offered=()=>page.evaluate(`[...document.querySelectorAll('.pn-acts .pn-act')].filter(b=>b.offsetParent).map(b=>b.dataset.a).join()`);
   const pip=await offered();
-  await page.click('.pn-sample >> nth=1');await page.waitForTimeout(300);
+  await page.setInputFiles('.pn-add input',path.join(REPO,'packages/test-support/art/pudding/main.webp'));await page.waitForFunction(`document.querySelectorAll('.db-pet').length===2`,null,{timeout:4000});await page.waitForTimeout(300);
   const pudding=await offered();ok('the menu hides what a character has no art for',!pudding.includes('dance')&&pudding.includes('love'),pip.length+' vs '+pudding.length);
   await page.click('.pn-pets .pn-pet >> nth=0');await page.waitForTimeout(100);
   await page.click('.pn-pets .pn-pet >> nth=1');await page.click('.pn-rm');await page.click('.pn-rm');await page.waitForTimeout(1500);

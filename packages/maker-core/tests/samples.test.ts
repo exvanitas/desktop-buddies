@@ -21,15 +21,15 @@ function recording() {
 }
 
 test('the list keeps its names', () => {
-  assert.deepStrictEqual(SAMPLES.map(s => s.name), ['Pip', 'Pudding', 'Sprout']);
+  assert.deepStrictEqual(SAMPLES.map(s => s.name), ['Pip']);
   assert.deepStrictEqual(SAMPLES.filter(s => s.note).map(s => s.kind), ['pip']);
 });
 
-test('every sample draws on its own square of paper', () => {
+test('the sample draws on its own square of paper', () => {
   const { paper, sides } = recording(), s = createSamples(paper, fakeArt());
   const thumbs = SAMPLES.map(d => s.thumb(d.kind));
-  assert.deepStrictEqual(sides, [300, 300, 300]);
-  assert.strictEqual(new Set(thumbs).size, 3);
+  assert.deepStrictEqual(sides, [300]);
+  assert.strictEqual(thumbs.length, 1);
 });
 
 test('Pip comes with a full pose set, every pose a real slot', async () => {
@@ -49,19 +49,11 @@ test('Pip blinks: one frame in the idle loop differs', async () => {
   assert.notStrictEqual(frames[7], p.base.src);
 });
 
-test('the others are one image each', async () => {
-  const { paper } = recording(), s = createSamples(paper, fakeArt());
-  for (const [kind, name] of [['pudding', 'Pudding'], ['sprout', 'Sprout']] as const) {
-    const p = await s.build(kind);
-    assert.deepStrictEqual([p.name, p.poses, p.size], [name, {}, 120]);
-  }
-});
-
 test('samples go through the same art as uploads', async () => {
   const bases: string[] = [], { paper } = recording();
   const art = fakeArt(); const real = art.processBase;
   art.processBase = src => { bases.push(src); return real(src); };
   const s = createSamples(paper, art);
-  await s.build('sprout');
-  assert.deepStrictEqual(bases, [s.thumb('sprout')]);
+  await s.build('pip');
+  assert.deepStrictEqual(bases, [s.thumb('pip')]);
 });

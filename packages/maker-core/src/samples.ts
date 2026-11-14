@@ -1,5 +1,6 @@
-/* Sample buddies drawn in code. Pip comes with a full set of pose frames to show off per-pose
-   animation. The drawing goes through `Paper`, so this needs no page of its own. */
+/* The Maker's one sample buddy, drawn in code: Pip, with a full set of pose frames to show off per-pose
+   animation. Pudding and Sprout, one picture each, were samples until 1.0.0; buddies made from them
+   keep their own pictures, so they need nothing from here. The drawing goes through `Paper`, so this needs no page of its own. */
 import type { Buddy, Pose, PoseKey } from '@buddies/buddy-file';
 import type { ArtTools } from './deps';
 
@@ -16,8 +17,8 @@ export interface Pen {
 export interface Sheet { pen: Pen; png(): string }
 export type Paper = (side: number) => Sheet;
 
-export type SampleKind = 'pip' | 'pudding' | 'sprout';
-export const SAMPLES: { kind: SampleKind; name: string; note?: string }[] = [{ kind: 'pip', name: 'Pip', note: 'full pose set' }, { kind: 'pudding', name: 'Pudding' }, { kind: 'sprout', name: 'Sprout' }];
+export type SampleKind = 'pip';
+export const SAMPLES: { kind: SampleKind; name: string; note?: string }[] = [{ kind: 'pip', name: 'Pip', note: 'full pose set' }];
 
 type Eye = 'open' | 'sad' | 'angry' | 'wide' | 'closed' | 'happy' | 'tight' | 'x' | 'swirl';
 interface Chick { sit?: boolean; look?: number; feet?: 'a' | 'b'; eyes?: Eye; eyeY?: number; wing?: 'up' | 'mid' | 'face' | 'down'; mouth?: 'open'; blush?: boolean; tears?: 1 | 2 }
@@ -109,45 +110,14 @@ export function createSamples(paper: Paper, art: Pick<ArtTools, 'processBase' | 
     };
   }
 
-  /* ---- Pudding ---- */
-  function pudding() {
-    const [c, x] = cv();
-    ell(x, 150, 272, 128, 18, '#e8f1ff');
-    x.fillStyle = '#ffe08a'; x.beginPath(); x.moveTo(62, 262); x.quadraticCurveTo(70, 120, 92, 96); x.lineTo(208, 96); x.quadraticCurveTo(230, 120, 238, 262); x.quadraticCurveTo(150, 280, 62, 262); x.closePath(); x.fill(); x.stroke();
-    x.fillStyle = '#9c5b2a'; x.beginPath(); x.moveTo(92, 96); x.quadraticCurveTo(150, 70, 208, 96); x.quadraticCurveTo(214, 118, 196, 130); x.quadraticCurveTo(186, 112, 176, 136); x.quadraticCurveTo(160, 120, 146, 132); x.quadraticCurveTo(128, 116, 116, 134); x.quadraticCurveTo(100, 120, 92, 96); x.closePath(); x.fill(); x.stroke();
-    ell(x, 172, 64, 16, 16, '#ff4d6d'); x.beginPath(); x.moveTo(176, 50); x.quadraticCurveTo(186, 32, 198, 30); x.stroke();
-    eye(x, 'open', 118, 190, -1); eye(x, 'open', 182, 190, 1);
-    x.save(); x.globalAlpha = .5; ell(x, 96, 222, 18, 10, '#ff8fa8', 0, false); ell(x, 204, 222, 18, 10, '#ff8fa8', 0, false); x.restore();
-    x.lineWidth = 6; x.beginPath(); x.arc(140, 214, 10, .1 * Math.PI, .9 * Math.PI); x.stroke(); x.beginPath(); x.arc(160, 214, 10, .1 * Math.PI, .9 * Math.PI); x.stroke();
-    return c.png();
-  }
-  /* ---- Sprout ---- */
-  function sprout() {
-    const [c, x] = cv();
-    x.lineWidth = 7; ell(x, 116, 276, 22, 12, '#5fae5a'); ell(x, 184, 276, 22, 12, '#5fae5a'); x.lineWidth = 8;
-    x.beginPath(); x.moveTo(150, 92); x.quadraticCurveTo(146, 60, 150, 44); x.stroke();
-    ell(x, 124, 46, 28, 14, '#7dd36f', .5); ell(x, 178, 40, 30, 15, '#7dd36f', -.5);
-    ell(x, 150, 182, 96, 96, '#a6e48a');
-    x.save(); x.globalAlpha = .55; ell(x, 150, 214, 58, 42, '#e6f8d8', 0, false); x.restore();
-    eye(x, 'open', 118, 172, -1); eye(x, 'open', 182, 172, 1);
-    x.save(); x.globalAlpha = .5; ell(x, 98, 204, 17, 10, '#ff8fa8', 0, false); ell(x, 202, 204, 17, 10, '#ff8fa8', 0, false); x.restore();
-    x.lineWidth = 6; x.fillStyle = '#e8665c'; x.beginPath(); x.moveTo(136, 198); x.quadraticCurveTo(150, 222, 164, 198); x.closePath(); x.fill(); x.stroke();
-    return c.png();
-  }
-
   /* Returns ready-to-use buddy data (processed through the same pipeline as uploads). */
-  async function build(kind: SampleKind): Promise<Buddy> {
-    if (kind === 'pip') {
-      const s = pipSet(); const base = (await art.processBase(s.base))!;
-      const poses: Buddy['poses'] = {};
-      for (const [k, p] of Object.entries(s.poses)) { const r = (await art.processFrames(p.frames, base.ref))!; poses[k as PoseKey] = { frames: r.frames, fps: p.fps, scale: r.scale } satisfies Pose; }
-      return { name: 'Pip', base: base.frame, ref: base.ref, poses, faces: 'right', size: 120 };
-    }
-    const src = kind === 'pudding' ? pudding() : sprout();
-    const base = (await art.processBase(src))!;
-    return { name: kind === 'pudding' ? 'Pudding' : 'Sprout', base: base.frame, ref: base.ref, poses: {}, faces: 'right', size: 120 };
+  async function build(_kind: SampleKind): Promise<Buddy> {
+    const s = pipSet(); const base = (await art.processBase(s.base))!;
+    const poses: Buddy['poses'] = {};
+    for (const [k, p] of Object.entries(s.poses)) { const r = (await art.processFrames(p.frames, base.ref))!; poses[k as PoseKey] = { frames: r.frames, fps: p.fps, scale: r.scale } satisfies Pose; }
+    return { name: 'Pip', base: base.frame, ref: base.ref, poses, faces: 'right', size: 120 };
   }
-  const thumbs: Record<SampleKind, () => string> = { pip: () => chick(), pudding, sprout };
+  const thumbs: Record<SampleKind, () => string> = { pip: () => chick() };
   return { build, thumb: (k: SampleKind) => thumbs[k]() };
 }
 export type Samples = ReturnType<typeof createSamples>;

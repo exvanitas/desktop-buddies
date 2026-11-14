@@ -1353,7 +1353,7 @@ test('with no buddy, the first step is all there is, and nothing exists until th
   assert.ok(!v.shown(v.q('[data-who]')));
   assert.strictEqual(v.q('.fresh')!.textContent, 'New buddy');
   assert.strictEqual(v.maker.state.pets.length, 0);
-  assert.deepStrictEqual(v.words('.first-more .sample b'), ['Pip', 'Pudding', 'Sprout']);
+  assert.deepStrictEqual(v.words('.first-more .sample b'), ['Pip']);
   await v.choose('buddies', file('moss.png'));
   assert.strictEqual(v.maker.state.pets.length, 1);
   assert.strictEqual(v.pet().name, 'moss');
@@ -1371,14 +1371,14 @@ test('a first start, on a store that never held anything, holds no buddy and off
   assert.ok(!v.shown(v.q('.mk')));
   assert.ok(v.shown(v.q('.fresh')));
   assert.strictEqual(v.q('.fresh')!.textContent, 'New buddy');
-  assert.deepStrictEqual(v.words('.first-more .sample b'), ['Pip', 'Pudding', 'Sprout']);
+  assert.deepStrictEqual(v.words('.first-more .sample b'), ['Pip']);
 });
 
 test('a sample starts a buddy too', async () => {
   const v = await mount({ pets: [] });
-  v.click('.first-more [data-sample="pudding"]');
+  v.click('.first-more [data-sample="pip"]');
   await tick();
-  assert.strictEqual(v.pet().name, 'pudding');
+  assert.strictEqual(v.pet().name, 'pip');
 });
 
 test('files that can\'t be read leave the first step where it was, saying so', async () => {

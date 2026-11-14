@@ -49,7 +49,7 @@ test('a first start holds no buddy, and offers the samples and Add', async () =>
   assert.strictEqual(v.maker.state.pets.length, 0);
   assert.strictEqual(v.pets(), 0);
   assert.ok(v.$('.pn-ed').hidden);
-  assert.deepStrictEqual([...v.box.querySelectorAll('.pn-sample')].map(b => b.getAttribute('aria-label')!.split(' ')[1]), ['Pip', 'Pudding', 'Sprout']);
+  assert.deepStrictEqual([...v.box.querySelectorAll('.pn-sample')].map(b => b.getAttribute('aria-label')!.split(' ')[1]), ['Pip']);
   assert.ok(v.$('.pn-add'));
 });
 

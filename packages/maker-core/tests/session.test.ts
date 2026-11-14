@@ -12,7 +12,7 @@ test('a first run holds no buddy: nobody selected, the samples only offered, and
   assert.deepStrictEqual(h.built, []);
   assert.strictEqual(state.started, true);
   assert.strictEqual(h.maker.selected, null);
-  assert.deepStrictEqual(SAMPLES.map(d => d.kind), ['pip', 'pudding', 'sprout']);
+  assert.deepStrictEqual(SAMPLES.map(d => d.kind), ['pip']);
   assert.ok(SAMPLES.every(d => h.maker.thumb(d.kind).startsWith('data:image/png')));
   assert.strictEqual(h.saves(), 1);
   assert.deepStrictEqual(h.changes.at(-1), { scope: 'all' });
