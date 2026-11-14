@@ -14,6 +14,7 @@ import { MAKER } from '../src/maker-window';
 import { MANAGER } from '../src/manager-window';
 import { createShell, text } from '../src/shell';
 import { broadcastWire } from '../src/wire';
+import { stalls } from './firsts';
 
 const shell = createShell(window.__TAURI__);
 const say = (line: string) => shell.log('PROBE ' + line);
@@ -110,6 +111,21 @@ async function loadAll(id: string, v?: string) {
 async function urlCosts(id: string) {
   const tag = String(Date.now());
   return { fresh: await loadAll(id, tag), again: await loadAll(id, tag), newBuster: await loadAll(id, tag + 'b'), plain: await loadAll(id), plainAgain: await loadAll(id) };
+}
+
+/* An image of noise, as no two of hers are alike, and every pose of the largest real buddy we've seen. */
+function shapedNoise() {
+  const c = document.createElement('canvas'); c.width = c.height = 60;
+  const x = c.getContext('2d')!, im = x.createImageData(60, 60);
+  crypto.getRandomValues(im.data);
+  for (let i = 3; i < im.data.length; i += 4) im.data[i] = 128 + (im.data[i]! >> 1);
+  x.putImageData(im, 0, 0);
+  return { src: c.toDataURL('image/png'), bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
+}
+function shapedPoses() {
+  const poses: Partial<Record<PoseKey, Pose>> = {};
+  POSES.slice(0, 40).forEach((p, i) => { poses[p.key as PoseKey] = { frames: Array.from({ length: i < 25 ? 29 : 28 }, shapedNoise), fps: 6, scale: 1 }; });
+  return poses;
 }
 
 /* At least 50 quick saves of a buddy out on the desktop, with a loop reading her images the whole
@@ -337,6 +353,32 @@ const phases: Record<string, (page: MakerPage & { postTimes: number[] }, client:
     const closed = Number(await note.get('closed'));
     check('shaped_back', !!p && p.character === id && p.name === 'Shaped Closed' && Object.keys(p.poses).length === shape.poses && Object.values(p.poses).reduce((n, q) => n + q.frames.length, 0) === shape.frames,
       { closeToOpenMs: Date.now() - closed, pageOpenMs: Math.round(performance.now()), name: p?.name });
+    await note.set('phase', 'shaped_firsts');
+    await phases.shaped_firsts!(page, client, id);
+  },
+
+  /* The runner's stalls were all a new big buddy's first save, so this makes five of them: each one
+     new, saved straight after she's made, timed until the hub says she's in the library, which can
+     be past the Maker's own wait for an answer. Each goes from this window once she's in, so the
+     page holds one at a time. A first save past STALL_MS and STALL_X times the median fails, and
+     smoke.ps1 prints the hub's trace lines beside it. */
+  async shaped_firsts(page, client, id) {
+    const firsts: { ms: number; ok: boolean; id: string }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const p = page.maker.addPet({ name: `First ${i}`, base: shapedNoise(), poses: shapedPoses() }, true)!, c = p.character!;
+      const t = performance.now();
+      let ok = await saved(page);
+      if (!ok) ok = await until(`first save ${i}`, () => client.state?.buddies.some(b => b.id === c), 3000);
+      const ms = Math.round(performance.now() - t);
+      firsts.push({ ms, ok, id: c });
+      void say(`INFO shaped_first ${JSON.stringify({ i, ms, ok, id: c })}`);
+      page.maker.remove();
+      await page.settled();
+      await pause(300);
+    }
+    const ms = firsts.map(f => f.ms), { median, stalled } = stalls(ms);
+    check('shaped_firsts', firsts.every(f => f.ok) && !stalled.length, { firstSaveMs: ms, median, stalled: stalled.map(i => firsts[i]!.id), failed: firsts.filter(f => !f.ok).map(f => f.id) });
+    page.maker.select(page.maker.state.pets.find(p => p.character === id)?.id ?? page.maker.state.pets[0]!.id);
     await note.set('phase', 'big');
     await phases.big!(page, client, id);
   },

@@ -444,3 +444,16 @@ test("shell.yml: the installer job builds as the release does, on the build job'
   assert.match(wv, /::warning::winget isn't on this runner/);
   assert.match(job, /name: installer-results\n          path: results\n/);
 });
+
+test('smoke.ps1: five first saves are judged, waited for long enough, and a stall prints the hub\'s trace lines', () => {
+  const ps = body(read('smoke.ps1')), probe = fs.readFileSync(new URL('maker-probe.ts', DIR), 'utf8');
+  assert.match(ps, /Expect 'maker\.shaped_firsts' \(Wait-For 'her first saves' \{ Probed '\(PASS\|FAIL\) shaped_firsts' \} (\d+)\)/);
+  const waited = Number(/Probed '\(PASS\|FAIL\) shaped_firsts' \} (\d+)\)/.exec(ps)![1]);
+  assert.ok(waited >= 5 * 150, 'five first saves each waited for up to 150 s fit');
+  const run = Number(/\$k = Start-Maker (\d+)\n(?:.*\n){0,3}.*second\.hub_up/.exec(ps)![1]);
+  assert.ok(run >= waited + 300, `the second run's ${run} s outlasts that wait and the rest`);
+  assert.match(ps, /if \(Probed 'FAIL shaped_firsts'\) \{\n\s*\(Log-Text\) -split "`n" \| Where-Object \{ \$_ -match 'maker save of \|library: a save took\|/);
+  assert.match(ps, /'shaped_back', 'shaped_firsts', 'largest'/, 'and it has to have run');
+  assert.match(probe, /check\('shaped_firsts', firsts\.every\(f => f\.ok\) && !stalled\.length/);
+  assert.match(probe, /until\(`first save \$\{i\}`, \(\) => client\.state\?\.buddies\.some\(b => b\.id === c\), 3000\)/, 'timed until the hub has her, past the Maker\'s own wait');
+});

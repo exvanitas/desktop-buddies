@@ -459,7 +459,7 @@ End-Run $k 'first' 30
 # The second run: reads back what the close flushed, then a real minimize and a real Edit, then the
 # driver closes the window on an edit that hasn't been saved, as Alt+F4 does. The page holds that
 # close until the edit is on disk.
-$k = Start-Maker 900
+$k = Start-Maker 1500
 Expect 'maker.second.hub_up' (Wait-For 'the hub' { ([regex]::Matches((Log-Text), 'hub up: ')).Count -ge 2 } 30)
 Launch-Again
 Expect 'maker.second.read_back' (Wait-For 'the read back' { Probed '(PASS|FAIL) read_back_after_restart' } 30)
@@ -481,6 +481,12 @@ Expect 'maker.silent.close_anyway' (Wait-For 'the window to go' { (Maker-Window)
 # A buddy the shape of the largest real one, and what she costs.
 Expect 'maker.shaped' (Wait-For 'her saves' { Probed '(PASS|FAIL) shaped ' } 420)
 Expect 'maker.shaped_back' (Wait-For 'her read back' { Probed '(PASS|FAIL) shaped_back' } 120)
+# Five first saves of new buddies her shape, where the runner's stalls were. A stall fails, and the
+# hub's lines about slow saves are printed beside it, so it says where its time went.
+Expect 'maker.shaped_firsts' (Wait-For 'her first saves' { Probed '(PASS|FAIL) shaped_firsts' } 800)
+if (Probed 'FAIL shaped_firsts') {
+  (Log-Text) -split "`n" | Where-Object { $_ -match 'maker save of |library: a save took|PROBE (INFO shaped_first|FAIL shaped_firsts)' } | ForEach-Object { Write-Host "  trace: $($_.Trim())" }
+}
 
 # Still the second run: the largest allowed buddy, then the exe quits with a save of her in hand.
 Expect 'maker.second.reopened' (Wait-For 'the reopen' { Probed '(PASS|FAIL) hard_close_kept' } 30)
@@ -499,7 +505,7 @@ $ktext = Log-Text
 foreach ($line in $ktext -split "`n") {
   if ($line -match 'PROBE (PASS|FAIL) (\S+) ?(.*)$') { Expect "makerprobe.$($Matches[2])" ($Matches[1] -eq 'PASS') ($Matches[3].Trim().Substring(0, [Math]::Min(300, $Matches[3].Trim().Length))) }
 }
-foreach ($name in 'opens_through_the_hub', 'opened', 'holds_only_her', 'window_size', 'no_edit_no_write', 'autosave', 'rename_keeps_url', 'new_image_url', 'try_on_screen', 'stress', 'stress_who_is_out', 'stress_read_back', 'read_back_after_restart', 'minimized_kept', 'hard_close_kept', 'conflict_offers', 'keep_as_new', 'silent_asks', 'keep_editing', 'close_stops_input', 'shaped', 'shaped_back', 'largest', 'quit_left_her_whole', 'quit_left_nothing', 'quit_then_tidied') {
+foreach ($name in 'opens_through_the_hub', 'opened', 'holds_only_her', 'window_size', 'no_edit_no_write', 'autosave', 'rename_keeps_url', 'new_image_url', 'try_on_screen', 'stress', 'stress_who_is_out', 'stress_read_back', 'read_back_after_restart', 'minimized_kept', 'hard_close_kept', 'conflict_offers', 'keep_as_new', 'silent_asks', 'keep_editing', 'close_stops_input', 'shaped', 'shaped_back', 'shaped_firsts', 'largest', 'quit_left_her_whole', 'quit_left_nothing', 'quit_then_tidied') {
   Expect "makerprobe_ran.$name" ($ktext -match "PROBE (PASS|FAIL) $name\b")
 }
 foreach ($cmd in 'maker', 'maker-open', 'maker-save', 'maker-try', 'export', 'save-page') {
