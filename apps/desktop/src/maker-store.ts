@@ -204,8 +204,8 @@ export function createHubStore(io: HubStoreIO) {
   }
 
   /* Sends what differs now, with whatever maker-core is holding on its own pause, and whatever failed
-     before, and says when it has all been answered: true if it's all on disk. Waits at most as long as
-     the hub has to answer. An edit made after this is the next autosave's, and Close stops input first. */
+     before, and says when it has all been answered: true if it's all on disk. Waits as long as the hub
+     has to answer, which starts again each time it says it's working. An edit made after this is the next autosave's, and Close stops input first. */
   function flush(): Promise<boolean> {
     if (!latest) return Promise.resolve(true);
     if (gonePage || paused) return Promise.resolve(false);
