@@ -658,12 +658,12 @@ test('open .buddy files: a failure is refused as Start with Windows is, shows wh
   assert.strictEqual(s().files, false);
   assert.ok(r.exe.logs.includes('files failed: registry error 5'), r.exe.logs.join('; '));
   /* half done, as a registry that took the first keys and not the rest would leave it */
-  r.exe.failNext('file_assoc', 'could not reach C:\\Users\\someone\\app\\desktop-buddies.exe', (x: { on?: boolean }) => x.on !== undefined);
+  r.exe.failNext('file_assoc', 'could not reach C:\\Files\\a\\desktop-buddies.exe', (x: { on?: boolean }) => x.on !== undefined);
   r.exe.fileAssoc = true;
   assert.ok(!(await client.setFiles(false)).ok);
   assert.strictEqual(s().files, true, 'what Windows has now, read after the failure');
   assert.ok(r.exe.logs.includes('files failed: other'), r.exe.logs.join('; '));
-  assert.ok(!r.exe.logs.some(l => /Users|desktop-buddies\.exe/.test(l)), 'never a path');
+  assert.ok(!r.exe.logs.some(l => /Files|desktop-buddies\.exe/.test(l)), 'never a path');
   assert.strictEqual(s().failures.length, 2);
 });
 
