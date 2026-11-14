@@ -4,18 +4,25 @@
    already there. */
 import { MANIFEST, imageNames, located, pack, read, readManifest, unpack, write, type Buddy } from '@buddies/buddy-file';
 import { errorKind } from './log-safe';
+import { inFlight } from './in-flight';
 import { text, type Listed, type Shell } from './shell';
 
 const ROOT = 'library';
 const STAGING = '.incoming';
 const OUTGOING = '.outgoing'; /* the old copy, for as long as a swap takes */
 const TRASH = '.trash'; /* a deleted buddy, for as long as deleting takes */
+/* How many writes or deletes a save keeps out at once. The exe does them one at a time, so the order
+   that matters is kept by waiting: every image before the manifest, the manifest before the move or
+   the deletes. Kept low, because each one out can hold one of the exe's worker threads. */
+export const IN_FLIGHT = 4;
+/* A save that takes this long says in the log where its time went: counts and times, no names. */
+const TIMED_MS = 1000;
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b, 0, 16)].map(x => x.toString(16).padStart(2, '0')).join('');
 export interface Shelved { id: string; name: string; buddy: Buddy }
 /* A file that's been checked and is ready to go on disk. */
 export interface Prepared { id: string; name: string; manifest: string; images: { name: string; bytes: Uint8Array }[] }
 
-export function createLibrary(shell: Shell, note: (line: string) => void) {
+export function createLibrary(shell: Shell, note: (line: string) => void, now: () => number = () => performance.now()) {
   /* A folder's entries, none if it isn't there yet. It's looked for in its parent, because a failed
      listing must never read as empty: that's how a saved copy gets seeded over. */
   async function entries(dir = ROOT): Promise<Listed[]> {
@@ -80,11 +87,12 @@ export function createLibrary(shell: Shell, note: (line: string) => void) {
      are one file. */
   async function named({ manifest, images }: Prepared) {
     const names = new Map<string, string>(), files = new Map<string, Uint8Array>();
-    for (const f of images) {
-      const name = hex(await crypto.subtle.digest('SHA-256', f.bytes as Uint8Array<ArrayBuffer>)) + f.name.slice(f.name.lastIndexOf('.'));
+    const digests = await Promise.all(images.map(f => crypto.subtle.digest('SHA-256', f.bytes as Uint8Array<ArrayBuffer>)));
+    images.forEach((f, i) => {
+      const name = hex(digests[i]!) + f.name.slice(f.name.lastIndexOf('.'));
       names.set(f.name, name);
       files.set(name, f.bytes);
-    }
+    });
     return { manifest: write(located(readManifest(manifest), n => names.get(n)!)), files };
   }
 
@@ -94,26 +102,54 @@ export function createLibrary(shell: Shell, note: (line: string) => void) {
      goes at the next save. A new buddy is written aside and moved in, because a folder with no
      manifest isn't a buddy. True if it replaced a buddy. */
   async function store(p: Prepared): Promise<boolean> {
-    const home = `${ROOT}/${p.id}`, { manifest, files } = await named(p);
+    const t = timer(), home = `${ROOT}/${p.id}`, { manifest, files } = await named(p);
+    t.hashed();
     await settle(p.id);
     if (!await has(ROOT, p.id)) {
       const stage = `${ROOT}/${STAGING}/${p.id}`;
       await shell.dataDelete(stage);
-      for (const [name, bytes] of files) await shell.dataWrite(`${stage}/${name}`, bytes);
+      await t.writes([...files], ([name, bytes]) => shell.dataWrite(`${stage}/${name}`, bytes));
       await shell.dataWrite(`${stage}/${MANIFEST}`, manifest);
       await shell.dataMove(stage, home);
+      t.done();
       return false;
     }
     const there = await shell.dataList(home), size = new Map(there.map(e => [e.name, e.size]));
-    for (const [name, bytes] of files) if (size.get(name) !== bytes.length) await shell.dataWrite(`${home}/${name}`, bytes);
+    await t.writes([...files].filter(([name, bytes]) => size.get(name) !== bytes.length), ([name, bytes]) => shell.dataWrite(`${home}/${name}`, bytes));
     await shell.dataWrite(`${home}/${MANIFEST}`, manifest);
     /* A WebView can hold a file open, and then Windows won't delete it. That waits for the next save. */
     let left = 0, why = '';
-    for (const e of there) {
-      if (e.name !== MANIFEST && !files.has(e.name)) await shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); });
-    }
+    await t.deletes(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
     if (left) note(`library: ${left} old files of ${p.id} left for the next save: ${why}`);
+    t.done();
     return true;
+  }
+
+  /* Where a save's time goes: hashing, the image writes with each one's round trip, and the deletes.
+     Said only for a save slow enough to ask about. */
+  function timer() {
+    const start = now(), each: number[] = [];
+    let hashing = 0, writing = 0, deleting = 0, deleted = 0;
+    return {
+      hashed() { hashing = now() - start; },
+      async writes<T>(items: T[], f: (item: T) => Promise<unknown>) {
+        const a = now();
+        await inFlight(items, IN_FLIGHT, async item => { const b = now(); await f(item); each.push(now() - b); });
+        writing = now() - a;
+      },
+      async deletes<T>(items: T[], f: (item: T) => Promise<unknown>) {
+        const a = now();
+        await inFlight(items, IN_FLIGHT, f);
+        deleting = now() - a; deleted = items.length;
+      },
+      done() {
+        const all = now() - start;
+        if (all < TIMED_MS) return;
+        const ms = Math.round, sorted = each.sort((a, b) => a - b), at = (q: number) => ms(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0);
+        note(`library: a save took ${ms(all)} ms: hashing ${ms(hashing)}, ${each.length} images written ${IN_FLIGHT} at a time in ${ms(writing)}, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most` +
+          (deleted ? `, and ${deleted} old ones deleted in ${ms(deleting)}` : ''));
+      }
+    };
   }
 
   /* Is she on disk exactly as this file would put her? Images are named by their bytes, so the same
