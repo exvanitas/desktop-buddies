@@ -256,7 +256,8 @@ test('a pose with no art promises only what the engine does', () => {
 });
 
 test('a pose with art says what it does', () => {
-  assert.match(ownNote('stand_from_sit', 2), /Plays once\./);
+  assert.match(ownNote('stand_from_sit', 2), /^Plays once as she gets up from Sit\b.*Start on Sit, end on the main pose\.$/);
+  assert.strictEqual((ownNote('stand_from_sit', 2).match(/plays once/gi) || []).length, 1);
   assert.strictEqual((ownNote('laugh', 2).match(/plays once/gi) || []).length, 1);
   assert.match(ownNote('dragL', 2), /Frame 1 is a gentle swing, frame 2 a strong one\./);
   assert.match(ownNote('dragL', 1), /One frame, or two/);

@@ -76,7 +76,7 @@ export const POSES = [
   { key: 'stand_up_from_dizzy', label: 'Up from dizzy', fb: 'stand_up', tier: 'feel', group: 'Transitions', hint: 'Plays once after a Dizzy drawn low, instead of Stand up. End on the main pose.' },
   { key: 'stand_up_from_knocked_out', label: 'Up from knockout', fb: 'stand_up', tier: 'feel', group: 'Transitions', hint: 'Plays once after a knockout, instead of Stand up. End on the main pose.' },
   { key: 'sit_down', label: 'Sit down', fb: 'sit', tier: 'feel', group: 'Transitions', hint: 'Plays once from standing, before Sit, and before a Watch cursor drawn sitting. Start on the main pose, end on Sit.' },
-  { key: 'stand_from_sit', label: 'Stand from sit', fb: 'stand', tier: 'feel', group: 'Transitions', hint: 'Plays once. Start and end on the main pose.' },
+  { key: 'stand_from_sit', label: 'Stand from sit', fb: 'stand', tier: 'feel', group: 'Transitions', hint: 'Plays once as she gets up from Sit, and from a Watch cursor drawn sitting. Start on Sit, end on the main pose.' },
   { key: 'fall_asleep', label: 'Fall asleep', fb: 'sleep', tier: 'feel', group: 'Transitions', hint: 'Plays once from standing, before Sleep, so Sleep can be the nap alone. Start on the main pose, end on Sleep.' },
   { key: 'watch_cursor', label: 'Watch cursor', fb: 'sit', tier: 'feel', group: 'Transitions', hint: 'Sits and follows the cursor after a chase. Drawn sitting, she gets up through Stand from sit.' },
   { key: 'struggle', label: 'Struggle', fb: 'drag', tier: 'feel', group: 'Transitions', hint: 'Plays once when held still for 10 seconds or shaken hard, then she breaks free.' },
