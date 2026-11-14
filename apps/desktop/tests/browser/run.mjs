@@ -337,13 +337,14 @@ if (!ONLY || ONLY === 'clicks') {
     const words = () => text(r.page, '.menu button');
     const dots = name => r.page.locator(`.st:has(b:text-is("${name}")) .dots`);
     await dots('Sprout').click();
-    ok('at home: no Call another, and Edit', JSON.stringify(await words()) === JSON.stringify(['Edit', 'Export to a file', 'Delete']), await words());
+    ok('at home: no Call another, and Edit', JSON.stringify(await words()) === JSON.stringify(['Talks', 'Edit', 'Export to a file', 'Delete']), await words());
     await r.page.keyboard.press('Escape');
     ok('Escape closes it, and the keyboard is back on its button', await r.page.locator('.menu').count() === 0 && await dots('Sprout').evaluate(b => b === document.activeElement));
     await dots('Pip').click();
-    ok('copies: Bring here, the chase her art has, Call another and Dismiss one', JSON.stringify(await words()) === JSON.stringify(['Bring here', 'Chase my mouse', 'Call another', 'Dismiss one', 'Edit', 'Export to a file', 'Delete']), await words());
+    ok('copies: Bring here, the chase her art has, Call another and Dismiss one', JSON.stringify(await words()) === JSON.stringify(['Bring here', 'Chase my mouse', 'Call another', 'Dismiss one', 'Talks', 'Edit', 'Export to a file', 'Delete']), await words());
     const rule = await r.page.locator('.menu [role=separator]').evaluateAll(els => els.map(e => [e.nextElementSibling?.textContent, e.getBoundingClientRect().height]));
-    ok('a line before her file, drawn', JSON.stringify(rule) === JSON.stringify([['Edit', 1]]), rule);
+    ok('a line before Talks and before her file, drawn', JSON.stringify(rule) === JSON.stringify([['Talks', 1], ['Edit', 1]]), rule);
+    ok('Talks is a ticked switch', await r.page.locator('.menu [role=menuitemcheckbox]').evaluate(b => b.textContent === 'Talks' && b.getAttribute('aria-checked') === 'true' && getComputedStyle(b, '::after').content !== 'none'));
     await r.page.mouse.click(5, 22);
     ok('an outside click closes it', await r.page.locator('.menu').count() === 0);
     await dots('Olive').click();
@@ -841,7 +842,7 @@ if (!ONLY || ONLY === 'maker') {
   ok('maker: while closing, the real mouse and keyboard reach nothing', await page.locator('[data-reply]').inputValue() === typedBefore);
   await pasted();
   await page.waitForTimeout(400);
-  ok('maker: and a paste or a drop from outside is refused', await baseNow() === base && await page.locator('.pop > *').count() === 0);
+  ok('maker: and a paste or a drop from outside is refused', await baseNow() === base && await page.locator('.pop > *').count() === 0 && await page.locator('.placed').isHidden());
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100); /* a second Escape can't be refused, so it comes straight back */
@@ -857,7 +858,7 @@ if (!ONLY || ONLY === 'maker') {
   ok('maker: and it saves again', (await onDisk(kept))?.name === 'Held', (await onDisk(kept))?.name);
   await pasted();
   await page.waitForTimeout(400);
-  ok('maker: and a paste gets through again, which shows it was the close that stopped it', await page.locator('.pop > *').count() > 0);
+  ok('maker: and a paste gets through again, which shows it was the close that stopped it', await page.locator('.placed').isVisible());
   await page.keyboard.press('Escape');
   await page.waitForTimeout(1500);
 
@@ -957,7 +958,7 @@ if (!ONLY || ONLY === 'menu') {
     const win = await hub.evaluate(() => H.menu()), box = await page.evaluate(() => { const r = document.querySelector('.menu-win').getBoundingClientRect(); return { w: Math.ceil(r.width), h: Math.ceil(r.height) }; });
     ok(`${said}: placed beside her, at the size of what it drew`, win.x === 660 && win.y === 450 && win.w === box.w && win.h === box.h, { win, box });
     ok(`${said}: opened hidden, then placed, shown and focused`, (await menuCalls()).join() === 'window_open,window_place,window_show,window_focus', await menuCalls());
-    ok(`${said}: her own list, from the Manager's`, (await words()).join() === 'Chase my mouse,Call another,Dismiss,Edit,Export to a file,Delete', await words());
+    ok(`${said}: her own list, from the Manager's`, (await words()).join() === 'Chase my mouse,Call another,Dismiss,Talks,Edit,Export to a file,Delete', await words());
     ok(`${said}: the first item has the focus, though the window's focus came before it was drawn`, await focused() === 'Chase my mouse', await focused());
     await hub.waitForFunction(() => H.exe().logs.some(l => /^menu \d+ focused \d+ ms after the right-click/.test(l)), null, { timeout: 3000 }).catch(() => {});
     ok(`${said}: counted shown once the page said it has the keyboard`, await hub.evaluate(() => H.exe().logs.some(l => /^menu \d+ focused \d+ ms after the right-click/.test(l))));
@@ -974,7 +975,7 @@ if (!ONLY || ONLY === 'menu') {
     ok(`${said}: Enter on Dismiss dismisses her, and the hub hides the window`, await copies(ids.Olive) === 0 && await hidden(), await copies(ids.Olive));
 
     ok(`${said}: another right-click shows it again, in the same window`, await ask(ids.Pip) && (await menuCalls()).filter(c => c === 'window_open').length === 1);
-    ok(`${said}: with copies, Bring here and Dismiss one`, (await words()).join() === 'Bring here,Chase my mouse,Call another,Dismiss one,Dismiss,Edit,Export to a file,Delete', await words());
+    ok(`${said}: with copies, Bring here and Dismiss one`, (await words()).join() === 'Bring here,Chase my mouse,Call another,Dismiss one,Dismiss,Talks,Edit,Export to a file,Delete', await words());
     await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent === 'Call another'); b.click(); b.click(); });
     await hidden(); await hub.waitForTimeout(200);
     ok(`${said}: two quick clicks on a choice do it once`, await copies(ids.Pip) === 3, await copies(ids.Pip));
