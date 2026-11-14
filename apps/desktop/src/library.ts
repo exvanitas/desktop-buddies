@@ -22,7 +22,8 @@ export interface Shelved { id: string; name: string; buddy: Buddy }
 /* A file that's been checked and is ready to go on disk. */
 export interface Prepared { id: string; name: string; manifest: string; images: { name: string; bytes: Uint8Array }[] }
 
-export function createLibrary(shell: Shell, note: (line: string) => void, now: () => number = () => performance.now()) {
+/* `most`: how many writes or deletes a save keeps out, IN_FLIGHT unless a test compares. */
+export function createLibrary(shell: Shell, note: (line: string) => void, now: () => number = () => performance.now(), most = IN_FLIGHT) {
   /* A folder's entries, none if it isn't there yet. It's looked for in its parent, because a failed
      listing must never read as empty: that's how a saved copy gets seeded over. */
   async function entries(dir = ROOT): Promise<Listed[]> {
@@ -127,7 +128,7 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
       /* A WebView can hold a file open, and then Windows won't delete it. That waits for the next save. */
       let left = 0, why = '';
       t.to('deleting');
-      await inFlight(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), IN_FLIGHT, e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
+      await inFlight(there.filter(e => e.name !== MANIFEST && !files.has(e.name)), most, e => shell.dataDelete(`${home}/${e.name}`).catch(err => { left++; why = String(err); }));
       if (left) note(`library: ${left} old files of ${p.id} left for the next save: ${why}`);
       t.done();
       return true;
@@ -154,7 +155,7 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
       to,
       async writes<T>(items: T[], f: (item: T) => Promise<unknown>) {
         to('writing'); of = items.length;
-        await inFlight(items, IN_FLIGHT, async item => {
+        await inFlight(items, most, async item => {
           const n = calls++, b = now(); out.set(n, b);
           try { await f(item); } finally { out.delete(n); }
           each.push(now() - b);
@@ -165,7 +166,7 @@ export function createLibrary(shell: Shell, note: (line: string) => void, now: (
         const all = now() - start;
         if (all < TIMED_MS) return;
         const sorted = each.sort((a, b) => a - b), at = (q: number) => ms(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0);
-        note(`library: a save took ${ms(all)} ms: ${steps.join(', ')}; ${each.length} images, ${IN_FLIGHT} at a time, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most`);
+        note(`library: a save took ${ms(all)} ms: ${steps.join(', ')}; ${each.length} images, ${most} at a time, each ${at(0.5)} median, ${at(0.9)} p90, ${at(1)} most`);
       },
       end() { running.delete(me); }
     };
