@@ -60,7 +60,7 @@ test('what the PC sample keeps is numbers and plain words: no path, title or com
   assert.ok(back && !/\$where/.test(back[1]!), back?.[0]);
   /* no window titles: windows are only counted */
   assert.ok(!/GetWindowText|TitleOf|MainWindowTitle/.test(sampler + pc));
-  assert.match(sampler, /function Csv-Header \{ return 't_s,pid,kind,' \+ \(\$soakFields -join ','\) \+ ',procs,windows' \}/);
+  assert.match(sampler, /function Csv-Header \{ return 't_s,pid,kind,started_s,' \+ \(\$soakFields -join ','\) \+ ',procs,windows' \}/);
 });
 
 test('the sampler calls only Windows functions that read, and opens a process only to query it', () => {
@@ -82,12 +82,27 @@ test('soak.ps1: the four states, the summary from the last 75%, and every budget
   for (const k of ['leak_mb_per_h', 'handles_per_h', 'gdi_per_h', 'user_per_h', 'idle_cpu_pct_core', 'wakeups_per_s']) assert.ok(sampler.includes(`    ${k} = `), k);
   const read = [...fn(soak, 'Check-Budgets').matchAll(/\$limits\.(\w+)/g)].map(m => m[1]!);
   for (const k of new Set(read)) assert.ok(k in budgets, `soak-budgets.json has ${k}`);
-  /* the plan's budgets, reported only until the lead has a baseline */
-  assert.deepStrictEqual([budgets.leak_mb_per_h, budgets.handles_per_h, budgets.gdi_per_h, budgets.user_per_h, budgets.hidden_cpu_pct_core, budgets.baseline_margin], [2, 50, 50, 50, 0.5, 0.2]);
-  assert.strictEqual(typeof budgets.enforce, 'boolean');
-  assert.deepStrictEqual(Object.keys(budgets.baseline).sort(), [...STATES].sort());
-  /* while not enforced a budget is a line to read, never a FAIL */
-  assert.match(soak, /if \(\$limits\.enforce\) \{ Expect "budget\.\$\(\$b\.name\)" \$b\.ok \$b\.detail \}\n\s*else \{ Note "budget\./);
+  /* set from the 120-minute run: docs/performance.md, Budgets */
+  assert.strictEqual(budgets.enforce, true);
+  assert.deepStrictEqual([budgets.leak_mb_per_h, budgets.handles_per_h, budgets.gdi_per_h, budgets.user_per_h, budgets.hidden_cpu_pct_core, budgets.baseline_margin, budgets.slope_min_minutes], [15, 50, 50, 50, 6, 0.2, 60]);
+  assert.deepStrictEqual(budgets.wakeups_per_s, { walking: 2400, hidden: 950, manager: 2400, api: 1350 });
+  assert.deepStrictEqual(budgets.private_ws_mb, { walking: 78, hidden: 50, manager: 87, api: 66 });
+  const need = soak.match(/foreach \(\$need in ([^)]*)\)/)![1]!.split(', ').map(k => k.replace(/'/g, ''));
+  assert.deepStrictEqual(need.sort(), Object.keys(budgets).filter(k => k !== 'note').sort(), 'every key is required, and only those');
+  /* a slope is judged only on a long run; CPU isn't a budget but for the hidden tripwire */
+  const check = fn(soak, 'Check-Budgets');
+  assert.match(check, /\$long = \$sum\.minutes -ge \$limits\.slope_min_minutes/);
+  assert.match(check, /name = \$s\[0\]; judged = \$long;/);
+  for (const n of ['wakeups', 'memory', 'hidden_cpu']) assert.match(check, new RegExp(`name = '${n}'; judged = \\$true;`), n);
+  assert.ok(!/name = 'cpu'/.test(check), 'no CPU budget');
+  assert.match(check, /\$cap = \$limits\.wakeups_per_s\.\$which/);
+  assert.match(check, /\$base = \$limits\.private_ws_mb\.\$which/);
+  /* judged and enforced is a PASS or a FAIL; anything else is a line to read */
+  assert.match(soak, /if \(\$limits\.enforce -and \$b\.judged\) \{ Expect "budget\.\$\(\$b\.name\)" \$b\.ok \$b\.detail \}\n\s*else \{ Note "budget\./);
+  /* the runner's processor goes in the summary */
+  assert.match(soak, /runner_cpu = \$runnerCpu \}/);
+  assert.match(sampler, /started_s = \(\$p\.Created - \$rootCreated\) \/ 1e7/);
+  assert.match(sampler, /by_process = @\(\$byProcess\)/);
   /* the API's own limits: 30 requests and 4 lines a minute from one app */
   assert.match(soak, /if \(\$now - \$lastSay -ge 20\) \{/);
   assert.match(soak, /while \(\$nextAsk -le \$now\) \{ \$nextAsk \+= 5 \}/);

@@ -9,6 +9,8 @@
 #   cpu_s            CPU time so far, in seconds
 #   cpu_pct_core     CPU over the last interval, as a percentage of one core
 #   switches_per_s   context switches a second over the last interval: how often its threads wake
+#   started_s        when the process started, in seconds after the one at the root: pages open in
+#                    order, so it tells which renderer is which
 Add-Type -Language CSharp @"
 using System; using System.Collections.Generic; using System.Runtime.InteropServices;
 public class SoakProc {
@@ -152,7 +154,9 @@ function Take-Look($rootId, $last, $at, $kinds) {
   $byId = @{}
   $rows = [System.Collections.Generic.List[object]]::new()
   $byKind = @{}
-  $total = [ordered]@{ t_s = $at; pid = 0; kind = 'total'; ws_mb = 0.0; private_ws_mb = 0.0; private_mb = 0.0; handles = 0; gdi = 0; user = 0; threads = 0; cpu_s = 0.0; cpu_pct_core = $null; switches_per_s = $null; procs = $tree.Count; windows = 0 }
+  $rootCreated = 0
+  if ($tree.Count) { $rootCreated = $tree[0].Created }
+  $total = [ordered]@{ t_s = $at; pid = 0; kind = 'total'; started_s = $null; ws_mb = 0.0; private_ws_mb = 0.0; private_mb = 0.0; handles = 0; gdi = 0; user = 0; threads = 0; cpu_s = 0.0; cpu_pct_core = $null; switches_per_s = $null; procs = $tree.Count; windows = 0 }
   if ($tree.Count) { $total.windows = [SoakNative]::Shown([int]$rootId) }
   foreach ($p in $tree) {
     [SoakNative]::Gui($p)
@@ -170,7 +174,7 @@ function Take-Look($rootId, $last, $at, $kinds) {
       $woke = [SoakNative]::SwitchesSince($p, $prev) / $span
     }
     $kind = Kind-Of $p $kinds
-    $row = [ordered]@{ t_s = $at; pid = $p.Pid; kind = $kind; ws_mb = $p.WorkingSet / 1MB; private_ws_mb = $p.PrivateWs / 1MB; private_mb = $p.Private / 1MB; handles = $p.Handles; gdi = $p.Gdi; user = $p.User; threads = $p.Threads; cpu_s = $p.CpuTicks / 1e7; cpu_pct_core = $cpu; switches_per_s = $woke; procs = 1; windows = $null }
+    $row = [ordered]@{ t_s = $at; pid = $p.Pid; kind = $kind; started_s = ($p.Created - $rootCreated) / 1e7; ws_mb = $p.WorkingSet / 1MB; private_ws_mb = $p.PrivateWs / 1MB; private_mb = $p.Private / 1MB; handles = $p.Handles; gdi = $p.Gdi; user = $p.User; threads = $p.Threads; cpu_s = $p.CpuTicks / 1e7; cpu_pct_core = $cpu; switches_per_s = $woke; procs = 1; windows = $null }
     $rows.Add([pscustomobject]$row)
     foreach ($f in 'ws_mb', 'private_ws_mb', 'private_mb', 'handles', 'threads', 'cpu_s') { $total[$f] += $row[$f] }
     if ($p.Gdi -ge 0) { $total.gdi += $p.Gdi; $total.user += $p.User }
@@ -183,12 +187,12 @@ function Take-Look($rootId, $last, $at, $kinds) {
   return [pscustomobject]@{ at = $at; byId = $byId; rows = $rows; total = [pscustomobject]$total; byKind = $byKind }
 }
 
-function Csv-Header { return 't_s,pid,kind,' + ($soakFields -join ',') + ',procs,windows' }
+function Csv-Header { return 't_s,pid,kind,started_s,' + ($soakFields -join ',') + ',procs,windows' }
 # The look's rows and its total, one line each.
 function Csv-Lines($look) {
   $lines = [System.Collections.Generic.List[string]]::new()
   foreach ($r in @($look.rows) + @($look.total)) {
-    $cells = @((Csv-Num $r.t_s), $r.pid, $r.kind) + @($soakFields | ForEach-Object { Csv-Num $r.$_ }) + @((Csv-Num $r.procs), (Csv-Num $r.windows))
+    $cells = @((Csv-Num $r.t_s), $r.pid, $r.kind, (Csv-Num $r.started_s)) + @($soakFields | ForEach-Object { Csv-Num $r.$_ }) + @((Csv-Num $r.procs), (Csv-Num $r.windows))
     $lines.Add($cells -join ',')
   }
   return $lines
@@ -235,6 +239,29 @@ function Summarize($looks) {
       cpu_pct_core = Round-To (Mean-Of @($steady | ForEach-Object { if ($_.byKind.ContainsKey($k)) { $_.byKind[$k].cpu_pct_core } })) 3
     }
   }
+  # Each process on its own, in the order they started, so a page's renderer can be told apart.
+  $procs = [ordered]@{}
+  foreach ($l in $steady) {
+    foreach ($r in $l.rows) {
+      $id = "$($r.kind) $($r.pid)"
+      if (-not $procs.Contains($id)) { $procs[$id] = [System.Collections.Generic.List[object]]::new() }
+      $procs[$id].Add($r)
+    }
+  }
+  $byProcess = @(foreach ($id in $procs.Keys) {
+    $rs = $procs[$id]
+    [ordered]@{
+      kind = $rs[0].kind
+      pid = $rs[0].pid
+      started_s = Round-To $rs[0].started_s 2
+      samples = $rs.Count
+      private_ws_mb = Round-To (Mean-Of @($rs | ForEach-Object { $_.private_ws_mb })) 2
+      private_mb = Round-To (Mean-Of @($rs | ForEach-Object { $_.private_mb })) 2
+      private_mb_per_h = Round-To (Slope @($rs | ForEach-Object { [double]$_.t_s / 3600.0 }) @($rs | ForEach-Object { [double]$_.private_mb })) 3
+      cpu_pct_core = Round-To (Mean-Of @($rs | ForEach-Object { $_.cpu_pct_core })) 3
+      switches_per_s = Round-To (Mean-Of @($rs | ForEach-Object { $_.switches_per_s })) 1
+    }
+  }) | Sort-Object { $_.started_s }
   return [ordered]@{
     samples = $every.Count
     minutes = Round-To (($lastAt - $first) / 60) 2
@@ -252,6 +279,7 @@ function Summarize($looks) {
     peak = $peak
     per_hour = $perHour
     by_kind_mean = $kindsMean
+    by_process = @($byProcess)
   }
 }
 

@@ -41,24 +41,43 @@ The steady part is the last 75% of the run, past the start's own climb. In it:
 
 - **Leak slope** (`leak_mb_per_h`): a least-squares line through private bytes, in MB an hour. One spike can't make a slope; memory that keeps growing does.
 - **Handles, GDI and USER an hour** (`handles_per_h`, `gdi_per_h`, `user_per_h`): the same fit. A leak of handles or window objects shows here long before it fails.
-- **CPU** (`idle_cpu_pct_core`): the mean, as a percentage of one core. The runner's core count is in the summary.
+- **CPU** (`idle_cpu_pct_core`): the mean, as a percentage of one core. The runner's processor, clock and core count are in `runner_cpu`.
 - **Wakeups** (`wakeups_per_s`): context switches a second, all processes together: how often the app's threads wake. A hidden app that wakes often drains a battery even at low CPU.
 - `by_kind_mean`: memory and CPU for the exe and each kind of WebView2 process (browser, renderer, gpu-process, utility).
+- `by_process`: each process on its own, in the order it started (`started_s`, seconds after the exe). The hub's page opens before the overlays, so this tells the renderers apart.
 
-The job fails when the harness does: the app didn't reach its state, quit early, logged an error, didn't quit by its own time limit, or left processes behind.
+The job fails when the harness does (the app didn't reach its state, quit early, logged an error, didn't quit by its own time limit, or left processes behind) or when a judged budget is over.
+
+### Baseline
+
+The 120-minute run 43541724508, 2026-11-14, means over the steady part:
+
+| State | Private working set | Private bytes | Change an hour | Wakeups a second | CPU, % of one core |
+|---|---|---|---|---|---|
+| walking | 78 MB | 189 MB | +6.0 MB | 2058 | 4.1 |
+| hidden | 43 MB | 158 MB | +7.6 MB | 789 | 4.1 |
+| manager | 87 MB | 222 MB | +3.6 MB | 1997 | 2.0 |
+| api | 66 MB | 184 MB | +11.6 MB | 1120 | 1.5 |
+
+What grows is one WebView2 renderer in each state, by 3 to 8 MB an hour; the exe, the browser process and the GPU process are flat. Its first half hour is the heap filling before a full collection (up to 1 MB a minute, then a drop of about 20 MB), which is why a 10-minute run reads 60 to 110 MB an hour. Handles change by under 15 an hour, GDI and USER objects not at all. Renderers own no GDI or USER objects at all: Chromium runs them locked out of the window system, so their 0 is real.
 
 ### Budgets
 
-`apps/desktop/shell-check/soak-budgets.json`:
+`apps/desktop/shell-check/soak-budgets.json`, set from the baseline:
 
-| Budget | Value |
-|---|---|
-| Leak slope, every state | under 2 MB an hour |
-| Handles, GDI and USER objects | under 50 more an hour each |
-| Hidden | under 0.5% of one core; wakeups from the first runs |
-| Memory and CPU, per state | the state's baseline plus 20% |
+| Budget | Value | Judged |
+|---|---|---|
+| Leak slope, every state | under 15 MB an hour | runs of 60 minutes or more |
+| Handles, GDI and USER objects | under 50 more an hour each | runs of 60 minutes or more |
+| Wakeups a second | walking 2400, hidden 950, manager 2400, api 1350 | every run |
+| Private working set | the baseline (walking 78 MB, hidden 50, manager 87, api 66) plus 20% | every run |
+| Hidden CPU | under 6% of one core, a tripwire | every run |
 
-While `enforce` is false, each is reported in `soak.txt` and the summary as within or OVER, and nothing fails on them. To turn them on: put each state's mean `private_ws_mb` and `cpu_pct_core` from its first full runs into `baseline`, set `hidden_wakeups_per_s` from the hidden runs, and set `enforce` to true.
+Wakeups are budgeted and CPU isn't. The same work cost the hidden state 1.4% of a core on one runner and 4.1% on another, with the same wakeups within 1%: the four jobs of one run land on different hardware, and a wakeup costs what that hardware makes it cost. Wakeups count the work itself, and two runs agreed on them within 6% in every state, so each budget is its mean plus about 20%. CPU is reported with the runner's processor beside it, and only the hidden tripwire can fail a run.
+
+A slope needs time: the leak budget is 15 MB an hour, under which the creep above passes and the first half hour's climb, kept up, would not. Once the renderer's creep is found it comes down to 5, and the plan's 2 needs 4-hour runs to judge. The private working set baseline for hidden is the 10-minute run's 50 MB, the higher of the two.
+
+A budget that's judged is a PASS or a FAIL in `soak.txt`; one that isn't is an INFO line saying within or OVER. With `enforce` false, none is judged.
 
 ## On a real PC
 

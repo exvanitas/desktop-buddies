@@ -1,17 +1,13 @@
 {
-  "note": "Read by soak.ps1. While enforce is false every budget is reported, never failed. A baseline is a state's own runner numbers, set from its first full runs; null means not set yet, and that check is skipped. docs/performance.md says how to set them.",
-  "enforce": false,
-  "leak_mb_per_h": 2,
+  "note": "Read by soak.ps1. Set from the 120-minute run 43541724508, 2026-11-14: docs/performance.md, Budgets. Slopes are judged only on runs of slope_min_minutes or more; a shorter run is mostly warm-up and reports them. CPU is reported, not budgeted, except the hidden tripwire: the same work cost 1.4% and 4.1% of a core on two runners. With enforce false, everything is reported and nothing fails.",
+  "enforce": true,
+  "slope_min_minutes": 60,
+  "leak_mb_per_h": 15,
   "handles_per_h": 50,
   "gdi_per_h": 50,
   "user_per_h": 50,
-  "hidden_cpu_pct_core": 0.5,
-  "hidden_wakeups_per_s": null,
+  "hidden_cpu_pct_core": 6,
   "baseline_margin": 0.2,
-  "baseline": {
-    "walking": { "private_ws_mb": null, "cpu_pct_core": null },
-    "hidden": { "private_ws_mb": null, "cpu_pct_core": null },
-    "manager": { "private_ws_mb": null, "cpu_pct_core": null },
-    "api": { "private_ws_mb": null, "cpu_pct_core": null }
-  }
+  "wakeups_per_s": { "walking": 2400, "hidden": 950, "manager": 2400, "api": 1350 },
+  "private_ws_mb": { "walking": 78, "hidden": 50, "manager": 87, "api": 66 }
 }

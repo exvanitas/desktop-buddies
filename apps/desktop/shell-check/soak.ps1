@@ -151,28 +151,29 @@ function Task($label, $what) {
 }
 function Manager-Window { return [W]::FindTitled(@([uint32]$script:appProc.Id), 'Desktop Buddies Manager') }
 
-# Each budget as name, within or not, and what it was measured against. A baseline that isn't set
-# yet, or a state it isn't for, makes no line.
+# Each budget: its name, whether it's within, what it was measured against, and whether it's judged.
+# A slope is judged only on a run of slope_min_minutes or more: a shorter one is mostly warm-up.
+# CPU isn't a budget but for the hidden tripwire: the same work costs a different share of a core on
+# each runner, while the wakeups it takes don't change. A state with no value set makes no line.
 function Check-Budgets($sum, $limits, $which) {
   $o = [System.Collections.Generic.List[object]]::new()
-  $o.Add([pscustomobject]@{ name = 'leak'; ok = ($null -ne $sum.leak_mb_per_h -and $sum.leak_mb_per_h -lt $limits.leak_mb_per_h); detail = "private bytes $($sum.leak_mb_per_h) MB an hour, budget under $($limits.leak_mb_per_h)" })
-  $o.Add([pscustomobject]@{ name = 'handles'; ok = ($null -ne $sum.handles_per_h -and $sum.handles_per_h -lt $limits.handles_per_h); detail = "$($sum.handles_per_h) an hour, budget under $($limits.handles_per_h)" })
-  $o.Add([pscustomobject]@{ name = 'gdi'; ok = ($null -ne $sum.gdi_per_h -and $sum.gdi_per_h -lt $limits.gdi_per_h); detail = "$($sum.gdi_per_h) an hour, budget under $($limits.gdi_per_h)" })
-  $o.Add([pscustomobject]@{ name = 'user'; ok = ($null -ne $sum.user_per_h -and $sum.user_per_h -lt $limits.user_per_h); detail = "$($sum.user_per_h) an hour, budget under $($limits.user_per_h)" })
+  $long = $sum.minutes -ge $limits.slope_min_minutes
+  $short = if ($long) { '' } else { "; $($sum.minutes) min is too short to judge a slope, that needs $($limits.slope_min_minutes)" }
+  foreach ($s in @(@('leak', 'leak_mb_per_h', 'private bytes ', ' MB'), @('handles', 'handles_per_h', '', ''), @('gdi', 'gdi_per_h', '', ''), @('user', 'user_per_h', '', ''))) {
+    $v = $sum.($s[1])
+    $o.Add([pscustomobject]@{ name = $s[0]; judged = $long; ok = ($null -ne $v -and $v -lt $limits.($s[1])); detail = "$($s[2])$v$($s[3]) an hour, budget under $($limits.($s[1]))$short" })
+  }
+  $cap = $limits.wakeups_per_s.$which
+  if ($null -ne $cap) {
+    $o.Add([pscustomobject]@{ name = 'wakeups'; judged = $true; ok = ($null -ne $sum.wakeups_per_s -and $sum.wakeups_per_s -le $cap); detail = "$($sum.wakeups_per_s) a second, budget at most $cap" })
+  }
+  $base = $limits.private_ws_mb.$which
+  if ($null -ne $base) {
+    $top = [Math]::Round($base * (1 + [double]$limits.baseline_margin), 1)
+    $o.Add([pscustomobject]@{ name = 'memory'; judged = $true; ok = ($null -ne $sum.mean.private_ws_mb -and $sum.mean.private_ws_mb -le $top); detail = "private working set $($sum.mean.private_ws_mb) MB, baseline $base plus $([double]$limits.baseline_margin * 100)%: at most $top" })
+  }
   if ($which -eq 'hidden') {
-    $o.Add([pscustomobject]@{ name = 'hidden_cpu'; ok = ($null -ne $sum.idle_cpu_pct_core -and $sum.idle_cpu_pct_core -lt $limits.hidden_cpu_pct_core); detail = "$($sum.idle_cpu_pct_core)% of one core, budget under $($limits.hidden_cpu_pct_core)" })
-    if ($null -ne $limits.hidden_wakeups_per_s) {
-      $o.Add([pscustomobject]@{ name = 'hidden_wakeups'; ok = ($null -ne $sum.wakeups_per_s -and $sum.wakeups_per_s -lt $limits.hidden_wakeups_per_s); detail = "$($sum.wakeups_per_s) a second, budget under $($limits.hidden_wakeups_per_s)" })
-    }
-  }
-  $base = $null
-  if ($limits.baseline) { $base = $limits.baseline.$which }
-  $grow = 1 + [double]$limits.baseline_margin
-  if ($base -and $null -ne $base.private_ws_mb) {
-    $o.Add([pscustomobject]@{ name = 'memory'; ok = ($sum.mean.private_ws_mb -le $base.private_ws_mb * $grow); detail = "$($sum.mean.private_ws_mb) MB, baseline $($base.private_ws_mb) plus $([double]$limits.baseline_margin * 100)%" })
-  }
-  if ($base -and $null -ne $base.cpu_pct_core) {
-    $o.Add([pscustomobject]@{ name = 'cpu'; ok = ($sum.mean.cpu_pct_core -le $base.cpu_pct_core * $grow); detail = "$($sum.mean.cpu_pct_core)% of one core, baseline $($base.cpu_pct_core) plus $([double]$limits.baseline_margin * 100)%" })
+    $o.Add([pscustomobject]@{ name = 'hidden_cpu'; judged = $true; ok = ($null -ne $sum.idle_cpu_pct_core -and $sum.idle_cpu_pct_core -lt $limits.hidden_cpu_pct_core); detail = "$($sum.idle_cpu_pct_core)% of one core, tripwire at $($limits.hidden_cpu_pct_core)" })
   }
   return $o
 }
@@ -200,10 +201,14 @@ try {
   $budgetFile = Join-Path $PSScriptRoot 'soak-budgets.json'
   if ($Budgets) { $budgetFile = (Resolve-Path -LiteralPath $Budgets).Path }
   $limits = [IO.File]::ReadAllText($budgetFile) | ConvertFrom-Json
-  foreach ($need in 'enforce', 'leak_mb_per_h', 'handles_per_h', 'gdi_per_h', 'user_per_h', 'hidden_cpu_pct_core', 'baseline_margin') {
+  foreach ($need in 'enforce', 'slope_min_minutes', 'leak_mb_per_h', 'handles_per_h', 'gdi_per_h', 'user_per_h', 'hidden_cpu_pct_core', 'baseline_margin', 'wakeups_per_s', 'private_ws_mb') {
     if ($null -eq $limits.$need) { throw "$budgetFile has no $need" }
   }
   Note "budgets from $(Split-Path -Leaf $budgetFile): $(if ($limits.enforce) { 'enforced' } else { 'reported only, nothing fails on them' })"
+  # The runner's processor, so CPU numbers are compared like for like.
+  $chips = @(Get-CimInstance Win32_Processor)
+  $runnerCpu = [ordered]@{ name = "$($chips[0].Name)".Trim(); max_mhz = $chips[0].MaxClockSpeed; current_mhz = $chips[0].CurrentClockSpeed; cores = $chips[0].NumberOfCores; logical = $chips[0].NumberOfLogicalProcessors; sockets = $chips.Count }
+  Note "cpu $($runnerCpu.name), $($runnerCpu.max_mhz) MHz, $($runnerCpu.cores) cores, $($runnerCpu.logical) logical"
   $probe = Join-Path (Split-Path $App) 'api-probe\api-probe.js'
   if ($State -eq 'hidden' -and -not (Test-Path -LiteralPath $probe -PathType Leaf)) { throw "$probe is missing: build the app first" }
   $tag = '<script src="manager.js"></script>'
@@ -353,14 +358,15 @@ try {
     # ---------- the summary, and the budgets
     $sum = Summarize $looks
     if ($null -eq $sum) { throw "only $($looks.Count) samples: too few to sum up" }
-    $report = [ordered]@{ state = $State; minutes_asked = $Minutes; interval_s = $Interval; exe_api = $api; budgets_enforced = [bool]$limits.enforce }
+    $report = [ordered]@{ state = $State; minutes_asked = $Minutes; interval_s = $Interval; exe_api = $api; budgets_enforced = [bool]$limits.enforce; runner_cpu = $runnerCpu }
     foreach ($k in $sum.Keys) { $report[$k] = $sum[$k] }
     [IO.File]::WriteAllText($jsonFile, ($report | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding $false))
     Note "summary: $($sum.mean.private_ws_mb) MB private working set, $($sum.mean.private_mb) MB private, leak $($sum.leak_mb_per_h) MB/h, handles $($sum.handles_per_h)/h, gdi $($sum.gdi_per_h)/h, user $($sum.user_per_h)/h, cpu $($sum.idle_cpu_pct_core)% of a core, $($sum.wakeups_per_s) wakeups/s"
     foreach ($b in (Check-Budgets $sum $limits $State)) {
-      if ($limits.enforce) { Expect "budget.$($b.name)" $b.ok $b.detail }
-      else { Note "budget.$($b.name) $(if ($b.ok) { 'within' } else { 'OVER' }): $($b.detail)" }
+      if ($limits.enforce -and $b.judged) { Expect "budget.$($b.name)" $b.ok $b.detail }
+      else { Note "budget.$($b.name) $(if ($b.ok) { 'within' } else { 'OVER' }), not judged: $($b.detail)" }
     }
+    Note "budget.cpu reported, not judged: $($sum.idle_cpu_pct_core)% of one core on $($runnerCpu.name)"
 
     # ---------- the end: a clean quit by its own limit, after hours, and a log with no errors
     $wait = [Math]::Max(5, $limitSeconds - $clock.Elapsed.TotalSeconds + 30)
@@ -375,7 +381,7 @@ try {
       $m = $sum.mean; $pk = $sum.peak; $ph = $sum.per_hour
       $table = @(
         "### Soak: $State, $([Math]::Round($ran)) min, a sample every $Interval s",
-        "Steady: the last 75%, from minute $($sum.steady_from_min). CPU is a percentage of one core; the runner has $($sum.cores).",
+        "Steady: the last 75%, from minute $($sum.steady_from_min). CPU is a percentage of one core of the runner's $($runnerCpu.name), $($sum.cores) logical.",
         '',
         '| | mean | peak | change an hour |',
         '|---|---|---|---|',
@@ -420,7 +426,7 @@ try {
 }
 $fails = @($results | Where-Object { $_ -like 'FAIL *' })
 $passes = @($results | Where-Object { $_ -like 'PASS *' }).Count
-$summary = @("### Soak: $State", "$passes passed, $($fails.Count) failed", '') + ($fails | ForEach-Object { "- $_" }) + @($results | Where-Object { $_ -like 'INFO budget.*' } | ForEach-Object { "- $($_.Substring(5))" })
+$summary = @("### Soak: $State", "$passes passed, $($fails.Count) failed", '') + ($fails | ForEach-Object { "- $_" }) + @($results | Where-Object { $_ -like 'INFO budget.*' -or $_ -like 'PASS budget.*' } | ForEach-Object { "- $($_.Substring(5))" })
 $summary -join "`n" | Write-Host
 if ($env:GITHUB_STEP_SUMMARY) { $summary -join "`n" | Add-Content $env:GITHUB_STEP_SUMMARY }
 if ($fails.Count -or $passes -eq 0) { exit 1 }
