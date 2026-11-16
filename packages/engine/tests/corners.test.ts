@@ -49,12 +49,17 @@ test('near a screen\'s edge, she\'s never drawn further off the screen than at e
   assert.deepStrictEqual(seen, []);
 }, 120000);
 
-/* Stepping past, the way itself goes at most 17 px and 80% of the fastest turn the same corner's
-   swing with room has in a tick (the tests below, on the way alone). As drawn, her own climbing,
-   walking and animation go on on top: her middle measured up to 25.9 px a tick at 512 px, 19.3
-   over what her climbing moves her once she's round, and her turn up to 0.2 degrees under the
-   swing's. */
-test('stepping past and tipping over, she turns in a tick no more than round the same corner with room, and her middle moves no more than 20 px over what her own climbing moves her', () => {
+/* The most she moves and turns in a tick round any corner with room, at her size: the bar for no
+   snap. Her middle, the edge of her box that moves most, and her turn. */
+function bar(size: number) {
+  const room = all().filter(r => r.corner.size === size && roomy(r.corner));
+  return { mid: Math.max(...room.map(r => r.mid)), move: Math.max(...room.map(r => r.move)), turn: Math.max(...room.map(r => r.turn)) };
+}
+
+/* Stepping past, she moves no more in a tick than round any corner with room at her size, and
+   turns no more than round the same corner with room. Measured at most 25.9 px of her middle at
+   512 px, against 42.5 with room, and her turn at least 0.2 degrees under the same corner's. */
+test('stepping past and tipping over, she moves in a tick no more than round any corner with room at her size, and turns no more than round the same corner with room', () => {
   const twin = twins(), out: string[] = [];
   const tips = all().filter(r => r.tip);
   /* at a twentieth more than her size of room on one side, her turned art always steps past */
@@ -62,7 +67,8 @@ test('stepping past and tipping over, she turns in a tick no more than round the
   for (const r of tips) {
     const t = twin.get(key(r.corner))!;
     if (r.turn > t.turn) out.push(`${label(r.corner)}: turned ${r.turn.toFixed(2)} degrees in a tick, ${t.turn.toFixed(2)} with room`);
-    if (r.mid > 20 + r.own.mid) out.push(`${label(r.corner)}: her middle moved ${r.mid.toFixed(1)} px in a tick, ${r.own.mid.toFixed(1)} climbing on after`);
+    const most = bar(r.corner.size);
+    if (r.mid > most.mid || r.move > most.move) out.push(`${label(r.corner)}: moved ${r.move.toFixed(1)} px, her middle ${r.mid.toFixed(1)}, in a tick, against ${most.move.toFixed(1)} and ${most.mid.toFixed(1)} with room`);
   }
   assert.deepStrictEqual(out, []);
 }, 120000);
@@ -82,25 +88,30 @@ test('boxed into a screen\'s corner with no room to tip, she still goes round on
 /* ---------- one corner, frame by frame ---------- */
 
 /* An outer corner turning clockwise, from standing on a window's top onto its right side: its
-   point, a 120 px buddy as wide as she is tall, where she's drawn at the start and where she is. */
-function corner(pivot: { x: number; y: number }, screen: { w: number; h: number }) {
-  const size: Size = { w: 120, h: 120, k: 1 };
+   point, a buddy as wide as she is tall (120 px unless said), where she's drawn at the start and
+   where she is. */
+function corner(pivot: { x: number; y: number }, screen: { w: number; h: number }, px = 120) {
+  const size: Size = { w: px, h: px, k: 1 };
   const k = { pivot: { ...pivot }, wind: 1, na: { x: 0, y: -1 }, nb: { x: 1, y: 0 }, inner: false };
-  const c0 = { x: pivot.x - 60, y: pivot.y - 60 }, c1 = { x: pivot.x + 60, y: pivot.y + 60 };
+  const c0 = { x: pivot.x - px / 2, y: pivot.y - px / 2 }, c1 = { x: pivot.x + px / 2, y: pivot.y + px / 2 };
   const e: Easing = { from: 0, n: 12, rot: 0, c: c0, d: { x: 0, y: 0 }, corner: k, on: 'w', room: [{ x: 0, y: 0, w: screen.w, h: screen.h }], size0: size };
   return { e, c1, size };
 }
+type Pt = { x: number; y: number };
 /* Drives a turn tick by tick until it's over. `move` is how far the window goes each of the first
-   `ticks`, carrying the corner and both ends with it, as the look does; `on` how far she goes along
-   the side each tick. */
-function drive(e: Easing, c1: { x: number; y: number }, size: Size, o: { move?: { x: number; y: number }; ticks?: number; on?: { x: number; y: number } } = {}) {
-  const out: { c: { x: number; y: number }; rot: number; to: { x: number; y: number } }[] = [], to = { ...c1 };
-  for (let now = 0; now < 400; now++) {
-    if (now && o.move && now <= (o.ticks ?? Infinity)) { e.corner!.pivot.x += o.move.x; e.corner!.pivot.y += o.move.y; e.c = { x: e.c.x + o.move.x, y: e.c.y + o.move.y }; to.x += o.move.x; to.y += o.move.y; }
+   `ticks` (a fixed step, or one for each tick), carrying the corner and both ends with it, as the
+   look does; `on` how far she goes along the side each tick; `at` where she is on the side at each
+   tick, from where she'd be standing still. */
+function drive(e: Easing, c1: Pt, size: Size, o: { move?: Pt | ((t: number) => Pt); ticks?: number; on?: Pt; at?: (t: number) => Pt } = {}) {
+  const out: { c: Pt; rot: number; to: Pt }[] = [], to = { ...c1 };
+  for (let now = 0; now < 600; now++) {
+    const m = typeof o.move === 'function' ? o.move(now) : o.move;
+    if (now && m && now <= (o.ticks ?? Infinity)) { e.corner!.pivot.x += m.x; e.corner!.pivot.y += m.y; e.c = { x: e.c.x + m.x, y: e.c.y + m.y }; to.x += m.x; to.y += m.y; }
     if (now && o.on) { to.x += o.on.x; to.y += o.on.y; }
-    const at = eased(e, now, to, 90, size);
+    const d = o.at ? o.at(now) : { x: 0, y: 0 }, there = { x: to.x + d.x, y: to.y + d.y };
+    const at = eased(e, now, there, 90, size);
     if (!at) return out;
-    out.push({ ...at, to: { ...to } });
+    out.push({ ...at, to: there });
   }
   throw new Error('the turn never ended');
 }
@@ -129,14 +140,13 @@ test('stepping past starts where the swing starts and ends where it ends: where 
   assert.ok(Math.hypot(swing.c.x - c0.x, swing.c.y - c0.y) < 1e-6 && Math.abs(swing.rot) < 1e-6, `swing's first tick ${JSON.stringify(swing)}`);
 });
 
-test('stepping past, her middle moves no more than 17 px a tick over her own going, and she turns no faster than with room, her side moving on or not', () => {
+test('stepping past, she moves and turns in a tick no more than the same corner\'s swing with room, her side moving on or not', () => {
   for (const on of [undefined, { x: 0, y: 2 }]) {
     const tight = corner({ x: 1474, y: 300 }, { w: 1600, h: 900 }), steps = most(drive(tight.e, tight.c1, tight.size, { on }));
     assert.ok(tight.e.tip !== undefined || steps.move > 0);
     const room = corner({ x: 1474, y: 300 }, { w: 9000, h: 900 }), swing = most(drive(room.e, room.c1, room.size, { on }));
     const name = on ? 'her side moving on' : 'standing';
-    /* where she's going moves on 2 px a tick: that much more is her own going, not the way's */
-    assert.ok(steps.move <= 17 + (on ? Math.hypot(on.x, on.y) : 0) + 1e-6, `${name}: her middle moved ${steps.move.toFixed(2)} px in a tick`);
+    assert.ok(steps.move <= swing.move, `${name}: her middle moved ${steps.move.toFixed(2)} px in a tick, ${swing.move.toFixed(2)} with room`);
     assert.ok(steps.turn <= swing.turn, `${name}: turned ${steps.turn.toFixed(2)} degrees in a tick, ${swing.turn.toFixed(2)} with room`);
   }
 });
@@ -148,7 +158,29 @@ test('stepping past while her window moves, into the screen\'s edge or away from
     const off = Math.max(...seq.map(s => offScreen(s.c, s.rot, size, 1600, 1000)));
     /* both ends stay on the screen however far the window goes: 10 px up from 10 px below its top */
     assert.ok(off <= .5, `${name}: drawn ${off.toFixed(2)} px off the screen`);
-    const s = most(seq);
-    assert.ok(s.move <= 21 && s.turn <= 15, `${name}: moved ${s.move.toFixed(1)} px, turned ${s.turn.toFixed(1)} degrees in a tick`);
+    const s = most(seq), b = bar(120);
+    assert.ok(s.move <= b.mid && s.turn <= b.turn, `${name}: moved ${s.move.toFixed(1)} px, turned ${s.turn.toFixed(1)} degrees in a tick, against ${b.mid.toFixed(1)} and ${b.turn.toFixed(1)} with room`);
   }
-});
+}, 120000);
+
+/* Codex's case: a corner a twentieth more than her size from the screen's right edge, where she's
+   going on the side wobbling 3 px from tick to tick, while her window stands, drifts down 1.5 px a
+   tick, sways up and down by up to 2 px a tick, or drifts away from the edge 1 px a tick. (Towards
+   the edge it would carry her ends off the screen, which no way round can help.) The way is worked
+   out again every tick, so as drawn she can move a little more than its own pace: the bar is no
+   snap, steps and turns no bigger than round any corner with room at her size, on the screen. */
+test('stepping past while her window moves and where she\'s going wobbles, at 120 and 512 px, she stays on the screen and never moves or turns more in a tick than with room', () => {
+  const out: string[] = [];
+  for (const px of [120, 512]) {
+    const b = bar(px), pivot = { x: px === 512 ? 1083 : 1600 - 126, y: 600 };
+    for (const [name, move] of [['standing', undefined], ['drifting down', { x: 0, y: 1.5 }], ['swaying', (t: number) => ({ x: 0, y: 2 * Math.sin(.15 * t) })], ['drifting away', { x: -1, y: 0 }]] as const) {
+      const { e, c1, size } = corner(pivot, { w: 1600, h: 1600 }, px);
+      const seq = drive(e, c1, size, { move, at: t => ({ x: 3 * Math.sin(.2 * t), y: 0 }) });
+      if (!e.tip) out.push(`${px} ${name}: swung rather than stepping past`);
+      const off = Math.max(...seq.map(s => offScreen(s.c, s.rot, size, 1600, 1600))), s = most(seq);
+      if (off > .5) out.push(`${px} ${name}: drawn ${off.toFixed(2)} px off the screen`);
+      if (s.move > b.mid || s.turn > b.turn) out.push(`${px} ${name}: moved ${s.move.toFixed(1)} px, turned ${s.turn.toFixed(2)} degrees in a tick, against ${b.mid.toFixed(1)} and ${b.turn.toFixed(2)} with room`);
+    }
+  }
+  assert.deepStrictEqual(out, []);
+}, 120000);

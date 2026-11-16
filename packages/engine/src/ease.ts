@@ -122,9 +122,9 @@ const TIP = 64;
    between the two surfaces' open sides, that line has all of the window behind it, so she's never
    drawn in it. How far along the line she is, is kept to what's on her monitor, as far past its
    edges as she is at the ends. The path comes back as points, each with whether her monitor has
-   room for her on the line there, and how many frames it takes at most to get there from the one
+   room for her on the line there, and how many frames it's paced to take to get there from the one
    before: 17 px a frame of her own size along it, or `rate` degrees a frame of turn, whichever is
-   longer. */
+   longer. That's the way's own pace, not a promise about her drawing (see eased). */
 /* `fix`: how far her animation tips her at the end, and how high her middle is off the surface
    she's coming onto, as the turn started, in place of what they are now. */
 export function tipPath(k: Corner, ends: [Point, number, Point, number], size: Size, size0: Size, b: Bounds, rate: number, fix?: { q1: number; d1: number }) {
@@ -236,11 +236,13 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
   };
   /* Stepping past, the way is worked out afresh each frame, as the swing is, so it goes with a
      window that moves. She goes on from as far along it as she's got, speeding up from a stop and
-     slowing to one at the end, and never faster than a point of the way a frame: 17 px of her own
-     size, or 80% of the fastest the swing with room would turn her. Her own climbing and animation
-     go on on top of that, and her far end moving on only makes it take longer. A window that moves
-     her where the way no longer fits leaves her on the screen, as near the way as it has room for
-     (tipPath).
+     slowing to one at the end, no faster than a point of the way a frame: 17 px of her own size,
+     or 80% of the fastest the swing with room would turn her. That pace leaves room for what goes
+     on on top: her own climbing and animation, and the way itself shifting a little as it's worked
+     out again. The bar she keeps as drawn is no snap: in a tick she moves no more than round any
+     corner with room at her size, and turns no more than round the same corner with room (the
+     corner tests). Her far end moving on only makes it take longer. A window that moves her where
+     the way no longer fits leaves her on the screen, as near the way as it has room for (tipPath).
      How far her animation tips her at the far end, and how high off that surface she is, are taken
      as they were when the turn started, and what they've done since comes in as she gets there.
      Near its end the way's room swings far along it for a pixel's change in her reach, so taking
