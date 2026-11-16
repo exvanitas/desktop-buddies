@@ -142,6 +142,9 @@ jobs:
       # throwaway certificate, installed, checked through its alias, and uninstalled.
       - name: Store package
         if: success() || failure()
+        # Normally half a minute. It hung once till the job's limit and took the job's logs with it; a
+        # step limit fails just this step, keeps the logs, and its last AT line says where it stopped.
+        timeout-minutes: 6
         shell: pwsh
         run: apps/desktop/shell-check/store-package.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 

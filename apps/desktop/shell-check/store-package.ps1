@@ -37,6 +37,9 @@ function Expect($what, $ok, $detail = '') {
   $results.Add($line); Write-Host $line
 }
 function Note($line) { $results.Add("INFO $line"); Write-Host "INFO $line" }
+# Where the run is, with the time, on the console only: a step that hangs till the runner's limit
+# leaves its last AT line as the place it stopped.
+function At($what) { Write-Host "AT $([DateTime]::UtcNow.ToString('HH:mm:ss')) $what" }
 # Never throws: results go to the file once -Out is made, and to the console always.
 function Save-Results {
   if (-not $script:resultsFile) { Write-Host 'no store-package.txt: -Out was never made'; return }
@@ -108,6 +111,7 @@ $tmp = ''; $testName = ''; $thumb = ''; $keyName = ''; $pkgData = ''; $pkgLog = 
 
 try {
   # ---------- the parameters, and nothing started yet
+  At 'the parameters'
   if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "-Exe '$Exe' is not a file" }
   if (-not (Test-Path -LiteralPath $App -PathType Container)) { throw "-App '$App' is not a folder" }
   if ($TimeoutMs -lt 1000) { throw "-TimeoutMs $TimeoutMs is below 1000" }
@@ -141,6 +145,7 @@ try {
     Note 'setup_only stopped before anything was built: no window opened, no process started, no mouse moved'
   } else {
     # ---------- nothing in the way
+    At 'nothing in the way'
     if (Get-AppxPackage -Name $testName) { throw 'the test package is installed already' }
     if (Test-Path -LiteralPath $alias) { throw 'something has the alias already: a request would reach it' }
     if (Test-Path -LiteralPath $zipExe) { throw 'the zip is unzipped to its usual place: the MCP server would pick it' }
@@ -150,6 +155,7 @@ try {
     New-Item -ItemType Directory -Force $tmp | Out-Null
 
     # ---------- build
+    At 'build'
     $identity = Join-Path $tmp 'identity.json'
     [IO.File]::WriteAllText($identity, "{ `"name`": `"$testName`", `"publisher`": `"$publisher`", `"publisherDisplayName`": `"exvanitas`" }", (New-Object Text.UTF8Encoding $false))
     $msixFile = Join-Path $tmp 'store-check.msix'
@@ -161,6 +167,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'msix.py --family failed' }
 
     # ---------- sign, and trust the certificate
+    At 'sign'
     $cert = New-SelfSignedCertificate -Type Custom -Subject $publisher -KeyUsage DigitalSignature -FriendlyName 'Desktop Buddies shell check' `
       -Provider 'Microsoft Software Key Storage Provider' -CertStoreLocation 'Cert:\CurrentUser\My' `
       -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}') -NotAfter (Get-Date).AddDays(1)
@@ -181,6 +188,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'SignTool failed' }
 
     # ---------- install
+    At 'install'
     Add-AppxPackage -Path $msixFile
     $pkg = Get-AppxPackage -Name $testName
     $installed = [bool]$pkg
@@ -202,6 +210,7 @@ try {
     Note "assoc.registered $(if ($progs) { ($progs.GetValueNames() | Where-Object { $_ -like 'AppX*' }).Count } else { 0 }) AppX ProgIDs for .buddy"
 
     # ---------- the check's own page, inside the package
+    At 'the check page'
     Start-Process -FilePath $alias -ArgumentList @('--app-dir', "`"$probeDir`"", '--seconds', 120) | Out-Null
     $checkFile = Join-Path $pkgData 'store-check.json'
     $wrote = Wait-For 'the check page' { Test-Path -LiteralPath $checkFile } 60
@@ -225,6 +234,7 @@ try {
     Expect 'assoc.exe_refuses_a_change' ((Got 'assocSet') -match '^error .*declares \.buddy') (Got 'assocSet')
 
     # ---------- the real app, and one request through the MCP server
+    At 'the real app'
     $starts = ([regex]::Matches((Read-Log $pkgLog), 'start \S+ api')).Count
     Start-Process -FilePath $alias -ArgumentList @('--seconds', 300, '--no-manager') | Out-Null
     Expect 'mcp.app_up' (Wait-For 'the app' { ([regex]::Matches((Read-Log $pkgLog), 'hub up')).Count -ge 1 } 60) ''
@@ -254,6 +264,7 @@ try {
   Write-Host $_.ScriptStackTrace
   Save-Results
 } finally {
+  At 'cleanup'
   Tidy 'processes' {
     if ($installDir) {
       $left = @(Ours)
