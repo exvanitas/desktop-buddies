@@ -71,6 +71,11 @@ const where = (s: Surface) => s.kind === 'wall' ? (s.normal.x > 0 ? 'left' : 'ri
 export interface Seen { frame: number; pts: Pt[]; rot: number; win: number; off: number; surf: string }
 export interface Run {
   corner: Corner; went: boolean; frames: Seen[]; at: number; n: number;
+  /* the first tick after the turn that no corner was drawn going round, and whether she stepped
+     past, when `easing` says so */
+  done: number; tip: boolean;
+  /* once she's round, the most her middle moves in a tick climbing or crawling on, and turns */
+  own: { mid: number; turn: number };
   /* over the turn: window overlap frames past 0.5 px, its deepest px, off-screen frames past 0.5 px, the furthest, and the
      biggest step of any edge (px), of her middle (px) and of her turn (degrees) */
   overlap: number; deepest: number; offFrames: number; furthest: number; move: number; mid: number; turn: number;
@@ -81,7 +86,10 @@ export interface Run {
 }
 
 /* Stands her by the corner, sends her round it, and watches until the turn is well over. */
-export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld } = {}): Run {
+/* `easing.corner`: set when a tick draws her going round a corner, so the turn is watched until it's
+   verifiably over, and `easing.tip` when it steps past. Without it, a turn is taken to be over a set
+   time after it starts. */
+export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easing?: { corner: boolean; tip: boolean } } = {}): Run {
   const S = c.size;
   const { screen: sr, win: wr } = scene(c), { data, bbs } = buddy(c);
   const rects = [screen('s', sr.x, sr.y, sr.w, sr.h), windowRect('w', wr.x, wr.y, wr.w, wr.h, 1)];
@@ -101,19 +109,31 @@ export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld } = {}
   const look = () => { const f = pet.frame({ x: 0, y: 0, scale: 1 }), d = outline(f, bbs.get(f.src!)!); return { ...d, win: depthInto(d.pts, wr), off: outOf(d.pts, sr), surf: pet.P.surf as string }; };
   const frames: Seen[] = [];
   let at = -1;
-  for (let i = 0; i < 2000 && (at < 0 || i < at + Math.max(30, Math.ceil(.15 * S) + 20) + 15); i++) {
+  let done = -1, tip = false;
+  for (let i = 0; i < 2000 && (at < 0 || (o.easing ? done < 0 || i < done + 45 : i < at + Math.max(30, Math.ceil(.15 * S) + 20) + 15)); i++) {
     if (pet.P.state === 'climb' || pet.P.state === 'crawl' || pet.P.state === 'climbGo') pet.P.dur = 1e9;
     /* toward the corner till she's round it, so a turn back at the end doesn't keep her off it */
     if (at < 0 && (pet.P.state === 'climb' || pet.P.state === 'crawl')) pet.P.dir = dir;
+    if (o.easing) o.easing.corner = o.easing.tip = false;
     w.frame();
     const now = look(); frames.push({ frame: i, ...now });
     if (at < 0 && now.surf === to) at = frames.length - 1;
+    if (o.easing && at >= 0 && done < 0 && frames.length - 1 > at && !o.easing.corner) done = frames.length - 1;
+    if (o.easing?.tip) tip = true;
   }
-  const out: Run = { corner: c, went: at >= 0, frames, at, n: 0, overlap: 0, deepest: 0, offFrames: 0, furthest: 0, move: 0, mid: 0, turn: 0, ends: { win: 0, off: 0 }, wins: [], offs: [] };
+  const out: Run = { corner: c, went: at >= 0, frames, at, n: 0, overlap: 0, deepest: 0, offFrames: 0, furthest: 0, move: 0, mid: 0, turn: 0, ends: { win: 0, off: 0 }, wins: [], offs: [], done, tip, own: { mid: 0, turn: 0 } };
   if (at < 0) return out;
   /* the turn: from the tick before it starts to well after it's drawn, which takes longer for a bigger buddy */
-  const long = Math.max(30, Math.ceil(.15 * S) + 20), span = frames.slice(Math.max(0, at - 1), at + long), before = frames[Math.max(0, at - 1)]!, after = frames[Math.min(frames.length - 1, at + long + 10)]!;
-  out.ends = { win: Math.max(before.win, after.win), off: Math.max(before.off, after.off) };
+  const long = o.easing ? done - at + 2 : Math.max(30, Math.ceil(.15 * S) + 20), span = frames.slice(Math.max(0, at - 1), at + long), before = frames[Math.max(0, at - 1)]!, after = frames[Math.min(frames.length - 1, at + long + 10)]!;
+  /* Once she's verifiably round, after is the most of the 40 ticks that follow: her climbing tips
+     her in and out of the wall as it goes. */
+  const later = o.easing ? frames.slice(done + 1, done + 41) : [after];
+  out.ends = { win: Math.max(before.win, ...later.map(f => f.win)), off: Math.max(before.off, ...later.map(f => f.off)) };
+  const centre = (f: Seen) => ({ x: f.pts.reduce((a, p) => a + p.x, 0) / 4, y: f.pts.reduce((a, p) => a + p.y, 0) / 4 });
+  for (let i = 1; i < later.length; i++) {
+    const a = centre(later[i - 1]!), b = centre(later[i]!);
+    out.own.mid = Math.max(out.own.mid, Math.hypot(b.x - a.x, b.y - a.y)); out.own.turn = Math.max(out.own.turn, Math.abs(((later[i]!.rot - later[i - 1]!.rot + 540) % 360) - 180));
+  }
   out.wins = span.map(f => f.win); out.offs = span.map(f => f.off);
   const mid = (f: Seen) => ({ x: f.pts.reduce((a, p) => a + p.x, 0) / 4, y: f.pts.reduce((a, p) => a + p.y, 0) / 4 });
   const aabb = (f: Seen) => ({ x0: Math.min(...f.pts.map(p => p.x)), x1: Math.max(...f.pts.map(p => p.x)), y0: Math.min(...f.pts.map(p => p.y)), y1: Math.max(...f.pts.map(p => p.y)) });

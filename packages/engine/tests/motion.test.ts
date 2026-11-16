@@ -2,9 +2,15 @@
    ceiling, a pickup and a drop below the floor. Each is measured on her drawn box, worked out from
    the frame a view gets, the way the DOM places it. */
 import assert from 'node:assert';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import type { Surface } from '@buddies/terrain';
 import { lively, type PetFrame, type Pet } from '../src/index';
+/* whether a tick drew her going round a corner */
+const turning = vi.hoisted(() => ({ corner: false }));
+vi.mock('../src/ease', async real => {
+  const ease = await real<typeof import('../src/ease')>();
+  return { ...ease, eased: (...a: Parameters<typeof ease.eased>) => { const r = ease.eased(...a); if (r && a[0].corner) turning.corner = true; return r; } };
+});
 import { eased } from '../src/ease';
 import { depthInto, outline } from './corners';
 import { BUDDY, screen, windowRect, world, type TestWorld } from './support';
@@ -563,8 +569,8 @@ for (const ms of [16.667, 33.334, 50]) test(`let go of a wall low down, she land
 });
 
 /* How much deeper her turned box may go into the window whose corner she rounds near the screen's
-   edge than she's drawn just before the turn and once it's over: her climbing tips her into the wall
-   a little anyway. With no room to swing she steps past the corner and tips over it. Measured 0.008
+   edge than she's drawn just before the turn and in the 40 ticks once it's over: her climbing tips her
+   into the wall a little anyway. With no room to swing she steps past the corner and tips over it. Measured 0.008
    of her size at most, from 64 to 512 px; the swing she had went 0.06 to 0.11 of her size deeper. */
 const CORNER_OVERLAP = 1 / 80;
 
@@ -579,23 +585,26 @@ test('over a window\'s corner near the screen\'s edge, any size of buddy stays o
     const top = surface(w, 'w', 'floor');
     stand(w, pet, top, top.to - top.from - 70 * f); pet.go('climbGo'); w.frame();
     const depth = () => depthInto(outline(pet.frame(VP), base.bb).pts, rect);
-    let right = 0, last = mid(box(pet)), worst = 0, onto = -1, before = 0;
-    const digs: number[] = [];
-    /* till she's onto the window's side and the turn is well over */
-    for (let i = 0; i < 400 && (onto < 0 || i < onto + 60); i++) {
+    let right = 0, last = mid(box(pet)), worst = 0, onto = -1, done = -1, before = 0;
+    const digs: number[] = [], after: number[] = [];
+    /* till she's onto the window's side, the turn is verifiably drawn to its end, and her climbing
+       has gone on a while after it: it tips her into the wall and out again */
+    for (let i = 0; i < 1000 && (done < 0 || i < done + 40); i++) {
       if (pet.P.state === 'climb') { pet.P.dur = 1e9; pet.P.dir = 1; }
       if (onto < 0) before = depth();
-      w.frame();
+      turning.corner = false; w.frame();
       const b = box(pet), m = mid(b);
       right = Math.max(right, b.x1); worst = Math.max(worst, Math.hypot(m.x - last.x, m.y - last.y)); last = m;
       if (onto < 0 && pet.P.surf === 'left') onto = i;
-      if (onto >= 0) digs.push(depth());
+      if (onto >= 0 && i > onto && done < 0 && !turning.corner) done = i;
+      if (onto >= 0) (done < 0 ? digs : after).push(depth());
     }
     assert.ok(onto >= 0, `${size}: onto the window's side`);
+    assert.ok(done >= 0 && after.length >= 40, `${size}: the turn was drawn to its end, ${done - onto} ticks after she went onto the side`);
     assert.ok(right <= 1600 * f + .5, `${size}: drawn out to x ${right.toFixed(1)}, off a ${1600 * f} px screen`);
     /* a 512 px buddy squeezed round that corner moves 51.5 px in her fastest tick, a tenth of her size */
     assert.ok(worst <= Math.max(ROUND.move, size / 9), `${size}: her middle moved ${worst.toFixed(1)} px in one tick`);
-    const over = Math.max(...digs) - Math.max(before, digs[digs.length - 1]!);
+    const over = Math.max(...digs) - Math.max(before, ...after);
     if (over > CORNER_OVERLAP * size) seen.push(`${size}: drawn ${over.toFixed(1)} px deeper into the window than before and after the turn, ${(over / size).toFixed(3)} of her size`);
   }
   assert.deepStrictEqual(seen, []);

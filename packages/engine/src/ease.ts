@@ -22,10 +22,12 @@ export interface Easing {
   room?: Bounds[]; away?: Away | null;
   /* her drawn box when it started */
   size0?: Size;
-  /* round a corner with no room to swing, she steps past it and tips over, decided as it starts:
-     how fast she turns doing that, in degrees a frame, and how far along she's got, in frames of
-     the way, by when */
-  tip?: { rate: number; at: number; s: number };
+  /* Round a corner with no room to swing, she steps past it and tips over, decided as it starts:
+     her fastest turn, in degrees a frame; how fast she gets going, in frames of the way a frame
+     each frame; how far along it she's got and how fast she's going, by when; how far her animation
+     tipped her and how high off the surface she was coming onto, as it started; and the share of
+     the way she'd got by the frame before. */
+  tip?: { rate: number; a: number; at: number; v: number; now: number; fix: { q1: number; d1: number }; got: number };
 }
 /* her drawn box, in world px, and her monitor's scale */
 export interface Size { w: number; h: number; k: number }
@@ -119,36 +121,40 @@ const TIP = 64;
    she's going onto, her middle as high off that line all the way as it is at the ends. Turned
    between the two surfaces' open sides, that line has all of the window behind it, so she's never
    drawn in it. How far along the line she is, is kept to what's on her monitor, as far past its
-   edges as she is at the ends. `fits` says whether her monitor has room for her at every turn. The
-   path comes back as points, each with how many frames it takes to get there from the one before:
-   20 px a frame of her own size along it, or `rate` degrees a frame of turn, whichever is longer,
-   so she slides and turns no faster than she swings round a corner with room. */
-export function tipPath(k: Corner, ends: [Point, number, Point, number], size: Size, size0: Size, b: Bounds, rate: number) {
+   edges as she is at the ends. The path comes back as points, each with whether her monitor has
+   room for her on the line there, and how many frames it takes at most to get there from the one
+   before: 17 px a frame of her own size along it, or `rate` degrees a frame of turn, whichever is
+   longer. */
+/* `fix`: how far her animation tips her at the end, and how high her middle is off the surface
+   she's coming onto, as the turn started, in place of what they are now. */
+export function tipPath(k: Corner, ends: [Point, number, Point, number], size: Size, size0: Size, b: Bounds, rate: number, fix?: { q1: number; d1: number }) {
   const [c0, r0, c1] = ends, o = k.pivot;
   /* The path is worked out for her turned square to each surface, facing off it, and the little
      more or less her animation turns her at each end is taken from one end to the other on top. */
   const square = (n: Point, near: number) => near + norm(Math.atan2(n.x, -n.y) / DEG - near);
-  const a0 = square(k.na, r0), a1 = a0 + norm(square(k.nb, a0) - a0), d0 = norm(r0 - a0), d1 = norm(ends[3] - a1);
+  const a0 = square(k.na, r0), a1 = a0 + norm(square(k.nb, a0) - a0), d0 = norm(r0 - a0), d1 = fix ? fix.d1 : norm(ends[3] - a1);
   const side = (r: number) => ({ x: Math.cos(r * DEG), y: Math.sin(r * DEG) }), sign = dot(side(a0), k.nb) < 0 ? -1 : 1;
   /* where her middle is along the line and up off it, turned this far */
   const on = (at: Point, r: number) => { const d = { x: at.x - o.x, y: at.y - o.y }; return [sign * dot(side(r), d), dot(upOf(r), d)] as const; };
-  const [p0, q0] = on(c0, a0), [p1, q1] = on(c1, a1);
+  const [p0, q0] = on(c0, a0), [p1, qq] = on(c1, a1), q1 = fix ? fix.q1 : qq;
   const reach = (r: number, z: Size) => { const a = r * DEG, c = Math.abs(Math.cos(a)), n = Math.abs(Math.sin(a)); return { x: c * z.w / 2 + n * z.h / 2, y: n * z.w / 2 + c * z.h / 2 }; };
   /* past the monitor's left, right, top and bottom edges */
   const edges = [{ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 }], at = [-b.x, b.x + b.w, -b.y, b.y + b.h];
   const over = (c: Point, r: number, z: Size) => { const e = reach(r, z); return edges.map((n, i) => Math.max(0, dot(n, c) + (n.x ? e.x : e.y) - at[i]!)); };
   const e0 = over(c0, r0, size0), e1 = over(c1, ends[3], size);
-  const rows: { r: number; f: Point; u: Point; q: number; lo: number; hi: number }[] = [];
-  let fits = true;
+  const rows: { r: number; f: Point; u: Point; q: number; lo: number; hi: number; fits: boolean; box: Point[] }[] = [];
   for (let j = 0; j <= TIP; j++) {
     const s = j / TIP, r = a0 + (a1 - a0) * s, f = side(r), u = upOf(r), q = q0 + (q1 - q0) * s, e = reach(r + d0 + (d1 - d0) * s, size);
     let lo = -Infinity, hi = Infinity;
+    /* where on the monitor her middle can be at this turn: left, right, top and bottom */
+    const lim = edges.map((n, i) => (at[i]! + e0[i]! * (1 - s) + e1[i]! * s - (n.x ? e.x : e.y)) * (n.x + n.y));
     for (let i = 0; i < 4; i++) {
       const n = edges[i]!, a = sign * dot(n, f), room = at[i]! + e0[i]! * (1 - s) + e1[i]! * s - (n.x ? e.x : e.y) - dot(n, o) - q * dot(n, u);
-      if (a > 1e-9) hi = Math.min(hi, room / a); else if (a < -1e-9) lo = Math.max(lo, room / a); else if (room < -1e-6) fits = false;
+      if (a > 1e-9) hi = Math.min(hi, room / a); else if (a < -1e-9) lo = Math.max(lo, room / a); else if (room < -1e-6) lo = Infinity;
     }
-    if (lo > hi + 1e-6) fits = false;
-    rows.push({ r, f, u, q, lo, hi });
+    const x = lim[0]! <= lim[1]! ? [lim[0]!, lim[1]!] : [(lim[0]! + lim[1]!) / 2, (lim[0]! + lim[1]!) / 2];
+    const y = lim[2]! <= lim[3]! ? [lim[2]!, lim[3]!] : [(lim[2]! + lim[3]!) / 2, (lim[2]! + lim[3]!) / 2];
+    rows.push({ r, f, u, q, lo, hi, fits: lo <= hi + 1e-6, box: [{ x: x[0]!, y: y[0]! }, { x: x[1]!, y: y[0]! }, { x: x[1]!, y: y[1]! }, { x: x[0]!, y: y[1]! }] });
   }
   /* Kept to the room at every turn still to come: she doesn't step out past where she started only
      to step back, nor back from where she ends up only to come on again. Every limit is a least or a
@@ -156,19 +162,27 @@ export function tipPath(k: Corner, ends: [Point, number, Point, number], size: S
   const hi = rows.map(w => w.hi), lo = rows.map(w => w.lo);
   for (let j = TIP - 1; j >= 0; j--) hi[j] = Math.min(hi[j]!, hi[j + 1]!);
   for (let j = 1; j <= TIP; j++) lo[j] = Math.max(lo[j]!, lo[j - 1]!);
-  const out: { c: Point; rot: number; n: number }[] = [];
+  const out: { c: Point; rot: number; n: number; fits: boolean }[] = [];
   rows.forEach((w, j) => {
     const H = Math.max(hi[j]!, Math.min(p0, w.hi)), L = Math.min(lo[j]!, Math.max(p1, w.lo));
     /* the very ends are where she's drawn */
     const p = j === 0 ? p0 : j === TIP ? p1 : Math.min(w.hi, Math.max(w.lo, Math.min(H, Math.max(L, p0 + (p1 - p0) * j / TIP))));
-    const c = { x: o.x + sign * w.f.x * p + w.u.x * w.q, y: o.y + sign * w.f.y * p + w.u.y * w.q }, was = out[j - 1];
+    let c = { x: o.x + sign * w.f.x * p + w.u.x * w.q, y: o.y + sign * w.f.y * p + w.u.y * w.q };
+    /* A window moved her where the monitor has no room on the line: she's drawn at the corner of
+       the room she has that's nearest it. On the screen comes first; she's as clear of the window
+       as that leaves her. Where the line just touches that room, the two are the same place. */
+    if (!w.fits && j && j < TIP) {
+      const up = (q: Point) => dot(w.u, { x: q.x - o.x, y: q.y - o.y }), far = w.box.reduce((a, q) => up(q) > up(a) ? q : a), near = w.box.reduce((a, q) => up(q) < up(a) ? q : a);
+      c = { ...(up(far) < w.q ? far : near) };
+    }
+    const was = out[j - 1];
     const rot = w.r + d0 + (d1 - d0) * j / TIP;
-    out.push({ c, rot, n: was ? Math.max(Math.hypot(c.x - was.c.x, c.y - was.c.y) / (20 * size.k), Math.abs(rot - was.rot) / rate) : 0 });
+    out.push({ c, rot, n: was ? Math.max(Math.hypot(c.x - was.c.x, c.y - was.c.y) / (17 * size.k), Math.abs(rot - was.rot) / rate) : 0, fits: w.fits });
   });
-  return { path: out, fits };
+  return out;
 }
 /* The point a way into such a path, in frames of it. */
-function alongTip(path: ReturnType<typeof tipPath>['path'], at: number) {
+function alongTip(path: ReturnType<typeof tipPath>, at: number) {
   for (let j = 1; j < path.length; j++) {
     const w = path[j]!, was = path[j - 1]!;
     if (at <= w.n || j === path.length - 1) {
@@ -221,16 +235,29 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
     return { c: screen ? within(screen, m, turn, s, ends, size, size0) : m, rot: turn };
   };
   /* Stepping past, the way is worked out afresh each frame, as the swing is, so it goes with a
-     window that moves and with her animation as it goes on. She goes on from as far along it as
-     she's got, by the share of the time left that's gone by: the far end moving on as she climbs
-     or crawls speeds her a little over what's left, rather than moving her along what she's done. */
-  const tip = e.tip ? tipPath(k, ends, size, size0, screen!, e.tip.rate).path : null, all = tip ? tip.reduce((a, w) => a + w.n, 0) : 0;
-  const path = (s: number) => {
-    if (!tip) return along(s);
-    const t = e.tip!;
-    if (s !== t.s) { t.at += Math.max(0, all - t.at) * (t.s < 1 ? (s - t.s) / (1 - t.s) : 1); t.s = s; }
-    return alongTip(tip, t.at);
-  };
+     window that moves. She goes on from as far along it as she's got, speeding up from a stop and
+     slowing to one at the end, and never faster than a point of the way a frame: 17 px of her own
+     size, or 80% of the fastest the swing with room would turn her. Her own climbing and animation
+     go on on top of that, and her far end moving on only makes it take longer. A window that moves
+     her where the way no longer fits leaves her on the screen, as near the way as it has room for
+     (tipPath).
+     How far her animation tips her at the far end, and how high off that surface she is, are taken
+     as they were when the turn started, and what they've done since comes in as she gets there.
+     Near its end the way's room swings far along it for a pixel's change in her reach, so taking
+     them as they are each frame would shift the way ahead under her from tick to tick. */
+  if (e.tip) {
+    const t = e.tip, square = Math.atan2(k.nb.x, -k.nb.y) / DEG, a1 = rot + norm(square - rot), u1 = upOf(a1);
+    const now1 = { q1: dot(u1, { x: c.x - p.x, y: c.y - p.y }), d1: norm(rot - a1) };
+    const way = tipPath(k, ends, size, size0, screen!, t.rate, { q1: t.fix.q1 + (now1.q1 - t.fix.q1) * t.got, d1: t.fix.d1 + (now1.d1 - t.fix.d1) * t.got }), all = way.reduce((a, w) => a + w.n, 0);
+    const dt = Math.max(0, now - t.now);
+    t.now = now;
+    if (dt) { t.v = Math.min(1, t.v + t.a * dt, Math.sqrt(2 * t.a * Math.max(0, all - t.at))); t.at = Math.min(all, t.at + t.v * dt); }
+    if (t.at >= all) return null;
+    /* the move lasts till she's there */
+    e.n = Math.max(e.n, now - e.from + (all - t.at) + 1 / t.a + 1);
+    t.got = all > 0 ? t.at / all : 1;
+    return alongTip(way, t.at);
+  }
   /* The first time round: the way she goes, then how long it takes. Where the swing, drawn in from
      the screen's edge, would take her further into the window than she is at either end, she steps
      past and tips over instead. The move takes at least the path her middle is drawn on at 20 px a
@@ -248,21 +275,23 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
         /* only where the screen's edge drew her in: elsewhere the swing is today's, untouched */
         tight = Math.hypot(at.c.x - m.x, at.c.y - m.y) > 1e-6 && into(k, at.c, at.rot, size) > d0 * (1 - s) + d1 * s + .5;
       }
-      /* She turns no faster than she'd swing round with room, over the time that swing would take,
-         and steps past only where her monitor has room for it at every turn. */
+      /* The swing with room would take n frames and turn her fastest at 1.5 times its average; she
+         turns no faster than 80% of that, leaving room for her animation's own sway, and gets going
+         and stops as gently as it does. She steps past only where her monitor has room for it at
+         every turn. */
       let swing = 0;
       for (let i = 1; tight && i <= PATH; i++) { const a = swung((i - 1) / PATH).m, b = swung(i / PATH).m; swing += Math.hypot(b.x - a.x, b.y - a.y); }
-      const rate = Math.max(1, Math.min(7.5, Math.abs(norm(rot - e.rot)) / Math.max(e.n, swing / (20 * size.k)))), way = tight ? tipPath(k, ends, size, size0, screen!, rate) : null;
-      if (way && way.fits) { e.tip = { rate, at: 0, s: 0 }; e.n = Math.max(e.n, way.path.reduce((a, w) => a + w.n, 0)); return eased(e, now, c, rot, size); }
+      const n = Math.max(e.n, swing / (20 * size.k)), rate = Math.max(1, 1.2 * Math.abs(norm(rot - e.rot)) / n), way = tight ? tipPath(k, ends, size, size0, screen!, rate) : null;
+      if (way && way.every(w => w.fits)) { const square = Math.atan2(k.nb.x, -k.nb.y) / DEG, a1 = rot + norm(square - rot), u1 = upOf(a1); e.tip = { rate, a: Math.min(.5, 4 / n), at: 0, v: 0, now, fix: { d1: norm(rot - a1), q1: dot(u1, { x: c.x - p.x, y: c.y - p.y }) }, got: 0 }; return eased(e, now, c, rot, size); }
     }
-    const room = e.room || [], out = (s: number) => { const at = path(s); return off(at.c, at.rot, size, room); };
+    const room = e.room || [], out = (s: number) => { const at = along(s); return off(at.c, at.rot, size, room); };
     const far = Math.max(off(e.c, e.rot, size0, room), off(c, rot, size, room)) + 1;
-    let len = 0, was = path(0).c;
+    let len = 0, was = along(0).c;
     for (let i = 1; i <= PATH; i++) {
       if (out(i / PATH) > far) { e.n = 0; return null; }
-      const at = path(i / PATH).c; len += Math.hypot(at.x - was.x, at.y - was.y); was = at;
+      const at = along(i / PATH).c; len += Math.hypot(at.x - was.x, at.y - was.y); was = at;
     }
     if (len / (20 * size.k) > e.n) { e.n = len / (20 * size.k); return eased(e, now, c, rot, size); }
   }
-  return path(smooth(Math.max(0, u)));
+  return along(smooth(Math.max(0, u)));
 }
