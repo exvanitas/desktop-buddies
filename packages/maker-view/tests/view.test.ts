@@ -1171,6 +1171,51 @@ test('the main image picker is for the buddy it was opened on, even if another o
   assert.deepStrictEqual(v.acts, [['a', 'love']]);
 });
 
+/* A picker's files come back long after it opened, and another buddy can be open by then, one the
+   app opened from elsewhere, say. They go to whoever, and whichever pose, the picker opened on. */
+const two = () => [buddy({ id: 'a', name: 'Ann' }), buddy({ id: 'b', character: 'cbo', name: 'Bo' })];
+
+test('frames picked go to the buddy and pose the picker opened on, even if another opens meanwhile', async () => {
+  const v = await mount({ pets: two() });
+  v.maker.select('a');
+  v.pickPose('sit');
+  v.press('Add frames');
+  const [ann, bo] = v.maker.state.pets as [MakerBuddy, MakerBuddy];
+  v.maker.adopt(bo);
+  await v.choose('frames', file('f.png'));
+  assert.deepStrictEqual(ann.poses.sit?.frames.map(f => f.src), [png('f.png')]);
+  assert.deepStrictEqual(bo.poses, {});
+  assert.strictEqual(v.maker.selected, 'b');
+});
+
+test('generated images go to the buddy the picker opened on, even if another opens meanwhile', async () => {
+  const v = await mount({ pets: two() });
+  v.maker.select('a');
+  v.sheet('kit');
+  v.click('[data-k="upload-generated"]');
+  const [ann, bo] = v.maker.state.pets as [MakerBuddy, MakerBuddy];
+  v.maker.adopt(bo);
+  await v.choose('generated', file('walk_1.png'));
+  assert.strictEqual(ann.poses.walk?.frames.length, 1);
+  assert.deepStrictEqual(bo.poses, {});
+});
+
+test('a pick for a buddy deleted meanwhile changes nobody, and says so', async () => {
+  for (const [kind, open] of [['frames', (v: Awaited<ReturnType<typeof mount>>) => { v.pickPose('sit'); v.press('Add frames'); }],
+    ['generated', (v: Awaited<ReturnType<typeof mount>>) => { v.sheet('kit'); v.click('[data-k="upload-generated"]'); }]] as const) {
+    const v = await mount({ pets: two() });
+    v.maker.select('a');
+    open(v);
+    v.maker.remove();
+    const [bo] = v.maker.state.pets as [MakerBuddy];
+    await v.choose(kind, file('walk_1.png'));
+    assert.deepStrictEqual(v.maker.state.pets.map(p => p.id), ['b'], kind);
+    assert.deepStrictEqual(bo.poses, {}, kind);
+    assert.match(v.toasts.at(-1) ?? '', /Ann isn't here any more/, kind);
+    destroy?.(); destroy = null; document.body.replaceChildren();
+  }
+});
+
 test('Look has her Lift for the floor, walls and ceilings, each in px at her size', async () => {
   const v = await mount();
   v.sheet('look');

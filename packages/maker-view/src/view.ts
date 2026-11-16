@@ -69,19 +69,21 @@ export function createMakerView(root: HTMLElement, maker: Maker, host: MakerView
     return run.finally(() => { working--; workingEl.hidden = working === 0; end(); });
   }
 
-  /* Who the main image picker was opened for. Its file comes back later, and by then another buddy
-     can be open, one the app opened from elsewhere, say. A paste or a drop chooses as it happens, and
-     the picker as it's opened. Unset, whoever is open when the file comes. */
-  let mainFor: MakerBuddy | null | undefined;
+  /* Who, and which pose, each picker was opened for. Its files come back later, and by then another
+     buddy can be open, one the app opened from elsewhere, say. A paste or a drop chooses as it
+     happens, and a picker as it's opened. Not opened here, whoever is open when the files come. */
+  const askedFor = new Map<string, { p: MakerBuddy | null; pose: PoseKey | null }>();
+  const askedNow = () => ({ p: maker.current() ?? null, pose: maker.openPose });
+  const take = (kind: string) => { const a = askedFor.get(kind) ?? askedNow(); askedFor.delete(kind); return a; };
   const picking = createPickers({
-    main: f => { const p = mainFor; mainFor = undefined; void busy(() => maker.setMainImage(f, p)); },
+    main: f => { const { p } = take('main'); void busy(() => maker.setMainImage(f, p)); },
     buddies: fs => void busy(() => maker.addFiles(fs)),
-    frames: fs => { const p = maker.current(); if (p) void busy(() => maker.addFrames(p, fs)); },
-    generated: fs => void busy(() => maker.importGenerated(fs)),
+    frames: fs => { const { p, pose } = take('frames'); if (p && pose) void busy(() => maker.addFrames(p, fs, pose)); },
+    generated: fs => { const { p } = take('generated'); void busy(() => maker.importGenerated(fs, p)); },
     shimeji: fs => void busy(() => maker.importShimeji(fs)),
     buddyFile: f => void busy(() => maker.importBuddy(f))
   });
-  const pickers: Pickers = { ...picking, open: kind => { if (kind === 'main') mainFor = maker.current() ?? null; picking.open(kind); } };
+  const pickers: Pickers = { ...picking, open: kind => { askedFor.set(kind, askedNow()); picking.open(kind); } };
   const pop = h('div', { class: 'pop' }), popover = createPopover(pop);
 
   const v: View = {
@@ -218,7 +220,7 @@ export function createMakerView(root: HTMLElement, maker: Maker, host: MakerView
     }
     const key = pose!, was = p.poses[key], copy = was && { ...was, frames: [...was.frames] }, n = was ? was.frames.length : 0;
     maker.pickPose(key);
-    await maker.addFrames(p, files);
+    await maker.addFrames(p, files, key);
     const now = p.poses[key];
     return now && (now !== was || now.frames.length !== n) ? () => maker.restorePose(p, key, copy) : null;
   }

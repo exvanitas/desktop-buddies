@@ -28,9 +28,9 @@ export function createImports(s: Session, deps: MakerDeps, roster: Adding) {
     toast(`Imported ${Object.keys(d.poses).length + 1} poses — tweak any in Pose frames`);
   }
 
-  /* Files named after poses, onto the selected buddy. */
-  async function importGenerated(files: MakerFile[]) {
-    const p = s.current(); if (!p) return;
+  /* Files named after poses, onto `p`, the buddy they were asked for. Left out, the selected one. */
+  async function importGenerated(files: MakerFile[], p: MakerBuddy | null = s.current() ?? null) {
+    if (!p) return;
     const groups: Record<string, MakerFile[]> = {}, unknown: string[] = [];
     files.filter(f => /^image\//.test(f.type)).forEach(f => { const k = poseFromFile(f.name); if (k) (groups[k] = groups[k] || []).push(f); else unknown.push(f.name); });
     if (!Object.keys(groups).length) return toast('Name files after poses, e.g. walk_1.png');

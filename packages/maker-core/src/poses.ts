@@ -94,9 +94,10 @@ export function createPoses(s: Session, deps: MakerDeps) {
     closePose(pet: MakerBuddy) { s.openPose = null; poses(pet); },
     /* For a view that always has one pose in hand. The view asked, so nothing is announced. */
     pickPose(key: PoseKey | null) { s.openPose = key; },
-    /* onto the pose open when they were picked, however long they take to read */
-    async addFrames(p: MakerBuddy, chosen: MakerFile[]) {
-      const key = s.openPose; if (!key) return;
+    /* onto `key`, the pose open when they were asked for, however long they take to read. Left out,
+       the pose open now. */
+    async addFrames(p: MakerBuddy, chosen: MakerFile[], key: PoseKey | null = s.openPose) {
+      if (!key) return;
       const files = chosen.filter(f => /^image\//.test(f.type)).sort((a, b) => art.natSort(a.name, b.name));
       if (!files.length) return;
       const srcs: string[] = []; for (const f of files) srcs.push((await readImage(f))!);
