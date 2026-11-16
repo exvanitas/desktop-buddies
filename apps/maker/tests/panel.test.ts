@@ -274,3 +274,17 @@ test('drawing a buddy with no kit adds no kit to her, or to what is saved', asyn
   await tick();
   assert.ok(!('kit' in (await v.store.load()).pets![0]!));
 });
+
+/* The picker's file comes back later, and something slower, like a sample still being made, can
+   select another buddy meanwhile. The picture goes to whoever the picker was opened for. */
+test('a main image goes to the buddy the picker was opened on, whoever is selected by then', async () => {
+  const v = await mount([pet(), pet({ id: 'b', character: 'cb', name: 'Bo' })]);
+  const [ann, bo] = v.maker.state.pets as [MakerBuddy, MakerBuddy], was = { ann: ann.base, bo: bo.base };
+  v.maker.select('a');
+  v.$<HTMLInputElement>('.pn-av input').click();
+  v.maker.select('b');
+  await v.pick('.pn-av input', { name: 'new.png', type: 'image/png', text: async () => '' });
+  assert.notStrictEqual(ann.base, was.ann, 'Ann has the new picture');
+  assert.strictEqual(bo.base, was.bo, 'Bo is as she was');
+  assert.strictEqual(v.maker.selected, 'b');
+});

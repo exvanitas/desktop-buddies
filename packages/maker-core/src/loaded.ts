@@ -12,35 +12,45 @@ type Fields = Record<string, unknown>;
 const isObject = (v: unknown): v is Fields => v !== null && typeof v === 'object' && !Array.isArray(v);
 const passes = (v: Fields) => { try { check(v); return true; } catch { return false; } };
 
-/* Fields checked whole, and those checked one entry at a time, so one bad pose doesn't take the rest. */
-const WHOLE = ['character', 'name', 'size', 'lift', 'faces', 'ref', 'signature'] as const;
-const EACH = ['poses', 'lines', 'kit'] as const;
+/* Stands in for her main image while her other parts are tried, so a big picture isn't read again
+   for each one. Hers is checked on its own first. */
+const STAND_IN = { src: 'data:image/png;base64,AA==', bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
+
+/* `v` if it passes `ok`, or else whatever of it does: an object each entry that passes, a list each
+   item that passes and as many as the list may hold. Undefined if nothing does. `cut` hears of
+   anything left out, which is so once `v` fails. */
+function prune(v: unknown, ok: (x: unknown) => boolean, cut: () => void): unknown {
+  if (ok(v)) return v;
+  cut();
+  if (Array.isArray(v)) {
+    const kept = v.map(x => prune(x, y => ok([y]), cut)).filter(x => x !== undefined);
+    while (kept.length && !ok(kept)) kept.pop();
+    return kept.length ? kept : undefined;
+  }
+  if (!isObject(v)) return undefined;
+  const out: Fields = {};
+  /* Each part is tried alone, so a big one is read once, and then beside what's kept, for a part that
+     needs another, as a pose's speed needs her frames. Again while anything new is kept. */
+  for (let more = true; more;) {
+    more = false;
+    for (const [k, x] of Object.entries(v)) {
+      if (Object.hasOwn(out, k)) continue;
+      const y = prune(x, z => ok({ [k]: z }), cut) ?? (ok({ ...out, [k]: x }) ? x : undefined);
+      if (y !== undefined) { out[k] = y; more = true; }
+    }
+  }
+  return Object.keys(out).length && ok(out) ? out : undefined;
+}
 
 /* Her, rebuilt from the parts that pass, and whether anything with a value was left out. Null if her
    main image doesn't pass, since there's nothing to show without it. */
 export function mend(raw: Fields): { buddy: Buddy; lost: boolean } | null {
-  const { id: _, ...v } = raw;
-  try { return { buddy: check(v), lost: false }; } catch { /* mended below */ }
-  if (!passes({ base: v.base })) return null;
-  const out: Fields = { base: v.base };
+  const { id: _, base, ...rest } = raw;
+  try { return { buddy: check({ ...rest, base }), lost: false }; } catch { /* mended below */ }
+  if (!passes({ base })) return null;
   let lost = false;
-  for (const k of WHOLE) if (v[k] !== undefined) { if (passes({ base: v.base, [k]: v[k] })) out[k] = v[k]; else lost = true; }
-  for (const k of EACH) {
-    if (v[k] === undefined) continue;
-    if (!isObject(v[k])) { lost = true; continue; }
-    const kept: Fields = {};
-    for (const [key, x] of Object.entries(v[k])) {
-      if (passes({ base: v.base, [k]: { [key]: x } })) kept[key] = x;
-      /* a pose whose speed or scale is out of range keeps her frames */
-      else if (k === 'poses' && isObject(x) && passes({ base: v.base, poses: { [key]: { frames: x.frames } } })) {
-        lost = true; kept[key] = { frames: x.frames };
-        for (const f of ['fps', 'scale']) if (x[f] !== undefined && passes({ base: v.base, poses: { [key]: { frames: [], [f]: x[f] } } })) (kept[key] as Fields)[f] = x[f];
-      } else lost = true;
-    }
-    if (k === 'poses' || Object.keys(kept).length) out[k] = kept;
-  }
-  for (const k of Object.keys(v)) if (k !== 'base' && v[k] !== undefined && !(WHOLE as readonly string[]).includes(k) && !(EACH as readonly string[]).includes(k)) lost = true;
-  try { return { buddy: check(out), lost }; } catch { return null; }
+  const kept = prune(rest, x => isObject(x) && passes({ ...x, base: STAND_IN }), () => { lost = true; });
+  try { return { buddy: check({ ...kept as Fields | undefined, base }), lost }; } catch { return null; }
 }
 
 const DEFAULTS = { bubbles: true, chatter: 'normal' as Chatter, names: true };

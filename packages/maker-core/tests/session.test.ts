@@ -212,3 +212,28 @@ test('good buddies load with no word said', async () => {
   await h.maker.start();
   assert.deepStrictEqual(h.toasts, []);
 });
+
+/* Mending goes down to the smallest part that can fail on its own: a line, a frame, a surface. */
+test('a damaged line leaves the good lines around it', async () => {
+  const h = harness({ saved: { started: true, pets: [bad({ lines: { chat: ['Keep me', 7, 'Keep me too'], hello: ['Hi'] } })] } });
+  await h.maker.start();
+  assert.deepStrictEqual(h.maker.state.pets[0]!.lines, { chat: ['Keep me', 'Keep me too'], hello: ['Hi'] });
+  assert.strictEqual(h.toasts.length, 1);
+  assert.deepStrictEqual((await h.store.load()).pets![0]!.lines, { chat: ['Keep me', 'Keep me too'], hello: ['Hi'] });
+});
+
+test('a damaged frame leaves the pose her good frames, her speed and her scale', async () => {
+  const h = harness({ saved: { started: true, pets: [bad({ poses: { walk: { frames: [frame('w1'), { src: 'nope', bb: { x0: 0, y0: 0, x1: 1, y1: 1 } }, frame('w2')], fps: 6, scale: 1.2 } } })] } });
+  await h.maker.start();
+  assert.deepStrictEqual(h.maker.state.pets[0]!.poses, { walk: { frames: [frame('w1'), frame('w2')], fps: 6, scale: 1.2 } });
+  assert.strictEqual(h.toasts.length, 1);
+});
+
+test('a damaged surface or signature field leaves the rest of it', async () => {
+  const h = harness({ saved: { started: true, pets: [bad({ lift: { floor: .1, wall: 999 }, signature: { line: 'Keep this', weight: 999 } })] } });
+  await h.maker.start();
+  const p = h.maker.state.pets[0]!;
+  assert.deepStrictEqual(p.lift, { floor: .1 });
+  assert.deepStrictEqual(p.signature, { line: 'Keep this' });
+  assert.strictEqual(h.toasts.length, 1);
+});

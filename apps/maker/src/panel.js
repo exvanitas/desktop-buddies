@@ -266,7 +266,11 @@ export function createPanel(box, maker, opt) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name;
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
-  $('.pn-av input').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; maker.setMainImage(f); });
+  /* Who the picker was opened for: something slower, like a sample still being made, can select
+     another buddy before the file comes back. Unset, whoever is selected then. */
+  let mainFor;
+  $('.pn-av input').addEventListener('click', () => { mainFor = maker.current() ?? null; });
+  $('.pn-av input').addEventListener('change', e => { const f = e.target.files[0], p = mainFor; e.target.value = ''; mainFor = undefined; maker.setMainImage(f, p); });
   $('.pn-name').addEventListener('input', e => { const p = maker.current(); if (!p) return; maker.setName(e.target.value); const c = petsEl.querySelector('[aria-selected="true"] span'); if (c) c.textContent = p.name || 'No name'; });
   $('.pn-size').addEventListener('input', e => { const p = maker.current(); if (!p) return; maker.setSize(+e.target.value); $('.pn-rng output').textContent = p.size; });
   box.querySelectorAll('.pn-faces button').forEach(b => b.onclick = () => maker.setFaces(b.dataset.v));
