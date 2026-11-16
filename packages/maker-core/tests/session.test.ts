@@ -140,3 +140,75 @@ test('a listener can stop listening', async () => {
 test('the memory store starts from what it is given', async () => {
   assert.deepStrictEqual(await memoryStore({ bubbles: false }).load(), { bubbles: false });
 });
+
+/* What a store hands back is checked as a .buddy file is: an older Maker, or a broken one, may have
+   kept anything. */
+const bad = (more: Record<string, unknown>) => ({ ...buddy(), ...more }) as unknown as ReturnType<typeof buddy>;
+
+test('a saved buddy a file could not hold is dropped, the rest kept, and the person told once', async () => {
+  const h = harness({ saved: { started: true, pets: [buddy({ id: 'a' }), bad({ id: 'b', name: 'Broken', base: { src: 'not an image', bb: { x0: 0, y0: 0, x1: 1, y1: 1 } } })] } });
+  await h.maker.start();
+  assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['a']);
+  assert.strictEqual(h.toasts.length, 1);
+  assert.match(h.toasts[0]!, /Broken/);
+  assert.deepStrictEqual((await h.store.load()).pets!.map(p => p.id), ['a']);
+});
+
+test('a saved buddy with one damaged part keeps the rest of her, and says so', async () => {
+  const walk = { frames: [frame('w')], fps: 6, scale: 1 };
+  const h = harness({ saved: { started: true, pets: [bad({ name: 'Bo', size: 9999, poses: { walk, sit: { frames: [frame('s')], fps: 4, scale: 40 }, nope: walk }, lines: { chat: ['hi'], hello: [7] }, kit: { mode: 'loud', personality: 'kind' }, stray: 1 })] } });
+  await h.maker.start();
+  const p = h.maker.state.pets[0]!;
+  assert.strictEqual(p.name, 'Bo');
+  assert.ok(!('size' in p) && !('stray' in p));
+  assert.deepStrictEqual(p.poses, { walk, sit: { frames: [frame('s')], fps: 4 } });
+  assert.deepStrictEqual(p.lines, { chat: ['hi'] });
+  assert.deepStrictEqual(p.kit, { personality: 'kind' });
+  assert.strictEqual(h.toasts.length, 1);
+  assert.match(h.toasts[0]!, /Bo/);
+});
+
+test('a name that is no name is left out, quietly when there was nothing there', async () => {
+  const h = harness({ saved: { started: true, pets: [bad({ id: 'u', name: undefined }), bad({ id: 'n', name: 42 })] } });
+  await h.maker.start();
+  const [u, n] = h.maker.state.pets;
+  assert.ok(u && !('name' in u));
+  assert.ok(n && !('name' in n));
+  assert.strictEqual(h.toasts.length, 1);
+  assert.doesNotMatch(h.toasts[0]!, /undefined|42/);
+});
+
+test('what is not a buddy at all, and a list that is not a list, never stop the Maker', async () => {
+  const h = harness({ saved: { started: true, pets: [null, 5, buddy({ id: 'a' })] } as unknown as Saved });
+  await h.maker.start();
+  assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['a']);
+  assert.strictEqual(h.toasts.length, 1);
+  const g = harness({ saved: { started: true, pets: 'lots' } as unknown as Saved });
+  await g.maker.start();
+  assert.deepStrictEqual(g.maker.state.pets, []);
+  assert.strictEqual(g.toasts.length, 1);
+});
+
+test('two saved buddies with one id, or none, each get their own', async () => {
+  const h = harness({ saved: { started: true, pets: [buddy({ id: 'a', name: 'One' }), buddy({ id: 'a', name: 'Two' }), bad({ id: 7, name: 'Three' })] } });
+  await h.maker.start();
+  const ids = h.maker.state.pets.map(p => p.id);
+  assert.deepStrictEqual(h.maker.state.pets.map(p => p.name), ['One', 'Two', 'Three']);
+  assert.strictEqual(new Set(ids).size, 3);
+  assert.ok(ids.every(id => typeof id === 'string'));
+  assert.deepStrictEqual(h.toasts, []);
+});
+
+test('settings saved as something they cannot be come back as their defaults', async () => {
+  const h = harness({ saved: { started: true, pets: [], bubbles: 'yes', names: 0, chatter: 'loud' } as unknown as Saved });
+  await h.maker.start();
+  const { bubbles, chatter, names } = h.maker.state;
+  assert.deepStrictEqual({ bubbles, chatter, names }, { bubbles: true, chatter: 'normal', names: true });
+  assert.deepStrictEqual(h.toasts, []);
+});
+
+test('good buddies load with no word said', async () => {
+  const h = harness({ saved: OLD });
+  await h.maker.start();
+  assert.deepStrictEqual(h.toasts, []);
+});

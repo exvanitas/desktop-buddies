@@ -1,6 +1,7 @@
 /* What every part of the Maker shares: the state, what's selected, and saving. */
 import { newCharacter, type PoseKey } from '@buddies/buddy-file';
-import type { Change, MakerBuddy, MakerDeps, MakerState, Saved } from './deps';
+import type { Change, MakerBuddy, MakerDeps, MakerState } from './deps';
+import { fromSaved } from './loaded';
 
 export const SAVE_DELAY = 250;
 const BROWSER_WARNING = "Couldn't save in this browser — buddies will reset on reload";
@@ -15,7 +16,7 @@ export function createSession(deps: MakerDeps) {
     catch (e) { if (!warned) { warned = true; if (saveWarning !== null) toast(saveWarning); } }
   }
   const put = () => { world.sync(session.state); void persist(session.state); };
-  async function load(): Promise<Saved> { try { return await store.load(); } catch (e) { return {}; } }
+  async function load(): Promise<unknown> { try { return await store.load(); } catch (e) { return {}; } }
 
   const session = {
     /* not there until start() has loaded it */
@@ -36,7 +37,9 @@ export function createSession(deps: MakerDeps) {
     /* Nobody selected, ready for a new buddy. */
     deselect() { session.selected = null; session.openPose = null; session.changed({ scope: 'all' }); },
     async start() {
-      session.state = Object.assign({ pets: [], bubbles: true, chatter: 'normal', names: true } as MakerState, await load());
+      /* Checked as a file is: a buddy that can't be kept goes, and the person hears so, once. */
+      const { state, told } = fromSaved(await load(), session.uid);
+      session.state = state;
       const S = session.state;
       /* A first run holds no buddy: the samples are offered, never added. */
       S.started = true;
@@ -44,6 +47,7 @@ export function createSession(deps: MakerDeps) {
       session.save(true);
       session.selected = S.pets[0] ? S.pets[0].id : null;
       session.changed({ scope: 'all' });
+      if (told) toast(told);
     }
   };
   return session;

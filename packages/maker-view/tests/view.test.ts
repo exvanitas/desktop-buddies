@@ -949,6 +949,13 @@ test('the Prompt kit fields reach the buddy, and tags or text changes what shows
   assert.strictEqual(v.pet().kit!.styleTags, 'chibi');
 });
 
+test('drawing the Prompt kit for a buddy with no kit adds none to her', async () => {
+  const v = await mount();
+  v.sheet('kit');
+  assert.ok(v.q('[data-kit="quality"]'), 'the kit is drawn');
+  assert.ok(!('kit' in v.pet()));
+});
+
 test('kit fields hold to what a file takes', async () => {
   const v = await mount();
   v.sheet('kit');
@@ -1148,6 +1155,20 @@ test('Look changes the name, the facing, the size and the main image', async () 
   await v.choose('main', file('new.png'));
   assert.strictEqual(v.pet().base.src, png('new.png'));
   assert.ok(v.q('.who .art img')!.getAttribute('src') === png('new.png'));
+});
+
+test('the main image picker is for the buddy it was opened on, even if another opens before the file comes back', async () => {
+  const v = await mount({ pets: [buddy({ id: 'a', name: 'Ann' }), buddy({ id: 'b', character: 'cbo', name: 'Bo' })] });
+  v.maker.select('a');
+  v.sheet('look');
+  v.click('[data-change-main]');
+  const [ann, bo] = v.maker.state.pets as [MakerBuddy, MakerBuddy];
+  v.maker.adopt(bo);
+  await v.choose('main', file('new.png'));
+  assert.strictEqual(ann.base.src, png('new.png'));
+  assert.strictEqual(bo.base.src, png('base'));
+  assert.strictEqual(v.maker.selected, 'b');
+  assert.deepStrictEqual(v.acts, [['a', 'love']]);
 });
 
 test('Look has her Lift for the floor, walls and ceilings, each in px at her size', async () => {

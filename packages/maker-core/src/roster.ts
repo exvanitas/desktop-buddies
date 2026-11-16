@@ -2,13 +2,13 @@
 import { LIFTS, LIMIT, newCharacter, type Buddy, type Frame, type ImageRef, type Lift } from '@buddies/buddy-file';
 import { canDo, type Chatter } from '@buddies/engine';
 import type { MakerBuddy, MakerDeps, MakerFile } from './deps';
+import { CHATTER } from './loaded';
 import type { SampleKind } from './samples';
 import type { Session } from './session';
 
 export const MAX = 8;
 /* A buddy's size as its file allows it. */
 const SIZE = { min: 16, max: 512 };
-const CHATTER: readonly string[] = ['off', 'low', 'normal', 'high'];
 
 /* What Try an action and Everyone offer, as [action, label]. */
 export const ACTS: readonly [string, string][] = [['love', 'Hearts'], ['wave', 'Wave'], ['cry', 'Cry'], ['angry', 'Angry'], ['shy', 'Shy'], ['sleep', 'Sleep'],
@@ -36,6 +36,13 @@ export function createRoster(s: Session, deps: MakerDeps) {
     addPet({ ...(name ? { name } : {}), base: r.frame, ref: r.ref, size: r.photo ? 110 : 120 });
   }
   function setBase(p: MakerBuddy, r: { frame: Frame; ref: ImageRef }) { p.base = r.frame; p.ref = r.ref; s.save(true); all(); }
+  /* Her new main image, however it came, and the same hearts for it. `still` says where the picture is
+     if she's gone by the time it's ready. */
+  async function newMain(p: MakerBuddy, src: string, still: string) {
+    const r = await art.processBase(src); if (!r) return;
+    if (!s.state.pets.includes(p)) return toast(`${p.name || 'That buddy'} isn't here any more, so the picture went nowhere. ${still}`);
+    setBase(p, r); world.act(p.id, 'love');
+  }
 
   return {
     addPet, addFromSrc,
@@ -75,22 +82,18 @@ export function createRoster(s: Session, deps: MakerDeps) {
       s.save(); field();
     },
     setFaces(faces: string) { const p = s.current(); if (!p || (faces !== 'left' && faces !== 'right')) return; p.faces = faces; s.save(true); all(); },
-    /* A new main image from the picker, for the buddy selected when it was asked for, or nobody. */
-    async setMainImage(file: MakerFile | null | undefined) {
-      const p = s.current(), src = await readImage(file); if (!src) return;
-      const r = await art.processBase(src);
-      if (!r || !p) return;
-      if (!s.state.pets.includes(p)) return toast(`${p.name || 'That buddy'} isn't here any more, so the picture went nowhere. It's still on your disk.`);
-      setBase(p, r); world.act(p.id, 'love');
+    /* A new main image from the picker, for the buddy it was asked for: `p`, given when the picker
+       was opened, as its file comes back later. Left out, whoever is selected now. Null is nobody. */
+    async setMainImage(file: MakerFile | null | undefined, p: MakerBuddy | null = s.current() ?? null) {
+      const src = await readImage(file); if (!src || !p) return;
+      await newMain(p, src, "It's still on your disk.");
     },
-    /* A pasted image swaps the selected buddy's main image, or is a new buddy if none is selected. */
+    /* A pasted image swaps the selected buddy's main image, or is a new buddy if none is selected.
+       Who it's for is chosen as it's pasted, as the picker's is as it's opened. */
     async pasteImage(file: MakerFile | null | undefined) {
       const p = s.current(), src = await readImage(file); if (!src) return;
       if (!p) return addFromSrc(src);
-      const r = await art.processBase(src);
-      if (!r) return;
-      if (!s.state.pets.includes(p)) return toast(`${p.name || 'That buddy'} isn't here any more, so the picture went nowhere. Paste it again if you still want it.`);
-      setBase(p, r);
+      await newMain(p, src, 'Paste it again if you still want it.');
     },
     /* what's on offer depends on the art */
     canAct: (p: MakerBuddy, action: string) => canDo(p, action),
@@ -100,7 +103,7 @@ export function createRoster(s: Session, deps: MakerDeps) {
     actAll(action: string) { world.actAll?.(action); },
     toggleBubbles() { s.state.bubbles = s.state.bubbles === false; s.save(true); all(); },
     toggleNames() { s.state.names = s.state.names === false; s.save(true); all(); },
-    setChatter(level: string) { if (!CHATTER.includes(level)) return; s.state.chatter = level as Chatter; s.save(true); all(); },
+    setChatter(level: string) { if (!CHATTER.includes(level as Chatter)) return; s.state.chatter = level as Chatter; s.save(true); all(); },
     exportPage() { s.save(true); return deps.exportPage(s.state); }
   };
 }

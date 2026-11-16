@@ -153,15 +153,28 @@ test('her lift for each surface changes on the slow save, kept short, in one ord
   assert.strictEqual(h.changes.length, n, 'already none: nothing changed');
 });
 
-/* State an older Maker kept, which the file never checked: an entry that does nothing goes the
-   first time anyone sets her lift, even to what it already does. */
+/* State an older Maker kept, which the file never checked, is checked as she loads, so an entry
+   that does nothing is gone by then, and nobody's told: nothing she does changed. */
+test('a lift of 0 saved by an older Maker is gone once she loads', async () => {
+  for (const lift of [{ floor: 0 }, { wall: -0 }, {}, { floor: 0, wall: 0, ceiling: 0 }]) {
+    const h = await started([buddy({ lift })]);
+    assert.ok(!('lift' in h.maker.current()!), JSON.stringify(lift));
+    assert.deepStrictEqual(h.toasts, []);
+  }
+  const h = await started([buddy({ lift: { floor: 0, wall: .1 } })]);
+  assert.deepStrictEqual(h.maker.current()!.lift, { wall: .1 });
+});
+
+/* One that gets there anyway: an entry that does nothing goes the first time anyone sets her lift,
+   even to what it already does. */
 test('a lift of 0 already there is cleared by setting it, and so is an empty one', async () => {
   for (const [lift, surface, share, left] of [
     [{ floor: 0 }, 'floor', 0, undefined], [{ wall: -0 }, 'wall', 0, undefined], [{}, 'ceiling', 0, undefined],
     [{ floor: 0, wall: 0, ceiling: 0 }, 'wall', 0, undefined], [{ floor: 0, wall: .1 }, 'wall', .1, '{"wall":0.1}'],
     [{ floor: 0, wall: .1 }, 'floor', -0, '{"wall":0.1}'], [{ ceiling: 0 }, 'wall', .2, '{"wall":0.2}']
   ] as const) {
-    const h = await started([buddy({ lift: { ...lift } })]);
+    const h = await started();
+    h.maker.current()!.lift = { ...lift };
     h.maker.setLift(surface, share);
     const p = h.maker.current()!, what = JSON.stringify(lift) + ' ' + surface;
     if (left === undefined) assert.ok(!('lift' in p), what); else assert.strictEqual(JSON.stringify(p.lift), left, what);
@@ -213,11 +226,33 @@ test('a main image that is not an image changes nothing', async () => {
   assert.strictEqual(h.saves(), 0);
 });
 
-test('a paste swaps the selected main image, with no show', async () => {
+test('a paste swaps the selected main image, with the same hearts as the picker', async () => {
   const h = await started();
   await h.maker.pasteImage(file('clip.png'));
-  assert.strictEqual(h.maker.current()!.base.src, png('clip.png'));
+  const p = h.maker.current()!;
+  assert.strictEqual(p.base.src, png('clip.png'));
   assert.strictEqual(h.saves(), 1);
+  assert.deepStrictEqual(h.acts, [[p.id, 'love']]);
+});
+
+/* A picker's file comes back long after it was asked for, and another buddy can be open by then: one
+   the app opened from elsewhere, say. It goes to whoever it was asked for, as a paste does. */
+test('a picked main image goes to the buddy the picker was opened for', async () => {
+  const h = await started(pets(2)), [one, two] = h.maker.state.pets as [ReturnType<typeof buddy>, ReturnType<typeof buddy>];
+  const before = two.base.src;
+  h.maker.select(two.id);
+  await h.maker.setMainImage(file('new.png'), one);
+  assert.strictEqual(one.base.src, png('new.png'));
+  assert.strictEqual(two.base.src, before);
+  assert.deepStrictEqual(h.acts, [[one.id, 'love']]);
+  assert.strictEqual(h.maker.selected, two.id);
+});
+
+test('a picker opened with nobody selected changes nobody', async () => {
+  const h = await started();
+  await h.maker.setMainImage(file('new.png'), null);
+  assert.strictEqual(h.maker.current()!.base.src, png('base'));
+  assert.strictEqual(h.saves(), 0);
   assert.deepStrictEqual(h.acts, []);
 });
 

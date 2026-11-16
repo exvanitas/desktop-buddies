@@ -17,10 +17,10 @@ const pet = (more: Partial<MakerBuddy> = {}): MakerBuddy => ({ id: 'a', characte
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r)); };
 
 async function mount(pets: MakerBuddy[], saved: Saved = { pets, started: true }) {
-  const toasts: string[] = [], box = document.createElement('div');
+  const toasts: string[] = [], box = document.createElement('div'), store = memoryStore(saved);
   document.body.replaceChildren(box);
   const maker = createMaker({
-    store: memoryStore(saved), world: { sync() {}, act() {} }, toast: m => { toasts.push(m); },
+    store, world: { sync() {}, act() {} }, toast: m => { toasts.push(m); },
     art: {
       processBase: async src => ({ frame: art(src), ref: { ow: 1, oh: 1, w: 1, h: 1, cx: 0, by: 1, side: 1 }, photo: false }),
       processFrames: async srcs => ({ frames: srcs.map(art), scale: 1 }), matchScale: async () => 1, bottomOf: async () => 1, fromShimeji: async () => null, natSort: (a, b) => a.localeCompare(b)
@@ -40,7 +40,7 @@ async function mount(pets: MakerBuddy[], saved: Saved = { pets, started: true })
     await tick();
   };
   const type = (s: string, value: string) => { const i = $<HTMLInputElement>(s); i.value = value; i.dispatchEvent(new Event('input')); };
-  return { box, maker, toasts, $, click, pick, type, pets: () => box.querySelectorAll('.pn-pet').length, injected: () => box.querySelectorAll('[onerror]').length };
+  return { box, maker, store, toasts, $, click, pick, type, pets: () => box.querySelectorAll('.pn-pet').length, injected: () => box.querySelectorAll('[onerror]').length };
 }
 const textFile = (text: string): MakerFile => ({ name: 'pip.buddy', type: '', text: async () => text });
 
@@ -53,8 +53,26 @@ test('a first start holds no buddy, and offers the samples and Add', async () =>
   assert.ok(v.$('.pn-add'));
 });
 
+/* Saved state is checked as she loads, so markup that slipped past the checks is put on her after,
+   and drawn again. */
+async function planted(more: Partial<MakerBuddy>) {
+  const v = await mount([pet()]);
+  Object.assign(v.maker.current()!, more);
+  v.maker.select(v.maker.current()!.id);
+  return v;
+}
+
+test('an image that isn\'t one, saved in the browser, never reaches the panel', async () => {
+  const v = await mount([pet({ base: art(HOSTILE) }), pet({ id: 'b', name: 'Bo', poses: { walk: { frames: [art(HOSTILE)] } } })]);
+  assert.strictEqual(v.injected(), 0);
+  assert.strictEqual(v.pets(), 1);
+  assert.strictEqual(v.maker.current()!.name, 'Bo');
+  assert.deepStrictEqual(v.maker.current()!.poses, {});
+  assert.strictEqual(v.toasts.length, 1);
+});
+
 test('the main image is escaped in a buddy\'s tab', async () => {
-  const v = await mount([pet({ base: art(HOSTILE) })]);
+  const v = await planted({ base: art(HOSTILE) });
   assert.strictEqual(v.injected(), 0);
   assert.ok(v.$('.pn-pet i').getAttribute('style')!.includes(HOSTILE));
 });
@@ -66,19 +84,19 @@ test('a name is escaped in a buddy\'s tab', async () => {
 });
 
 test('an image is escaped in the pose grid', async () => {
-  const v = await mount([pet({ poses: { walk: { frames: [art(HOSTILE)] } } })]);
+  const v = await planted({ poses: { walk: { frames: [art(HOSTILE)] } } });
   assert.strictEqual(v.injected(), 0);
   assert.ok([...v.box.querySelectorAll('.pn-pose img')].some(i => i.getAttribute('src') === HOSTILE));
 });
 
 test('the main image is escaped where an empty pose borrows it', async () => {
-  const v = await mount([pet({ base: art(HOSTILE) })]);
+  const v = await planted({ base: art(HOSTILE) });
   assert.strictEqual(v.injected(), 0);
   assert.strictEqual(v.$('.pn-pose img').getAttribute('src'), HOSTILE);
 });
 
 test('a frame is escaped in the pose editor', async () => {
-  const v = await mount([pet({ poses: { walk: { frames: [art(IMAGE), art(HOSTILE)] } } })]);
+  const v = await planted({ poses: { walk: { frames: [art(IMAGE), art(HOSTILE)] } } });
   v.maker.togglePose(v.maker.current()!, 'walk');
   assert.strictEqual(v.injected(), 0);
   assert.strictEqual(v.box.querySelectorAll('.pn-frame img')[1]!.getAttribute('src'), HOSTILE);
@@ -245,4 +263,14 @@ test('a buddy file with her own lift comes in, keeps it through edits that never
   assert.deepStrictEqual(v.maker.current()!.lift, { floor: -.05, ceiling: .2 });
   v.type('.pn-name', 'Lifted'); v.type('.pn-size', '120');
   assert.strictEqual(v.maker.buddyFile()!.text, out);
+});
+
+/* Drawing her reads the kit's defaults and never writes them: they'd be frozen on her as they are today. */
+test('drawing a buddy with no kit adds no kit to her, or to what is saved', async () => {
+  const v = await mount([pet()]);
+  assert.ok(v.$('.pn-k-pers'), 'the kit is drawn');
+  assert.ok(!('kit' in v.maker.current()!));
+  v.maker.toggleBubbles();
+  await tick();
+  assert.ok(!('kit' in (await v.store.load()).pets![0]!));
 });

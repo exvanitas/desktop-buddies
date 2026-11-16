@@ -5,7 +5,7 @@ import { test } from 'vitest';
 import { storeContract } from '../../../packages/maker-core/tests/store-contract';
 import { kitOf } from '@buddies/maker-core';
 import { canon, createHubStore } from '../src/maker-store';
-import { createDisk, frame, hubOn, small, type HubRun } from './maker-harness';
+import { createDisk, frame, hubOn, manifestOf, small, type HubRun } from './maker-harness';
 
 /* Timers that fire at once, except the wait for an answer, which never comes due here. */
 const after = (ms: number, f: () => void) => { if (ms >= 30000) return () => {}; const t = setTimeout(f); return () => clearTimeout(t); };
@@ -64,6 +64,20 @@ test('a buddy opened in a window is never deleted by Undo there', async () => {
   await other.save({ ...state, pets: [] });
   await other.idle();
   assert.ok(exe.files.has('library/c1/buddy.json'), 'opened, not made, in that window');
+});
+
+/* The app's half of checking what's saved: each buddy is read as a file is before the Maker sees her,
+   and one that fails is never handed over. The status says she didn't open. */
+test('a buddy whose library file is damaged is never handed to the Maker, and the status says so', async () => {
+  const exe = createDisk(), store = storeOn(await hubOn(exe));
+  await store.save({ pets: [{ ...small('c1'), id: 'c1' }], bubbles: true, chatter: 'normal', names: true });
+  const m = JSON.parse(manifestOf(exe, 'c1'));
+  m.buddy.size = 9999;
+  exe.files.set('library/c1/buddy.json', new TextEncoder().encode(JSON.stringify(m)));
+  const other = storeOn(await hubOn(exe), 'c1'), said: string[] = [];
+  other.onSave(s => { if (s.kind === 'failed') said.push(s.title); });
+  assert.deepStrictEqual((await other.load()).pets, []);
+  assert.strictEqual(said.length, 1);
 });
 
 test('a save rejects when it can\'t land, for whoever awaits it', async () => {

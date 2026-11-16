@@ -252,7 +252,9 @@ test('a main image that fails keeps the old one, says so, and the rest still com
 });
 
 test('a buddy her own file would refuse is not handed out, and it says why', async () => {
-  const h = await started([buddy({ kit: { appearance: 'x'.repeat(4001) } })]);
+  /* made so in this run: one saved so wouldn't load */
+  const h = await started();
+  h.maker.current()!.kit = { appearance: 'x'.repeat(4001) };
   assert.strictEqual(h.maker.buddyFile(), null);
   assert.strictEqual(h.toasts.length, 1);
   assert.match(h.toasts[0]!, /^Can't save Ann: .*appearance/);

@@ -2,7 +2,7 @@
    `subscribe` says changed. What it remembers for itself is what's on screen. By moment: it opens on
    Everything, and the sheets are for focused work. */
 import type { PoseKey } from '@buddies/buddy-file';
-import { linesOf, type Maker } from '@buddies/maker-core';
+import { linesOf, type Maker, type MakerBuddy } from '@buddies/maker-core';
 import { button, h } from '@buddies/peel/dom';
 import { createPopover } from '@buddies/peel/popover';
 import { readTheme, showTheme } from '@buddies/peel/theme';
@@ -15,7 +15,7 @@ import { sortFiles, watchDrops } from './drops';
 import { createEmpty } from './empty';
 import { browserIO, type MakerViewHost, type MakerViewIO } from './host';
 import { MOMENTS } from './moments';
-import { createPickers } from './pickers';
+import { createPickers, type Pickers } from './pickers';
 import { readBacking, readSpots, saveBacking, saveSpots } from './remember';
 import { createSaveStatus } from './save-status';
 import { createSpine } from './spine';
@@ -69,14 +69,19 @@ export function createMakerView(root: HTMLElement, maker: Maker, host: MakerView
     return run.finally(() => { working--; workingEl.hidden = working === 0; end(); });
   }
 
-  const pickers = createPickers({
-    main: f => void busy(() => maker.setMainImage(f)),
+  /* Who the main image picker was opened for. Its file comes back later, and by then another buddy
+     can be open, one the app opened from elsewhere, say. A paste or a drop chooses as it happens, and
+     the picker as it's opened. Unset, whoever is open when the file comes. */
+  let mainFor: MakerBuddy | null | undefined;
+  const picking = createPickers({
+    main: f => { const p = mainFor; mainFor = undefined; void busy(() => maker.setMainImage(f, p)); },
     buddies: fs => void busy(() => maker.addFiles(fs)),
     frames: fs => { const p = maker.current(); if (p) void busy(() => maker.addFrames(p, fs)); },
     generated: fs => void busy(() => maker.importGenerated(fs)),
     shimeji: fs => void busy(() => maker.importShimeji(fs)),
     buddyFile: f => void busy(() => maker.importBuddy(f))
   });
+  const pickers: Pickers = { ...picking, open: kind => { if (kind === 'main') mainFor = maker.current() ?? null; picking.open(kind); } };
   const pop = h('div', { class: 'pop' }), popover = createPopover(pop);
 
   const v: View = {
@@ -208,7 +213,7 @@ export function createMakerView(root: HTMLElement, maker: Maker, host: MakerView
     }
     if (where === 'main') {
       const { base, ref } = p;
-      await maker.setMainImage(files[0]);
+      await maker.setMainImage(files[0], p);
       return p.base !== base ? () => maker.restoreMain(p, base, ref) : null;
     }
     const key = pose!, was = p.poses[key], copy = was && { ...was, frames: [...was.frames] }, n = was ? was.frames.length : 0;
@@ -268,7 +273,7 @@ export function createMakerView(root: HTMLElement, maker: Maker, host: MakerView
     if (overTray && isPose(sel)) { maker.pickPose(sel.pose); go(() => maker.addFrames(p, images)); return done(); }
     /* on the main image itself, one image replaces it */
     const overMain = where instanceof Element && !!where.closest('.stage');
-    if (now.page === 'look' && overMain && images.length === 1) { go(() => maker.setMainImage(images[0])); return done(); }
+    if (now.page === 'look' && overMain && images.length === 1) { go(() => maker.setMainImage(images[0], p)); return done(); }
     if (sorted.named.length) go(() => maker.importGenerated(sorted.named));
     if (sorted.unnamed.length && !sorted.named.length && !sorted.shimeji.length) go(() => place(sorted.unnamed));
     else if (sorted.unnamed.length) say(`Skipped ${sorted.unnamed.length} with no pose in the name`);

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **A damaged buddy saved in the browser no longer breaks the web Maker.** Each buddy it kept is checked as a .buddy file is when the Maker opens. A part that fails is left out and the rest of her kept; one whose main image is damaged can't be kept. Either way the Maker says who, once. Settings saved as something they can't be go back to their defaults.
+- **The prompt kit's defaults stay defaults.** Opening a buddy in the web Maker used to copy the prompt kit's default words into her, so she kept them even after the defaults changed. Now they're only copied in when you edit her kit.
+- **A new main image always goes to the buddy you picked it for.** In the app, if another buddy opened in the Maker while you were choosing a picture, the picture went to her instead. Now it goes to the one you clicked Change main image on. A pasted main image now gets the same hearts as a picked one.
 - **Pictures go straight in.** In the Maker, a picture with no pose in its name goes to the pose you have open, or makes a new buddy, without asking where. A note says where it went, with Undo and the other places it could go. Shimeji images make a new buddy at once, with Undo too.
 - **Mute.** Settings has Buddies talk, and each buddy's menu has Talks, in the Manager and when you right-click her. Off, she keeps her own lines to herself. Lines other apps send still show; you choose those per app in Settings.
 - **Show names.** A switch in Settings hides every buddy's name tag on the desktop.

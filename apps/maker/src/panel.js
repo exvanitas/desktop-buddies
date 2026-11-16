@@ -200,7 +200,7 @@ export function createPanel(box, maker, opt) {
     toast(`Copied ${what}`);
   }
   function renderKit(p) {
-    const k = maker.kitOf(p);
+    const k = maker.peekKit(p);
     const set = (sel, v) => { const e = $(sel); if (document.activeElement !== e) e.value = v; };
     set('.pn-k-pers', k.personality); set('.pn-k-look', k.appearance); set('.pn-k-quality', k.quality);
     set('.pn-k-style', k.mode === 'tags' ? k.styleTags : k.styleText);
@@ -211,7 +211,7 @@ export function createPanel(box, maker, opt) {
     renderKitImages(p);
   }
   function renderKitImages(p) {
-    const k = maker.kitOf(p), wrap = $('.pn-k-imgs');
+    const k = maker.peekKit(p), wrap = $('.pn-k-imgs');
     const list = maker.imagePromptsFor(p);
     if (!list) { wrap.innerHTML = '<div class="pn-drop">Add an appearance above, or apply a dialogue reply that includes one, and the image prompts appear here.</div>'; return; }
     const listed = showAll ? list : list.filter(x => x.core);
