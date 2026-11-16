@@ -54,6 +54,7 @@ docs/           see docs/README.md
 ## Tests
 - **Golden traces:** `apps/maker/tests/golden` records what the engine painted, some of it still the original's, and it must keep matching with its fixtures untouched. Changing a trace is a decision, not a fix, and `rerecorded.json` lists each one and why.
 - **The Maker's view:** `pnpm test:maker-view` runs the real view on real art in a headless browser, and its captions are tested against the engine.
+- **Pixel-exact screenshots:** launch Chromium with `--num-raster-threads=1`, as `tools/store/screenshots.mjs` does. A picture drawn at many sizes on one page is rastered from whichever scaled decode a raster thread made first, so with several threads a small copy can come out a little differently run to run. Nothing an eye can see, and not a Maker bug: the same bytes, layout and DOM give two pictures. Found on Stand's step icon in the Maker's Hanging around, which split about evenly over 12 runs and matched in 14 of 14 with one thread.
 - **DOM tests:** use `packages/test-support/src/dom-assert.ts`, never plain `assert`. A failing compare on an element took one test worker to 36 GB and froze a workstation.
 - **Breaking code on purpose:** commit first, restore in a `finally`, get a clean baseline, and cap the memory with `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0`. Read `memory.max` inside the scope, because a rejected option can run nothing, or run it uncapped.
 - **`pnpm -s` hides output.** Read the exit code, and don't take silence for a pass.

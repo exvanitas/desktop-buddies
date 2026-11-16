@@ -71,7 +71,11 @@ async function setUp() {
   server = http.createServer(serve);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   ORIGIN = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launch({ headless: true, executablePath: chrome(), args: ['--no-sandbox'] });
+  /* One raster thread. A picture drawn at many sizes on a page is rastered from whichever scaled decode
+     a thread made first, so with several threads a small copy can differ a little run to run: nothing
+     an eye sees, but no longer the same bytes. The Maker's Hanging around showed it on Stand's step
+     icon. */
+  browser = await chromium.launch({ headless: true, executablePath: chrome(), args: ['--no-sandbox', '--num-raster-threads=1'] });
 }
 
 /* The wallpaper and the drawn windows. Only the overlay's own CSS draws her. */
@@ -214,8 +218,7 @@ const SHOTS = {
     await s.page.evaluate(() => S.run(6000));
     return s;
   },
-  /* the light theme, on All words: everything she says. Hanging around's step icons load in either of two
-     orders, so a picture of it isn't the same twice. */
+  /* the light theme, on All words: everything she says */
   '05-maker-light.png': () => maker('light', 'words')
 };
 

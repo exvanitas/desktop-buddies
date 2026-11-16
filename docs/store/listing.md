@@ -175,7 +175,7 @@ What they show:
 - **04-settings:** the Manager's Settings, with Walk on windows, three programs to stay off, and the local API on with one app allowed.
 - **05-maker-light:** the Maker in the light theme, on the All words sheet, writing one of her lines.
 
-`pnpm store:shots` makes them again (`tools/store/screenshots.mjs`). The desktop and its windows are drawn: a plain wallpaper, a taskbar and boxes with no words in them, never anyone's real desktop. The buddy is one input, `--sample <file>`, the repo's code-drawn sample by default. The same buddy gives the same pictures, byte for byte. On Windows, speech bubbles use Windows' own font; these show the Linux one they were made on.
+`pnpm store:shots` makes them again (`tools/store/screenshots.mjs`). The desktop and its windows are drawn: a plain wallpaper, a taskbar and boxes with no words in them, never anyone's real desktop. The buddy is one input, `--sample <file>`, the repo's code-drawn sample by default. The same buddy gives the same pictures, byte for byte, which needs Chromium on one raster thread (see Tests in [project structure](../project-structure.md)). On Windows, speech bubbles use Windows' own font; these show the Linux one they were made on.
 
 ### Store logos
 Partner Center asks for these, all optional for an app:
