@@ -93,14 +93,14 @@ for (const name of ALL) {
   });
 }
 
-for (const name of ['smoke.ps1', 'api-e2e.ps1', 'store-package.ps1', 'soak.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
+for (const name of ['smoke.ps1', 'api-e2e.ps1', 'store-package.ps1', 'soak.ps1', 'held-paint.ps1', ...LOCAL ? ['chromium-occlusion-local.ps1'] : []]) {
   test(`${name}: an error anywhere says FAIL run.error with its line and keeps the results`, () => {
     const ps = read(name);
     assert.match(ps, /function Error-Line\(\$e\) \{[\s\S]*?" at line \$\(\$i\.ScriptLineNumber\)/);
     const trap = ps.match(/^trap \{\n([\s\S]*?)\n\}/m);
     assert.ok(trap, 'a trap at the top');
     assert.match(trap[1]!, /\$msg = "FAIL run\.error \$\(Error-Line \$_\)"/);
-    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e|store-package|soak)\.txt'\)/);
+    assert.match(trap[1]!, /Set-Content -LiteralPath \(Join-Path \$Out '(smoke|occlusion|api-e2e|store-package|soak|held-paint)\.txt'\)/);
     assert.match(trap[1]!, /\n  break$/);
     /* defined before anything that can throw */
     const helpers = ps.indexOf('. (Join-Path');
@@ -278,6 +278,61 @@ test('pacing.ps1: its own processes, and only those, are stopped in a finally, w
   assert.ok(c.includes('$_.ProcessId -eq $run.Id -or ($_.CommandLine -and $_.CommandLine.Contains($tmp))'));
   assert.ok(!c.includes("$_.Name -eq 'desktop-buddies.exe'"), 'never every copy of the exe on the machine');
   assert.ok(c.includes('Stop-Process -Id $_.ProcessId'), 'stopped by their own ids');
+});
+
+/* The held-buddy paint check: a page in Edge under her, with a plain window over it first as the control. */
+test('held-paint.ps1: the held case is judged only when the control saw a covered page and she was really held', () => {
+  const c = body(read('held-paint.ps1'));
+  /* the order on the runner: nothing over it, the plain window, then the hold */
+  const at = (s: string) => { const i = c.indexOf(s); assert.ok(i > 0, s); return i; };
+  assert.ok(at("Pump 'baseline'") < at("Pump 'control'") && at("Pump 'control'") < at("Pump 'recover'") && at("Pump 'recover'") < at("Pump 'hold'"));
+  /* the control is a plain, opaque window over the whole page, raised over every always-on-top one */
+  assert.match(c, /'edge-window\.ps1'\)`"", 'held-paint-cover', \(\$box\.x - 20\), \(\$box\.y - 20\), \(\$box\.w \+ 40\), \(\$box\.h \+ 40\), '#808080'/);
+  assert.ok(at('[W]::OnTop($coverHwnd)') < at("Pump 'control'"));
+  /* a real press, held through the whole phase, then let go */
+  assert.ok(at('[W]::Mouse(2); $down = $true') < at("Pump 'hold'") && at("Pump 'hold'") < at('[W]::Mouse(4); $down = $false'));
+  assert.ok(c.includes('$seen = $baseOk -and $ctl -and ($ctl.hidden -gt 0 -or $ctl.went_hidden -gt 0 -or $ctl.fps -lt 0.3 * $base.fps)'));
+  assert.ok(c.includes('$tookMouse = $held -and $held.captured -gt 0 -and $held.taking -gt 0'));
+  /* the one PASS for the held case sits behind both, and a control that saw nothing is a FAIL */
+  const verdicts = [...c.matchAll(/(Expect|Report) 'held_paint\.painted_while_held'/g)].map(m => lineAt(c, m.index!).trim());
+  assert.strictEqual(verdicts.length, 3, verdicts.join('\n'));
+  assert.match(verdicts[0]!, /^if \(-not \$seen\) \{ Report /);
+  assert.match(verdicts[1]!, /^elseif \(-not \$tookMouse\) \{ Report /);
+  assert.match(verdicts[2]!, /^else \{ Expect 'held_paint\.painted_while_held' \(\$held\.hidden -eq 0 -and \$held\.went_hidden -eq 0 -and \$held\.fps -ge 0\.7 \* \$base\.fps\)/);
+  assert.match(c, /Expect 'held_paint\.control_seen' \$seen /);
+  /* WS_EX_TRANSPARENT is 0x20 and WS_EX_TOOLWINDOW 0x80 */
+  assert.ok(c.includes('-band 0x20') && c.includes('-band 0x80'));
+});
+
+test('held-paint.ps1: Edge runs on a throwaway profile in the run\'s own folder, with its occlusion tracking left on', () => {
+  const c = body(read('held-paint.ps1'));
+  const launch = c.match(/\$edge = Start-Process \$Browser -ArgumentList @\(([^\n]*)\) -PassThru/);
+  assert.ok(launch, 'the launch');
+  assert.ok(launch[1]!.includes('"--user-data-dir=`"$userData`""') && launch[1]!.includes("'--no-first-run'"));
+  assert.ok(c.includes("$userData = Join-Path $tmp 'browser'"));
+  for (const off of ['headless', 'disable-backgrounding-occluded-windows', 'disable-renderer-backgrounding', 'CalculateNativeWinOcclusion', 'disable-gpu']) assert.ok(!c.includes(off), off);
+});
+
+test('held-paint.ps1: only its own processes, stopped by their ids in a finally, and the button let go', () => {
+  const c = code(read('held-paint.ps1'));
+  const fin = c.slice(c.lastIndexOf('} finally {'), c.indexOf('\n}\n', c.lastIndexOf('} finally {')) + 2);
+  assert.match(fin, /Tidy 'mouse' \{ if \(\$down\) \{ \[W\]::Mouse\(4\) \} \}/);
+  assert.match(fin, /Tidy 'processes' \{ Stop-Own \}/);
+  assert.ok(fin.indexOf("Tidy 'mouse'") < fin.indexOf("Tidy 'processes'"), 'the button goes up first');
+  assert.ok(c.includes('($run -and $_.ProcessId -eq $run.Id) -or ($edge -and $_.ProcessId -eq $edge.Id) -or ($_.CommandLine -and $_.CommandLine.Contains($tmp))'));
+  assert.ok(!/\$_\.Name -eq '(desktop-buddies|msedge)\.exe'/.test(c.replace("$_.Name -eq $name", '')), 'never every copy of the exe or every Edge');
+  assert.ok(c.includes('Stop-Process -Id $_.ProcessId'), 'stopped by their own ids');
+  /* the log goes before the launch, so an earlier run's lines can't count */
+  assert.ok(c.indexOf('Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue') < c.indexOf('$run = Start-Process $runExe'));
+});
+
+test('shell.yml: the held-buddy paint check runs after frame pacing, whatever came before', () => {
+  const yml = fs.readFileSync(new URL('../../../.github/workflows/shell.yml', import.meta.url), 'utf8');
+  const at = yml.indexOf('- name: Held buddy over a browser');
+  assert.ok(at > yml.indexOf('- name: Frame pacing'), 'after pacing');
+  assert.ok(at < yml.indexOf('\n  installer:\n'), 'in the build job');
+  const step = yml.slice(at, yml.indexOf('\n\n', at));
+  assert.match(step, /\n        if: success\(\) \|\| failure\(\)\n        shell: pwsh\n        run: apps\/desktop\/shell-check\/held-paint\.ps1 -Exe exe\/desktop-buddies\.exe -App apps\/desktop\/dist\/app -Out results$/);
 });
 
 test('store-package.ps1: every claim is a PASS or a FAIL, nothing is skipped, and the cleanup undoes the install and the trust', () => {

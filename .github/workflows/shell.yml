@@ -131,6 +131,13 @@ jobs:
         shell: pwsh
         run: apps/desktop/shell-check/pacing.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
 
+      # Does Edge keep painting under a held buddy? A plain window over it first, to show the check can
+      # see a covered page at all; without that, the held case isn't judged.
+      - name: Held buddy over a browser
+        if: success() || failure()
+        shell: pwsh
+        run: apps/desktop/shell-check/held-paint.ps1 -Exe exe/desktop-buddies.exe -App apps/desktop/dist/app -Out results
+
       # The Store's MSIX from this run's exe and app folder, with a test identity, signed with a
       # throwaway certificate, installed, checked through its alias, and uninstalled.
       - name: Store package

@@ -117,6 +117,17 @@ public static class W {
     }
     return o.ToArray();
   }
+  /* The extended styles of this process's shown windows that cover the whole box, topmost first. */
+  public static long[] ExStylesOver(uint pid, int l, int t, int r, int b) {
+    Physical(); var o = new List<long>();
+    foreach (var h in All()) {
+      uint p; GetWindowThreadProcessId(h, out p);
+      if (p != pid || !IsWindowVisible(h)) continue;
+      RECT w; GetWindowRect(h, out w);
+      if (w.L <= l && w.T <= t && w.R >= r && w.B >= b) o.Add(GetLong(h, -20).ToInt64());
+    }
+    return o.ToArray();
+  }
   /* left is 2 and 4, right is 8 and 16. True if the input went in. */
   public static bool Click(int x, int y, uint downFlag, uint upFlag) {
     Physical(); SetCursorPos(x, y); System.Threading.Thread.Sleep(300);
