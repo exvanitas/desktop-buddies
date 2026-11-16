@@ -65,9 +65,8 @@ async function planted(more: Partial<MakerBuddy>) {
 test('an image that isn\'t one, saved in the browser, never reaches the panel', async () => {
   const v = await mount([pet({ base: art(HOSTILE) }), pet({ id: 'b', name: 'Bo', poses: { walk: { frames: [art(HOSTILE)] } } })]);
   assert.strictEqual(v.injected(), 0);
-  assert.strictEqual(v.pets(), 1);
-  assert.strictEqual(v.maker.current()!.name, 'Bo');
-  assert.deepStrictEqual(v.maker.current()!.poses, {});
+  assert.strictEqual(v.pets(), 0);
+  assert.strictEqual(v.maker.state.setAside!.length, 2);
   assert.strictEqual(v.toasts.length, 1);
 });
 

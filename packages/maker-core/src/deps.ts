@@ -8,7 +8,9 @@ export type MakerBuddy = BuddyData;
 
 /* What is saved. A host never gets a copy: changes land on this object, and it goes to the world
    and the store as it stands. */
-export interface MakerState { pets: MakerBuddy[]; bubbles: boolean; chatter: Chatter; names: boolean; started?: boolean }
+/* `setAside`: what was saved as a buddy and failed a file's checks on load, kept as it was. Nothing
+   reads it; it's there so nothing is lost. */
+export interface MakerState { pets: MakerBuddy[]; bubbles: boolean; chatter: Chatter; names: boolean; started?: boolean; setAside?: unknown[] }
 /* What a store may hand back: anything from nothing at all to a state saved by an older Maker. */
 export type Saved = Partial<MakerState>;
 

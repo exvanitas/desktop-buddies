@@ -142,51 +142,87 @@ test('the memory store starts from what it is given', async () => {
 });
 
 /* What a store hands back is checked as a .buddy file is: an older Maker, or a broken one, may have
-   kept anything. */
+   kept anything. A buddy that fails is never mended, only set aside as she was. */
 const bad = (more: Record<string, unknown>) => ({ ...buddy(), ...more }) as unknown as ReturnType<typeof buddy>;
+const BROKEN = { x0: 0, y0: 0, x1: 1, y1: 1 };
+/* hands back the very objects it holds, so "as she was" can be the same object */
+const holding = (saved: Saved): MakerStore => ({ load: async () => saved, save: async () => {} });
 
-test('a saved buddy a file could not hold is dropped, the rest kept, and the person told once', async () => {
-  const h = harness({ saved: { started: true, pets: [buddy({ id: 'a' }), bad({ id: 'b', name: 'Broken', base: { src: 'not an image', bb: { x0: 0, y0: 0, x1: 1, y1: 1 } } })] } });
+test('a damaged buddy is set aside as she was, the good one beside her loads, and the person is told once', async () => {
+  const broken = bad({ id: 'b', name: 'Broken', base: { src: 'not an image', bb: BROKEN } });
+  const h = harness({ saved: { started: true, pets: [buddy({ id: 'a' }), broken] } });
   await h.maker.start();
   assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['a']);
-  assert.strictEqual(h.toasts.length, 1);
-  assert.match(h.toasts[0]!, /Broken/);
-  assert.deepStrictEqual((await h.store.load()).pets!.map(p => p.id), ['a']);
+  assert.deepStrictEqual(h.maker.state.setAside, [broken]);
+  assert.deepStrictEqual(h.toasts, ['Couldn\'t open "Broken": what was saved is damaged. She\'s kept as she was, set aside.']);
 });
 
-test('a saved buddy with one damaged part keeps the rest of her, and says so', async () => {
-  const walk = { frames: [frame('w')], fps: 6, scale: 1 };
-  const h = harness({ saved: { started: true, pets: [bad({ name: 'Bo', size: 9999, poses: { walk, sit: { frames: [frame('s')], fps: 4, scale: 40 }, nope: walk }, lines: { chat: ['hi'], hello: [7] }, kit: { mode: 'loud', personality: 'kind' }, stray: 1 })] } });
+test('set aside survives a save and the next load, once, and only a new one is told', async () => {
+  const broken = bad({ id: 'b', name: 'Broken', size: 9999 });
+  const h = harness({ saved: { started: true, pets: [buddy({ id: 'a' }), broken] } });
   await h.maker.start();
-  const p = h.maker.state.pets[0]!;
-  assert.strictEqual(p.name, 'Bo');
-  assert.ok(!('size' in p) && !('stray' in p));
-  assert.deepStrictEqual(p.poses, { walk, sit: { frames: [frame('s')], fps: 4 } });
-  assert.deepStrictEqual(p.lines, { chat: ['hi'] });
-  assert.deepStrictEqual(p.kit, { personality: 'kind' });
-  assert.strictEqual(h.toasts.length, 1);
-  assert.match(h.toasts[0]!, /Bo/);
+  h.maker.toggleBubbles();
+  const again = harness({ store: h.store });
+  await again.maker.start();
+  assert.deepStrictEqual(again.maker.state.setAside, [broken]);
+  assert.deepStrictEqual(again.maker.state.pets.map(p => p.id), ['a']);
+  assert.deepStrictEqual(again.toasts, []);
+  const saved = await h.store.load(), other = bad({ id: 'c', name: 'Other', faces: 'up' });
+  const third = harness({ saved: { ...saved, pets: [...saved.pets!, other] } });
+  await third.maker.start();
+  assert.deepStrictEqual(third.maker.state.setAside, [broken, other]);
+  assert.strictEqual(third.toasts.length, 1);
+  assert.match(third.toasts[0]!, /"Other"/);
 });
 
-test('a name that is no name is left out, quietly when there was nothing there', async () => {
-  const h = harness({ saved: { started: true, pets: [bad({ id: 'u', name: undefined }), bad({ id: 'n', name: 42 })] } });
+test('a buddy with any one part damaged is set aside whole, not mended', async () => {
+  const w = frame('w');
+  for (const more of [{ size: 9999 }, { name: 42 }, { stray: 1 }, { lines: { chat: ['Keep me', 7] } }, { lift: { floor: .1, wall: 999 } },
+    { signature: { line: 'Keep this', weight: 999 } }, { kit: { mode: 'loud' } }, { poses: { walk: { frames: [w], fps: 6, scale: 40 } } },
+    { poses: { walk: { frames: [w, { src: 'nope', bb: BROKEN }], fps: 6 } } }, { poses: { walk: { frames: [{ ...w, extra: 1 }] } } }]) {
+    const raw = bad({ name: 'Bo', ...more });
+    const h = harness({ store: holding({ started: true, pets: [raw] }) });
+    await h.maker.start();
+    assert.deepStrictEqual(h.maker.state.pets, [], JSON.stringify(more));
+    assert.strictEqual(h.maker.state.setAside![0], raw, JSON.stringify(more));
+    assert.strictEqual(h.toasts.length, 1);
+  }
+});
+
+test('a loop or a deep nest in what was saved is set aside as it was, and never stops the Maker', async () => {
+  const loop: Record<string, unknown> = {}; loop.self = loop;
+  let deep: Record<string, unknown> = {}; const top = deep;
+  for (let i = 0; i < 10000; i++) { deep.a = {}; deep = deep.a as Record<string, unknown>; }
+  const looped = bad({ id: 'l', name: loop }), nested = bad({ id: 'n', poses: { walk: { frames: [top] } } }), deepName = bad({ id: 'd', name: top });
+  const h = harness({ store: holding({ started: true, pets: [looped, buddy({ id: 'a' }), nested, deepName] }) });
   await h.maker.start();
-  const [u, n] = h.maker.state.pets;
-  assert.ok(u && !('name' in u));
-  assert.ok(n && !('name' in n));
+  assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['a']);
+  const aside = h.maker.state.setAside!;
+  assert.strictEqual(aside.length, 3);
+  assert.ok(aside[0] === looped && aside[1] === nested && aside[2] === deepName);
+  assert.strictEqual((looped as unknown as { name: unknown }).name, loop);
   assert.strictEqual(h.toasts.length, 1);
-  assert.doesNotMatch(h.toasts[0]!, /undefined|42/);
 });
 
-test('what is not a buddy at all, and a list that is not a list, never stop the Maker', async () => {
+test('what is not a buddy at all, and a list that is not a list, are set aside too', async () => {
   const h = harness({ saved: { started: true, pets: [null, 5, buddy({ id: 'a' })] } as unknown as Saved });
   await h.maker.start();
   assert.deepStrictEqual(h.maker.state.pets.map(p => p.id), ['a']);
+  assert.deepStrictEqual(h.maker.state.setAside, [null, 5]);
   assert.strictEqual(h.toasts.length, 1);
   const g = harness({ saved: { started: true, pets: 'lots' } as unknown as Saved });
   await g.maker.start();
   assert.deepStrictEqual(g.maker.state.pets, []);
+  assert.deepStrictEqual(g.maker.state.setAside, ['lots']);
   assert.strictEqual(g.toasts.length, 1);
+});
+
+test('a name saved as undefined is no name, and loads quietly', async () => {
+  const h = harness({ saved: { started: true, pets: [bad({ id: 'u', name: undefined })] } });
+  await h.maker.start();
+  const [u] = h.maker.state.pets;
+  assert.ok(u && !('name' in u));
+  assert.deepStrictEqual(h.toasts, []);
 });
 
 test('two saved buddies with one id, or none, each get their own', async () => {
@@ -207,33 +243,9 @@ test('settings saved as something they cannot be come back as their defaults', a
   assert.deepStrictEqual(h.toasts, []);
 });
 
-test('good buddies load with no word said', async () => {
+test('good buddies load with no word said, and nothing set aside', async () => {
   const h = harness({ saved: OLD });
   await h.maker.start();
   assert.deepStrictEqual(h.toasts, []);
-});
-
-/* Mending goes down to the smallest part that can fail on its own: a line, a frame, a surface. */
-test('a damaged line leaves the good lines around it', async () => {
-  const h = harness({ saved: { started: true, pets: [bad({ lines: { chat: ['Keep me', 7, 'Keep me too'], hello: ['Hi'] } })] } });
-  await h.maker.start();
-  assert.deepStrictEqual(h.maker.state.pets[0]!.lines, { chat: ['Keep me', 'Keep me too'], hello: ['Hi'] });
-  assert.strictEqual(h.toasts.length, 1);
-  assert.deepStrictEqual((await h.store.load()).pets![0]!.lines, { chat: ['Keep me', 'Keep me too'], hello: ['Hi'] });
-});
-
-test('a damaged frame leaves the pose her good frames, her speed and her scale', async () => {
-  const h = harness({ saved: { started: true, pets: [bad({ poses: { walk: { frames: [frame('w1'), { src: 'nope', bb: { x0: 0, y0: 0, x1: 1, y1: 1 } }, frame('w2')], fps: 6, scale: 1.2 } } })] } });
-  await h.maker.start();
-  assert.deepStrictEqual(h.maker.state.pets[0]!.poses, { walk: { frames: [frame('w1'), frame('w2')], fps: 6, scale: 1.2 } });
-  assert.strictEqual(h.toasts.length, 1);
-});
-
-test('a damaged surface or signature field leaves the rest of it', async () => {
-  const h = harness({ saved: { started: true, pets: [bad({ lift: { floor: .1, wall: 999 }, signature: { line: 'Keep this', weight: 999 } })] } });
-  await h.maker.start();
-  const p = h.maker.state.pets[0]!;
-  assert.deepStrictEqual(p.lift, { floor: .1 });
-  assert.deepStrictEqual(p.signature, { line: 'Keep this' });
-  assert.strictEqual(h.toasts.length, 1);
+  assert.ok(!('setAside' in h.maker.state));
 });

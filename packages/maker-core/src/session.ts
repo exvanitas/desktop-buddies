@@ -37,7 +37,7 @@ export function createSession(deps: MakerDeps) {
     /* Nobody selected, ready for a new buddy. */
     deselect() { session.selected = null; session.openPose = null; session.changed({ scope: 'all' }); },
     async start() {
-      /* Checked as a file is: a buddy that can't be kept goes, and the person hears so, once. */
+      /* Checked as a file is: a buddy that fails is set aside as she was, and the person hears so, once. */
       const { state, told } = fromSaved(await load(), session.uid);
       session.state = state;
       const S = session.state;
