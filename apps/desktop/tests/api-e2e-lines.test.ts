@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { test } from 'vitest';
 import { cleanLine, LIMITS } from '../src/local-api';
-import { hex } from '../shell-check/api-probe-core';
+import { hex, lineGone, lineUp } from '../shell-check/api-probe-core';
 
 const ps = fs.readFileSync(new URL('../shell-check/api-e2e.ps1', import.meta.url), 'utf8');
 /* A PowerShell line of '...' parts, [char]0x.. and [char]::ConvertFromUtf32(0x..) joined by +. */
@@ -74,4 +74,24 @@ test('the refused lines are refused for the reason the script expects', () => {
   const mcp = ps.match(/^\s*\$mcpLine = '([^']*)'$/m);
   assert.ok(mcp);
   assert.deepStrictEqual(cleanLine(mcp[1]!), { ok: true, text: mcp[1] });
+});
+
+/* The probe's LINE UP and GONE records, as the script reads them for a FAIL: each field where its
+   Line-Story looks for it, and the line they're about compared whole. */
+test('a line\'s story is read from the probe\'s records as it writes them, for that line alone', () => {
+  const m = ps.match(/^\s*\$lineRecord = '\(\?m\)(.+)'$/m);
+  assert.ok(m, '$lineRecord in api-e2e.ps1');
+  const record = new RegExp(m[1]!, 'gm'), mcp = ps.match(/^\s*\$mcpLine = '([^']*)'$/m)![1]!;
+  const log = [
+    `   20.40 PROBE ${lineUp('E2E MCP', mcp, { pose: 'base', was: { kind: 'hidden' } })}`,
+    `   20.41 PROBE ${lineUp('E2E MCP', mcp + ' later', { pose: 'base', was: { kind: 'hidden' } })}`,
+    `   20.67 PROBE ${lineGone('E2E MCP', mcp, { ms: 268.4, by: { kind: 'own', text: 'You called?' }, pose: 'wave' })}\r`
+  ].join('\n');
+  const got = [...log.matchAll(record)].filter(r => r[3] === hex('E2E MCP') && r[4] === hex(mcp)).map(r => r.slice(1, 8));
+  assert.deepStrictEqual(got, [
+    ['20.40', 'UP', hex('E2E MCP'), hex(mcp), 'pose="base"', 'was=hidden', undefined],
+    ['20.67', 'GONE', hex('E2E MCP'), hex(mcp), 'after=268', `by=own:${hex('You called?')}`, 'pose="wave"']
+  ]);
+  /* and every line it checks says what became of it on a FAIL */
+  for (const [who, line] of [['\$mcpApp', '\$mcpLine'], ['\$asker', '\$line'], ['\$asker', '\$tricky']]) assert.ok(ps.includes(`(Line-Story ${who} ${line})`), `${who} ${line}`);
 });

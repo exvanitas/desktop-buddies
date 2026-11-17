@@ -5,14 +5,17 @@
      view's buttons, as the person would, and says PROBE DID <n> PASS|FAIL <detail>.
    - Overlay: each line an app asked her to say, as the bubble shows it, PROBE SAID <from> <text> in
      UTF-8 hex, PROBE WAVED <n> each time she starts a wave, and PROBE TAGS <seen> <of> each time
-     the number of name tags seen changes. */
+     the number of name tags seen changes. So a line that's never told explains itself: PROBE LINE
+     UP <from> <text> pose=<pose> was=<held> when an app's line comes into her bubble, and PROBE
+     LINE GONE <from> <text> after=<ms> by=<held> pose=<pose> when it leaves untold, a held being
+     hidden, own:<text> or app:<from>:<text>, its text in hex. */
 import { readManifest } from '@buddies/buddy-file';
 import type { HubState } from '../src/manager-api';
 import { createManagerClient } from '../src/manager-client';
 import { MANAGER } from '../src/manager-window';
 import { createShell, text } from '../src/shell';
 import { broadcastWire } from '../src/wire';
-import { ascii, hex, perform, watchOverlay, type Task } from './api-probe-core';
+import { ascii, hex, lineGone, lineUp, perform, watchOverlay, type Task } from './api-probe-core';
 
 const shell = createShell(window.__TAURI__);
 const say = (line: string) => shell.log('PROBE ' + line);
@@ -50,23 +53,27 @@ async function manager() {
   }
 }
 
-/* The images of every buddy's wave pose, read from the library once there's one to read. */
-async function waveImages() {
-  const names = new Set<string>();
+/* Every buddy's images, each with the pose it's from, read from the library once there's one to read. */
+async function poseImages() {
+  const poses = new Map<string, string>(), waves = new Set<string>();
   for (const e of await shell.dataList('library')) {
     if (!e.dir || e.name.startsWith('.')) continue;
-    try { for (const f of readManifest(text(await shell.dataRead(`library/${e.name}/buddy.json`))).poses.wave?.frames ?? []) names.add(f.src); }
-    catch { /* not a whole buddy yet */ }
+    try {
+      const m = readManifest(text(await shell.dataRead(`library/${e.name}/buddy.json`)));
+      for (const f of m.base ? [m.base] : []) poses.set(f.src, 'base');
+      for (const [pose, p] of Object.entries(m.poses)) for (const f of p?.frames ?? []) poses.set(f.src, pose);
+      for (const f of m.poses.wave?.frames ?? []) waves.add(f.src);
+    } catch { /* not a whole buddy yet */ }
   }
-  return names;
+  return { poses, waves };
 }
 
 async function overlay() {
-  let waves = new Set<string>(), looked = 0;
+  let poses = new Map<string, string>(), waves = new Set<string>(), looked = 0;
   const refresh = () => {
     if (waves.size || performance.now() - looked < 1000) return;
     looked = performance.now();
-    void waveImages().then(s => { waves = s; }, () => {});
+    void poseImages().then(s => { ({ poses, waves } = s); }, () => {});
   };
   refresh();
   const w = watchOverlay(document.getElementById('root')!, {
@@ -74,7 +81,10 @@ async function overlay() {
     waved: n => { void say(`WAVED ${n}`); },
     isWave: name => { refresh(); return waves.has(name); },
     cannot: why => { void say(`CANNOT ${ascii(why)}`); },
-    tags: (seen, of) => { void say(`TAGS ${seen} ${of}`); }
+    tags: (seen, of) => { void say(`TAGS ${seen} ${of}`); },
+    up: (from, line, at) => { void say(lineUp(from, line, at)); },
+    gone: (from, line, at) => { void say(lineGone(from, line, at)); },
+    poseOf: name => { refresh(); return poses.get(name) ?? (name ? 'unknown' : 'none'); }
   });
   /* What changes outside the overlay's elements, or an animation ending, is seen at the next look. */
   setInterval(w.recheck, 1000);

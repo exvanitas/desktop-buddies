@@ -11,7 +11,7 @@ import type { HubState } from '../src/manager-api';
 import { createManagerClient } from '../src/manager-client';
 import { mountView } from '../src/manager-view';
 import { text } from '../src/shell';
-import { appLine, ascii, hex, imageName, perform, watchOverlay, type Look, type Seen, type Task } from '../shell-check/api-probe-core';
+import { appLine, ascii, hex, imageName, lineGone, lineUp, perform, watchOverlay, type Look, type Seen, type Task } from '../shell-check/api-probe-core';
 import { SAMPLE_ID, errorOf, setup, tick } from './api-harness';
 
 /* A task as the driver writes it, before it's numbered. */
@@ -162,11 +162,14 @@ function overlay(isWave: (name: string) => boolean = () => false) {
   const root = document.createElement('div');
   document.body.replaceChildren(root);
   const view = createView({ root, input, viewport: { x: 0, y: 0, scale: 1, w: 1920, h: 1040 } });
-  const said: string[] = [], waves: number[] = [], cannot: string[] = [], tags: string[] = [];
+  const said: string[] = [], waves: number[] = [], cannot: string[] = [], tags: string[] = [], lines: string[] = [];
   const answers = new Map<Element, Seen>();
-  let all: Seen = 'yes';
+  let all: Seen = 'yes', clock = 0;
   const look: Look = { settle: async () => {}, seen: el => answers.get(el) ?? all };
-  const w = watchOverlay(root, { said: (f, t) => said.push(`${hex(f)} ${hex(t)}`), waved: n => waves.push(n), isWave, cannot: why => cannot.push(why), tags: (n, of) => tags.push(`${n} ${of}`) }, look);
+  const w = watchOverlay(root, {
+    said: (f, t) => said.push(`${hex(f)} ${hex(t)}`), waved: n => waves.push(n), isWave, cannot: why => cannot.push(why), tags: (n, of) => tags.push(`${n} ${of}`),
+    up: (f, t, at) => lines.push(lineUp(f, t, at)), gone: (f, t, at) => lines.push(lineGone(f, t, at)), poseOf: name => name === 'w1.webp' ? 'wave' : name === 's.webp' ? 'base' : name
+  }, look, () => clock);
   const settle = async () => { for (let i = 0; i < 8; i++) { await tick(); w.flush(); } };
   const show = async (f: Frame) => { view.apply(f); await settle(); };
   const img = () => root.querySelector<HTMLImageElement>('.db-pet > .db-body > img')!;
@@ -179,7 +182,7 @@ function overlay(isWave: (name: string) => boolean = () => false) {
     await settle();
   };
   const recheck = async () => { w.recheck(); await settle(); };
-  return { root, view, said, waves, cannot, tags, answers, set all(s: Seen) { all = s; }, w, show, picture, img, bubble, recheck };
+  return { root, view, said, waves, cannot, tags, lines, answers, set all(s: Seen) { all = s; }, set clock(t: number) { clock = t; }, w, show, picture, img, bubble, recheck };
 }
 const LINE = 'He said "hi" \\ café \u{1F44B} a | b end\\';
 const SAID = `${hex('E2E Check')} ${hex(LINE)}`;
@@ -195,6 +198,39 @@ test('an app\'s line is told once, byte for byte, when her bubble and her decode
   assert.deepStrictEqual(o.said, [SAID], 'once, and her own line not at all');
   assert.deepStrictEqual(appLine(o.bubble()), { from: 'E2E Check', text: LINE });
   assert.strictEqual(hex('é\u{1F44B}'), 'c3a9f09f918b');
+  o.w.stop();
+});
+
+/* So a line never told explains itself: when it came into her bubble, the pose her image was from
+   and what the bubble held before, and what took its place. Run 44011961141: a wave queued while she
+   was in the air started as she landed, and its hello took the place of an app's line. */
+test('an app\'s line that leaves her bubble before it\'s told says when it came, what was there before, and what took its place', async () => {
+  const o = overlay(isW), up = (pose: string, was: string) => `LINE UP ${hex('E2E MCP')} ${hex('Hello')} pose=${ascii(pose)} was=${was}`;
+  await o.show(pet({ text: 'her own line', hidden: false, pop: 1 }));
+  o.clock = 1000;
+  await o.show(pet({ text: 'Hello', from: 'E2E MCP', hidden: false, pop: 2 }));
+  o.clock = 1270;
+  /* her image never decoded, so it's never told: her own hello, in her wave, takes its place */
+  await o.show(pet({ text: 'You called?', hidden: false, pop: 3 }, 'library/o/w1.webp'));
+  assert.deepStrictEqual(o.said, []);
+  assert.deepStrictEqual(o.lines, [up('base', `own:${hex('her own line')}`), `LINE GONE ${hex('E2E MCP')} ${hex('Hello')} after=270 by=own:${hex('You called?')} pose=${ascii('wave')}`]);
+  /* hidden before it's told, and another app's line in its place, say so too */
+  o.lines.length = 0;
+  await o.show(pet({ text: 'Hello', from: 'E2E MCP', hidden: false, pop: 4 }, 'library/o/w1.webp'));
+  o.clock = 1500;
+  await o.show(pet({ text: 'Hello', from: 'E2E MCP', hidden: true, pop: 4 }, 'library/o/w1.webp'));
+  await o.show(pet({ text: 'Other', from: 'E2E Check', hidden: false, pop: 5 }, 'library/o/w1.webp'));
+  assert.deepStrictEqual(o.lines, [up('wave', `own:${hex('You called?')}`), `LINE GONE ${hex('E2E MCP')} ${hex('Hello')} after=230 by=hidden pose=${ascii('wave')}`, `LINE UP ${hex('E2E Check')} ${hex('Other')} pose=${ascii('wave')} was=hidden`]);
+  o.w.stop();
+});
+
+test('a line that\'s told says nothing more as it goes', async () => {
+  const o = overlay();
+  await o.show(pet({ text: 'Hello', from: 'E2E MCP', hidden: false, pop: 1 }));
+  await o.picture(true);
+  assert.deepStrictEqual(o.said, [`${hex('E2E MCP')} ${hex('Hello')}`]);
+  await o.show(pet({ text: 'her own line', hidden: false, pop: 2 }));
+  assert.deepStrictEqual(o.lines, [`LINE UP ${hex('E2E MCP')} ${hex('Hello')} pose=${ascii('base')} was=hidden`]);
   o.w.stop();
 });
 

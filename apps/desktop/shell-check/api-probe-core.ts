@@ -145,7 +145,23 @@ export interface OverlayIO {
   cannot(why: string): void;
   /* How many name tags with a name are seen, of how many there are, each time that changes. */
   tags?(seen: number, of: number): void;
+  /* An app's line came into her bubble: what her image showed then (`pose`, by `poseOf`) and what
+     the bubble held before it. */
+  up?(from: string, text: string, at: { pose: string; was: Held }): void;
+  /* An app's line left her bubble before it was told: how long after it came, what took its place,
+     and what her image showed then. */
+  gone?(from: string, text: string, at: { ms: number; by: Held; pose: string }): void;
+  /* The pose an image of hers is from; its file name when this isn't given. */
+  poseOf?(name: string): string;
 }
+/* What a bubble holds: nothing shown, one of her own lines, or an app's. */
+export type Held = { kind: 'hidden' } | { kind: 'own'; text: string } | { kind: 'app'; from: string; text: string };
+/* The probe's records of an app's line coming into her bubble and leaving it untold, as api-e2e.ps1
+   reads them: names and texts in UTF-8 hex, what the bubble held as hidden, own:<text> or
+   app:<from>:<text>, a pose as JSON in ASCII. */
+const heldOf = (h: Held) => h.kind === 'hidden' ? 'hidden' : h.kind === 'own' ? `own:${hex(h.text)}` : `app:${hex(h.from)}:${hex(h.text)}`;
+export const lineUp = (from: string, text: string, at: { pose: string; was: Held }) => `LINE UP ${hex(from)} ${hex(text)} pose=${ascii(at.pose)} was=${heldOf(at.was)}`;
+export const lineGone = (from: string, text: string, at: { ms: number; by: Held; pose: string }) => `LINE GONE ${hex(from)} ${hex(text)} after=${Math.round(at.ms)} by=${heldOf(at.by)} pose=${ascii(at.pose)}`;
 
 /* Whether a person could see an element now. 'unknown' when the page can't say, which tells nothing. */
 export type Seen = 'yes' | 'no' | 'unknown';
@@ -205,8 +221,27 @@ const herImage = (pet: Element | null) => pet?.querySelector<HTMLImageElement>('
    bubble and her decoded image are both seen, and a wave once a decoded wave image of hers is seen,
    after one that wasn't a wave. Each is judged by `look` whenever anything about her changes or an
    image loads, one judgment at a time for each element, so a late show or load is still told. */
-export function watchOverlay(root: Element, io: OverlayIO, look: Look = platformLook()) {
+export function watchOverlay(root: Element, io: OverlayIO, look: Look = platformLook(), now = () => performance.now()) {
   const told = new WeakMap<Element, string>(), waving = new WeakMap<Element, boolean>();
+  /* each bubble's app line as it was last seen in the page, told or not, and since when */
+  const held = new WeakMap<Element, { key: string; from: string; text: string; at: number }>(), last = new WeakMap<Element, Held>();
+  const holding = (b: Element): Held => {
+    if ((b as HTMLElement).hidden) return { kind: 'hidden' };
+    const l = appLine(b);
+    return l ? { kind: 'app', ...l } : { kind: 'own', text: b.textContent ?? '' };
+  };
+  const poseNow = (b: Element) => { const img = herImage(petBefore(b)), name = imageName(img?.getAttribute('src') ?? ''); return io.poseOf ? io.poseOf(name) : name; };
+  /* Each change of what a bubble holds, as the page has it: an app's line coming, or going untold. */
+  const track = (b: Element) => {
+    const h = holding(b), was = last.get(b) ?? { kind: 'hidden' } as Held, line = held.get(b);
+    const key = h.kind === 'app' ? h.from + '\n' + h.text : null;
+    if (line && key !== line.key) {
+      held.delete(b);
+      if (told.get(b) !== line.key) io.gone?.(line.from, line.text, { ms: now() - line.at, by: h, pose: poseNow(b) });
+    }
+    if (h.kind === 'app' && key !== line?.key) { held.set(b, { key: key!, from: h.from, text: h.text, at: now() }); io.up?.(h.from, h.text, { pose: poseNow(b), was }); }
+    last.set(b, h);
+  };
   const busy = new WeakSet<Element>(), again = new WeakSet<Element>();
   let waves = 0, warned = false;
   const unknown = () => { if (!warned) { warned = true; io.cannot('this page has no checkVisibility, so what she shows cannot be judged'); } };
@@ -225,6 +260,7 @@ export function watchOverlay(root: Element, io: OverlayIO, look: Look = platform
   /* Settle her bubble, pet and image together, then judge all of it in one go: her bubble still
      after that pet, her image still in it and decoded, the line the same, and every one seen. */
   const bubble = (b: Element) => {
+    track(b);
     const key = keyOf(b);
     if (key === null) { told.delete(b); return; }
     if (told.get(b) === key) return;

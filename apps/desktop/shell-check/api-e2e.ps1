@@ -271,6 +271,35 @@ try {
       }
       return $false
     }
+    # What became of an app's line, from the probe's PROBE LINE UP and GONE records, for a FAIL: when
+    # it came into her bubble, the pose her image was from and what the bubble held before, and what
+    # took its place if it went before it was told. Names and texts are UTF-8 hex.
+    function From-Hex([string]$h) {
+      if (-not $h) { return '' }
+      $b = [byte[]]::new($h.Length / 2)
+      for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($h.Substring(2 * $i, 2), 16) }
+      return [Text.Encoding]::UTF8.GetString($b)
+    }
+    function Held-Of([string]$h) {
+      if ($h -eq 'hidden') { return 'nothing shown' }
+      $m = [regex]::Match($h, '^own:([0-9a-f]*)$')
+      if ($m.Success) { return "her own line '$(From-Hex $m.Groups[1].Value)'" }
+      $m = [regex]::Match($h, '^app:([0-9a-f]+):([0-9a-f]*)$')
+      if ($m.Success) { return "$(From-Hex $m.Groups[1].Value)'s line '$(From-Hex $m.Groups[2].Value)'" }
+      return $h
+    }
+    $lineRecord = '(?m)^\s*([0-9.]+) PROBE LINE (UP|GONE) ([0-9a-f]+) ([0-9a-f]*) (\S+) (\S+)(?: (\S+))?\r?$'
+    function Line-Story($who, $line) {
+      $story = @()
+      foreach ($m in [regex]::Matches((Read-Log $log), $lineRecord)) {
+        if ($m.Groups[3].Value -cne (Hex $who) -or $m.Groups[4].Value -cne (Hex $line)) { continue }
+        $at = $m.Groups[1].Value; $a = $m.Groups[5].Value; $b = $m.Groups[6].Value; $c = $m.Groups[7].Value
+        if ($m.Groups[2].Value -eq 'UP') { $story += "in her bubble at $at, her image from pose $($a -replace '^pose=', ''), the bubble before: $(Held-Of ($b -replace '^was=', ''))" }
+        else { $story += "gone untold at $at, $($a -replace '^after=', '') ms after, for $(Held-Of ($b -replace '^by=', '')), her image from pose $($c -replace '^pose=', '')" }
+      }
+      if (-not $story.Count) { return 'it never came into her bubble' }
+      return $story -join '; '
+    }
     function Waves { return Count-In $log 'PROBE WAVED \d+' }
     # The overlay's PROBE TAGS <seen> <of> records written after `from` characters of the log.
     function Tags-Since($from) {
@@ -352,7 +381,7 @@ try {
     Expect 'allowed.say' ((Err $r) -eq 'ok') (Err $r)
     $shown = Wait-For 'her bubble' { Has-Said $asker $tricky } 6
     $seen = @([regex]::Matches((Read-Log $log), $saidRecord) | ForEach-Object { $_.Value.Trim() })
-    Expect 'allowed.say_byte_for_byte' $shown "want PROBE SAID $(Hex $asker) $(Hex $tricky); the bubble showed: $(if ($seen.Count) { $seen[-1] } else { 'nothing' })$(if ((Read-Log $log) -match 'PROBE CANNOT ([^\r\n]*)') { '; the probe cannot judge: ' + $Matches[1] })"
+    Expect 'allowed.say_byte_for_byte' $shown "want PROBE SAID $(Hex $asker) $(Hex $tricky); the bubble showed: $(if ($seen.Count) { $seen[-1] } else { 'nothing' })$(if ((Read-Log $log) -match 'PROBE CANNOT ([^\r\n]*)') { '; the probe cannot judge: ' + $Matches[1] })$(if (-not $shown) { '; ' + (Line-Story $asker $tricky) })"
 
     # ---------- quiet: muted, all of them or her alone, an app's line still shows with its badge
     if (Task 'talk_off' @{ 'do' = 'talk'; on = $false }) {
@@ -360,7 +389,8 @@ try {
       $line = 'Still said with Buddies talk off'
       $r = Send $asker 'say' ($bj + ',"text":' + (J $line))
       Expect 'quiet.talk_off_say' ((Err $r) -eq 'ok') (Err $r)
-      Expect 'quiet.talk_off_line_shown' (Wait-For 'her bubble' { Has-Said $asker $line } 6) "PROBE SAID $(Hex $asker) $(Hex $line)"
+      $shown = Wait-For 'her bubble' { Has-Said $asker $line } 6
+      Expect 'quiet.talk_off_line_shown' $shown "PROBE SAID $(Hex $asker) $(Hex $line)$(if (-not $shown) { '; ' + (Line-Story $asker $line) })"
       [void](Task 'talk_on' @{ 'do' = 'talk'; on = $true })
     }
     if (Task 'talks_off' @{ 'do' = 'talks'; buddy = $her.id; on = $false }) {
@@ -368,7 +398,8 @@ try {
       $line = 'Still said with her Talks off'
       $r = Send $asker 'say' ($bj + ',"text":' + (J $line))
       Expect 'quiet.talks_off_say' ((Err $r) -eq 'ok') (Err $r)
-      Expect 'quiet.talks_off_line_shown' (Wait-For 'her bubble' { Has-Said $asker $line } 6) "PROBE SAID $(Hex $asker) $(Hex $line)"
+      $shown = Wait-For 'her bubble' { Has-Said $asker $line } 6
+      Expect 'quiet.talks_off_line_shown' $shown "PROBE SAID $(Hex $asker) $(Hex $line)$(if (-not $shown) { '; ' + (Line-Story $asker $line) })"
       [void](Task 'talks_on' @{ 'do' = 'talks'; buddy = $her.id; on = $true })
     }
     Expect 'quiet.back_to_defaults' (Wait-For 'settings.json' { $s = Settings; $s -and -not ($s.PSObject.Properties.Name -contains 'talk') -and -not ($s.PSObject.Properties.Name -contains 'quiet') } 10) "$(if (Settings) { (Settings) | ConvertTo-Json -Compress -Depth 4 })"
@@ -466,7 +497,8 @@ try {
       $now = @((Done-Count 'list'), (Done-Count 'act'), (Done-Count 'say'))
       Expect 'mcp.app_saw_each' ($now[0] -eq $counts[0] + 1 -and $now[1] -eq $counts[1] + 1 -and $now[2] -eq $counts[2] + 1) "list, act, say done: $($counts -join ',') before, $($now -join ',') after"
       Expect 'mcp.wave_shown' (Wait-For 'her wave' { (Waves) -gt $before } 6) "waves seen $before before, $(Waves) after"
-      Expect 'mcp.say_shown' (Wait-For 'her bubble' { Has-Said $mcpApp $mcpLine } 6) "PROBE SAID $(Hex $mcpApp) $(Hex $mcpLine)"
+      $shown = Wait-For 'her bubble' { Has-Said $mcpApp $mcpLine } 6
+      Expect 'mcp.say_shown' $shown "PROBE SAID $(Hex $mcpApp) $(Hex $mcpLine)$(if (-not $shown) { '; ' + (Line-Story $mcpApp $mcpLine) })"
     }
 
     # ---------- off again: every request is off, and nobody waits
