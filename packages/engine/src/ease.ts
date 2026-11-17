@@ -26,8 +26,8 @@ export interface Easing {
      starts: the way, from the corner's point, so it goes with the window; where it ends, from the
      corner's point, and her turn there; how many frames it takes; how fast she gets going, in
      frames of the way a frame each frame; and how far along it she's got and how fast she's going,
-     by when. */
-  tip?: { way: { c: Point; rot: number; n: number }[]; end: { c: Point; rot: number }; all: number; a: number; at: number; v: number; now: number };
+     by when; and the monitor it was planned on. */
+  tip?: { way: { c: Point; rot: number; n: number }[]; end: { c: Point; rot: number }; all: number; a: number; at: number; v: number; now: number; on: Bounds };
 }
 /* her drawn box, in world px, and her monitor's scale */
 export interface Size { w: number; h: number; k: number }
@@ -245,7 +245,9 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
     e.n = Math.max(e.n, now - e.from + (t.all - t.at) + 1 / t.a + 1);
     const s = t.all > 0 ? t.at / t.all : 1, w = alongTip(t.way, t.at);
     const m = { x: p.x + w.c.x + (c.x - p.x - t.end.c.x) * s, y: p.y + w.c.y + (c.y - p.y - t.end.c.y) * s }, turn = w.rot + norm(rot - t.end.rot) * s;
-    return { c: within(screen!, m, turn, s, ends, size, size0), rot: turn };
+    /* Kept to the monitor the way was planned on: the one under the corner's point can change as a
+       window carries it across a seam, and the edges she's drawn in from would change with it. */
+    return { c: within(t.on, m, turn, s, ends, size, size0), rot: turn };
   }
   /* The first time round: the way she goes, then how long it takes. Where the swing, drawn in from
      the screen's edge, would take her further into the window than she is at either end, she steps
@@ -254,6 +256,8 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
      end isn't drawn at all: she's drawn where she is. */
   if (!e.timed) {
     e.timed = true;
+    const room = e.room || [], out = (s: number) => { const at = along(s); return off(at.c, at.rot, size, room); };
+    const far = Math.max(off(e.c, e.rot, size0, room), off(c, rot, size, room)) + 1;
     /* Only where she's on the screen at both ends, give or take her animation: a wall with no room
        for her beside it at all is another matter, and there she swings as before. */
     if (screen && turnsOver(k, e.rot, rot) && off(e.c, e.rot, size0, [screen]) <= size0.h / 10 && off(c, rot, size, [screen]) <= size.h / 10) {
@@ -271,14 +275,16 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
       let swing = 0;
       for (let i = 1; tight && i <= PATH; i++) { const a = swung((i - 1) / PATH).m, b = swung(i / PATH).m; swing += Math.hypot(b.x - a.x, b.y - a.y); }
       const n = Math.max(e.n, swing / (20 * size.k)), rate = Math.max(1, 1.2 * Math.abs(norm(rot - e.rot)) / n), way = tight ? tipPath(k, ends, size, size0, screen!, rate) : null;
-      if (way && way.every(w => w.fits)) {
+      /* Its room is worked out on one monitor, so it's kept to all of them as the swing is: no
+         further off them than she is at either end. Where monitors meet at a step, the room past
+         one's edge can have no monitor at all. The swing's within() knows one monitor too, so a
+         window carried into such a step can take either of them off the screen. */
+      if (way && way.every(w => w.fits && off(w.c, w.rot, size, room) <= far)) {
         const from = (w: { c: Point; rot: number; n: number }) => ({ c: { x: w.c.x - p.x, y: w.c.y - p.y }, rot: w.rot, n: w.n }), last = way[way.length - 1]!;
-        e.tip = { way: way.map(from), end: { c: { x: last.c.x - p.x, y: last.c.y - p.y }, rot: last.rot }, all: way.reduce((a, w) => a + w.n, 0), a: Math.min(.5, 4 / n), at: 0, v: 0, now };
+        e.tip = { way: way.map(from), end: { c: { x: last.c.x - p.x, y: last.c.y - p.y }, rot: last.rot }, all: way.reduce((a, w) => a + w.n, 0), a: Math.min(.5, 4 / n), at: 0, v: 0, now, on: screen! };
         return eased(e, now, c, rot, size);
       }
     }
-    const room = e.room || [], out = (s: number) => { const at = along(s); return off(at.c, at.rot, size, room); };
-    const far = Math.max(off(e.c, e.rot, size0, room), off(c, rot, size, room)) + 1;
     let len = 0, was = along(0).c;
     for (let i = 1; i <= PATH; i++) {
       if (out(i / PATH) > far) { e.n = 0; return null; }

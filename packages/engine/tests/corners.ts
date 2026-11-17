@@ -43,6 +43,8 @@ export function depthInto(pts: Pt[], r: Rect) {
 }
 /* how far past a rectangle's edges a turned box reaches, 0 when it's all inside */
 export const outOf = (pts: Pt[], r: Rect) => Math.max(0, ...pts.map(p => Math.max(r.x - p.x, p.x - r.x - r.w, r.y - p.y, p.y - r.y - r.h)));
+/* how far off the monitors a turned box reaches: each corner of it from the nearest of them */
+export const outOfAll = (pts: Pt[], rs: Rect[]) => Math.max(0, ...pts.map(p => Math.min(...rs.map(r => Math.max(0, r.x - p.x, p.x - r.x - r.w, r.y - p.y, p.y - r.y - r.h)))));
 
 /* The ways round a window's outer corner, by where she starts and which way she goes. */
 export type Way = 'top-side' | 'side-top' | 'side-under' | 'under-side';
@@ -94,11 +96,12 @@ export interface Run {
 /* `easing.corner`: set when a tick draws her going round a corner, so the turn is watched until it's
    verifiably over, and `easing.tip` when it steps past; `easing.ends`, how far off the screen her
    ends reach as it's drawn. Without it, a turn is taken to be over a set time after it starts.
-   `move`: her window moves `by` a tick for `ticks` ticks, starting `after` ticks into the turn. */
-export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easing?: { corner: boolean; tip: boolean; ends?: number | null }; move?: { by: Pt; after: number; ticks: number } } = {}): Run {
+   `move`: her window moves `by` a tick for `ticks` ticks, starting `after` ticks into the turn.
+   `monitors`: the monitors in place of the scene's one screen, from it and the window. */
+export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easing?: { corner: boolean; tip: boolean; ends?: number | null }; move?: { by: Pt; after: number; ticks: number }; monitors?: (screen: Rect, win: Rect) => Rect[] } = {}): Run {
   const S = c.size;
-  const { screen: sr, win: wr } = scene(c), { data, bbs } = buddy(c);
-  let rects = [screen('s', sr.x, sr.y, sr.w, sr.h), windowRect('w', wr.x, wr.y, wr.w, wr.h, 1)];
+  const { screen: sr, win: wr } = scene(c), { data, bbs } = buddy(c), mons = o.monitors ? o.monitors(sr, wr) : [sr];
+  let rects = [...mons.map((m, i) => screen(i ? `s${i}` : 's', m.x, m.y, m.w, m.h)), windowRect('w', wr.x, wr.y, wr.w, wr.h, 1)];
   const w = o.w ? o.w(rects) : world(rects), pet = w.add(data);
   w.run(5);
   const find = (kind: string, n?: number) => w.terrain.surfaces().find(s => s.owner === 'w' && s.kind === kind && (n === undefined || s.normal.x === n))!;
@@ -112,7 +115,7 @@ export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easin
   else { from = under; t = c.side === 'right' ? len(under) - 1.6 * S : 1.6 * S; go = 'crawl'; dir = sideN; to = where(side); }
   pet.P.on = { surface: from, t }; const p = w.terrain.pointOn(from, t); pet.P.x = p.x; pet.P.y = p.y; pet.P.vx = pet.P.vy = 0;
   pet.go(go, { dir }); w.frame();
-  const look = () => { const f = pet.frame({ x: 0, y: 0, scale: 1 }), d = outline(f, bbs.get(f.src!)!); return { ...d, win: depthInto(d.pts, wr), off: outOf(d.pts, sr), surf: pet.P.surf as string }; };
+  const look = () => { const f = pet.frame({ x: 0, y: 0, scale: 1 }), d = outline(f, bbs.get(f.src!)!); return { ...d, win: depthInto(d.pts, wr), off: outOfAll(d.pts, mons), surf: pet.P.surf as string }; };
   const frames: Seen[] = [];
   let at = -1;
   let done = -1, tip = false, began = -1;
@@ -186,6 +189,32 @@ export function corners(o: { sizes?: number[]; rooms?: number[]; both?: boolean 
     /* roomy all round */
     out.push({ way, side, size, shape, art, gap: roomy, above: roomy, below: roomy });
   }
+  return out;
+}
+/* Monitors in place of a corner's one screen, as people set them up, each with how her window moves
+   across the seam toward the tight edge, 6 px a tick:
+   - split: the screen in two at the corner, give or take half her size, so the room is the same;
+   - step: a second monitor past the tight edge, its edge a step at the corner, give or take half
+     her size, so past the seam on the window's side of the step there's no monitor;
+   - small: a third the size past the tight edge, flush with the corner's side of the screen or the
+     far one. */
+export type Layout = { name: string; monitors: (screen: Rect, win: Rect) => Rect[]; across: Pt };
+export function layouts(c: Corner): Layout[] {
+  const S = c.size, beside = c.gap < 5 * S, low = c.way === 'side-under' || c.way === 'under-side', right = c.side === 'right';
+  const P = (w: Rect) => ({ x: right ? w.x + w.w : w.x, y: low ? w.y + w.h : w.y });
+  const across = beside ? { x: right ? 6 : -6, y: 0 } : { x: 0, y: low ? 6 : -6 }, out: Layout[] = [];
+  for (const d of [-.5, 0, .5]) out.push({ name: `split ${d}`, across, monitors: (sr, wr) => {
+    if (beside) { const x = Math.round(P(wr).x + d * S); return [{ ...sr, w: x - sr.x }, { ...sr, x, w: sr.x + sr.w - x }]; }
+    const y = Math.round(P(wr).y + d * S); return [{ ...sr, h: y - sr.y }, { ...sr, y, h: sr.y + sr.h - y }];
+  } });
+  for (const d of [-.5, .5]) out.push({ name: `step ${d}`, across, monitors: (sr, wr) => {
+    if (beside) { const y = Math.round(P(wr).y + d * S), x = right ? sr.x + sr.w : sr.x - sr.w; return [sr, { x, y: low ? y - sr.h : y, w: sr.w, h: sr.h }]; }
+    const x = Math.round(P(wr).x + d * S), y = low ? sr.y + sr.h : sr.y - sr.h; return [sr, { x: right ? x - sr.w : x, y, w: sr.w, h: sr.h }];
+  } });
+  for (const far of [false, true]) out.push({ name: `small ${far ? 'far' : 'near'}`, across, monitors: sr => {
+    if (beside) { const h = Math.round(sr.h / 3); return [sr, { x: right ? sr.x + sr.w : sr.x - sr.w / 2, y: low !== far ? sr.y + sr.h - h : sr.y, w: sr.w / 2, h }]; }
+    const w = Math.round(sr.w / 3); return [sr, { x: right !== far ? sr.x + sr.w - w : sr.x, y: low ? sr.y + sr.h : sr.y - sr.h / 2, w, h: sr.h / 2 }];
+  } });
   return out;
 }
 export const label = (c: Corner) => `${c.way} ${c.side} ${c.size} ${c.shape} ${c.art} gap ${(c.gap / c.size).toFixed(2)} above ${(c.above / c.size).toFixed(2)} below ${(c.below / c.size).toFixed(2)}`;

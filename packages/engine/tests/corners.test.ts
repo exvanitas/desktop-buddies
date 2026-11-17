@@ -4,7 +4,7 @@
    anyway) and against the same corner with room all round. */
 import assert from 'node:assert';
 import { test, vi } from 'vitest';
-import { corners, label, run, type Corner, type Run } from './corners';
+import { corners, depthInto, label, layouts, run, type Corner, type Run } from './corners';
 import { mulberry32 } from './support';
 
 /* every tick, whether she was drawn going round a corner, and stepping past it, and how far off the
@@ -12,14 +12,14 @@ import { mulberry32 } from './support';
 const seen = vi.hoisted(() => ({ corner: false, tip: false, ends: null as number | null }));
 vi.mock('../src/ease', async real => {
   const ease = await real<typeof import('../src/ease')>();
-  /* how far a turned box reaches past a monitor's edges, 0 or less when it's on it */
-  const off = (m: { x: number; y: number }, rot: number, z: { w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => {
+  /* how far a turned box reaches off the monitors, each corner from the nearest: 0 or less on them */
+  const off = (m: { x: number; y: number }, rot: number, z: { w: number; h: number }, room: { x: number; y: number; w: number; h: number }[]) => {
     const r = rot * Math.PI / 180, u = { x: Math.sin(r) * z.h / 2, y: -Math.cos(r) * z.h / 2 }, v = { x: Math.cos(r) * z.w / 2, y: Math.sin(r) * z.w / 2 };
-    return Math.max(...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([i, j]) => { const x = m.x + i! * u.x + j! * v.x, y = m.y + i! * u.y + j! * v.y; return Math.max(b.x - x, x - b.x - b.w, b.y - y, y - b.y - b.h); }));
+    return Math.max(...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([i, j]) => { const x = m.x + i! * u.x + j! * v.x, y = m.y + i! * u.y + j! * v.y; return Math.min(...room.map(b => Math.max(b.x - x, x - b.x - b.w, b.y - y, y - b.y - b.h))); }));
   };
   return { ...ease, eased: (...a: Parameters<typeof ease.eased>) => {
-    const e = a[0], b = e.room?.[0];
-    if (e.corner && b) seen.ends = Math.max(off(e.c, e.rot, e.size0 || a[4], b), off(a[2], a[3], a[4], b));
+    const e = a[0], room = e.room ?? [];
+    if (e.corner && room.length) seen.ends = Math.max(off(e.c, e.rot, e.size0 || a[4], room), off(a[2], a[3], a[4], room));
     const r = ease.eased(...a); if (r && e.corner) { seen.corner = true; if (e.tip) seen.tip = true; } return r;
   } };
 });
@@ -76,6 +76,8 @@ test('stepping past and tipping over, she moves and turns in a tick no more than
   const tips = all().filter(r => r.tip);
   /* at a twentieth more than her size of room on one side, her turned art always steps past */
   assert.ok(tips.length >= 183, `${tips.length} stepped past`);
+  /* on one monitor, keeping the way to all of them changes nothing: the same corners step past */
+  assert.strictEqual(tips.length, 247);
   for (const r of tips) {
     const most = bar(r.corner.size);
     if (r.turn > most.turn) out.push(`${label(r.corner)}: turned ${r.turn.toFixed(2)} degrees in a tick, ${most.turn.toFixed(2)} with room`);
@@ -114,7 +116,8 @@ test('round snug corners and under moving windows, stepping past keeps the swing
   /* still, every snug room at every size */
   for (const c of corners({ both: true, rooms: SNUG })) if (!roomy(c)) runs.push({ r: run(c, { easing: seen }), moving: false });
   /* moving: every tight corner at 512 px pushed toward the screen's edge and drifting at random;
-     at the other sizes, a random drift on every third */
+     at the other sizes, a random drift on a third of them, drawn, so each placement (tight beside,
+     above or below, or both) has its share */
   const tight = [...corners({ both: true }), ...corners({ both: true, rooms: SNUG })].filter(c => !roomy(c));
   tight.forEach((c, i) => {
     const toward = c.way === 'side-under' || c.way === 'under-side' ? { x: 0, y: 2 } : { x: 0, y: -2 }, edge = draw() < .5 ? { x: c.side === 'right' ? 2 : -2, y: 0 } : toward;
@@ -122,9 +125,13 @@ test('round snug corners and under moving windows, stepping past keeps the swing
     if (c.size === 512) {
       runs.push({ r: run(c, { easing: seen, move: { by: edge, after: 0, ticks: 10 } }), moving: true });
       runs.push({ r: run(c, { easing: seen, move: drift() }), moving: true });
-    } else if (i % 3 === 0) runs.push({ r: run(c, { easing: seen, move: drift() }), moving: true });
+    } else if (draw() < 1 / 3) runs.push({ r: run(c, { easing: seen, move: drift() }), moving: true });
   });
+  /* the placements the moving sample took below 512 px */
+  const placed = new Set(runs.filter(x => x.moving && x.r.corner.size < 512).map(x => x.r.corner.gap < 5 * x.r.corner.size ? (x.r.corner.above < 5 * x.r.corner.size || x.r.corner.below < 5 * x.r.corner.size ? 'both' : 'beside') : 'above or below'));
+  assert.deepStrictEqual([...placed].sort(), ['above or below', 'beside', 'both']);
   let tips = 0;
+  const twin = twins();
   for (const { r, moving } of runs) {
     const name = `${label(r.corner)}${moving ? ', her window moving' : ''}`;
     if (!r.went || r.done < 0) { out.push(`${name}: didn't go round`); continue; }
@@ -134,10 +141,91 @@ test('round snug corners and under moving windows, stepping past keeps the swing
     const b = bar(r.corner.size);
     if (r.rel.mid > ENVELOPE.step * b.mid || r.rel.move > ENVELOPE.step * b.move) out.push(`${name}: moved ${r.rel.move.toFixed(1)} px, her middle ${r.rel.mid.toFixed(1)}, in a tick, against ${b.move.toFixed(1)} and ${b.mid.toFixed(1)} with room`);
     if (r.turn > ENVELOPE.turn * b.turn) out.push(`${name}: turned ${r.turn.toFixed(2)} degrees in a tick, against ${b.turn.toFixed(2)} with room`);
+    /* Into the window no deeper than her ends, or the same corner with room, by more than a 25th of
+       her size with her window still, as the corner tests allow, or a sixth with it moving. On the
+       screen comes first: as a window carries the way toward the screen's edge, within() draws her
+       in from it, toward the window, and what her far end does on its own comes in on top. Measured
+       moving, 40 of 575 runs stepping past go deeper than a 25th, up to 0.150 of her size, and 22
+       go more than 1 px deeper than the same run on eb20dfc; its swing went over a 25th in 488 of
+       them, up to 0.212. */
+    const deeper = Math.max(...r.wins) - Math.max(r.ends.win, twin.get(key(r.corner))!.deepest);
+    if (!boxedIn(r.corner) && deeper > r.corner.size / (moving ? 6 : 25)) out.push(`${name}: ${deeper.toFixed(1)} px deeper into the window`);
   }
   assert.ok(tips >= 700, `${tips} stepped past`);
+  /* on one monitor, as before keeping the way to all of them */
+  assert.strictEqual(tips, 1091);
   assert.deepStrictEqual(out, []);
 }, 300000);
+
+/* Two monitors, as people set them up (layouts in corners.ts): one screen split at the corner, a
+   second one past the tight edge that steps at the corner, or a smaller one there. The way is
+   planned on one monitor and kept to all of them as the swing is, and drawn in from the edges of
+   the monitor it was planned on. Measured over every tight corner at every size with every layout
+   (14,336 runs), against eb20dfc's swing on the same runs:
+   - stepping past keeps the envelope everywhere, still and moving;
+   - still, she's no further off the screen past her ends than eb20dfc's swing went: 0.9 px;
+   - moving, a window carried 6 px a tick into a step or onto a smaller monitor takes her off the
+     monitors, the swing and stepping past both: within() knows one monitor. Off past her ends, as
+     a share of her size at 64 / 120 / 240 / 512 px, eb20dfc's swing went 0.47 / 0.23 / 0.23 / 0.13
+     and stepping past goes 0.594 / 0.343 / 0.299 / 0.13 (the 512 worst is the swing's, the same on
+     both). Disclosed: 127 runs stepping past go further off than the same run on eb20dfc; the worst,
+     a 240 px buddy down a window's side onto its underside with a step below it, 71.7 px against
+     30.9. The way pokes out past the window's corner more than her ends do, and a window carried
+     into a gap with no monitor takes that part off first, with nothing to draw her in from the
+     step. The fix for both is an edge rule over all the monitors, its own round (led item 2610).
+     The bound is stepping past's measured worst at her size, so it can't get worse. */
+const MULTI = { still: .92, moving: { 64: .6, 120: .35, 240: .3, 512: .13 } as Record<number, number> };
+test('on two monitors, stepping past keeps the envelope, and still she\'s no further off them than the swing', () => {
+  const draw = mulberry32(23), out: string[] = [], tight = corners({ rooms: [1.05, 1.3] }).filter(c => !roomy(c));
+  const pick = <T,>(xs: T[]) => xs[Math.floor(draw() * xs.length)]!;
+  let tips = 0, moved = 0;
+  const check = (c: Corner, name: string, r: Run, moving: boolean) => {
+    if (!r.went || r.done < 0) return out.push(`${name}: didn't go round`);
+    const bound = moving ? MULTI.moving[c.size]! * c.size : MULTI.still;
+    if (r.past > bound) out.push(`${name}: ${r.past.toFixed(1)} px further off the monitors than her ends`);
+    if (!r.tip) return;
+    tips++;
+    const b = bar(c.size);
+    if (r.rel.mid > ENVELOPE.step * b.mid || r.rel.move > ENVELOPE.step * b.move || r.turn > ENVELOPE.turn * b.turn) out.push(`${name}: moved ${r.rel.move.toFixed(1)} px, her middle ${r.rel.mid.toFixed(1)}, turned ${r.turn.toFixed(2)} degrees in a tick, against ${b.move.toFixed(1)}, ${b.mid.toFixed(1)} and ${b.turn.toFixed(2)} with room`);
+  };
+  for (const c of tight) {
+    const all = layouts(c);
+    /* still: every layout at 512 px, one drawn at the other sizes */
+    for (const l of c.size === 512 ? all : [pick(all)]) check(c, `${label(c)} on ${l.name}`, run(c, { easing: seen, monitors: l.monitors }), false);
+    /* moving: one layout and one move drawn: across the seam toward the tight edge, back, or a drift */
+    const l = pick(all), how = pick(['across', 'back', 'drift'] as const);
+    const move = how === 'drift' ? { by: { x: Math.round(draw() * 12 - 6) / 2, y: Math.round(draw() * 12 - 6) / 2 }, after: Math.floor(draw() * 12), ticks: 5 + Math.floor(draw() * 25) }
+      : { by: how === 'across' ? l.across : { x: -l.across.x, y: -l.across.y }, after: 0, ticks: 20 };
+    moved++;
+    check(c, `${label(c)} on ${l.name}, her window moving ${how}`, run(c, { easing: seen, monitors: l.monitors, move }), true);
+  }
+  assert.ok(tips >= 240 && moved === tight.length, `${tips} stepped past`);
+  assert.deepStrictEqual(out, []);
+}, 300000);
+
+/* Carbon's seam: a 120 px buddy over a window's top-right corner, 108 px from the seam between two
+   monitors side by side, while the window moves 8 px a tick across it. The monitor under the
+   corner's point changed as it crossed, and the edges she was drawn in from with it: she moved
+   49 px in a tick, against 39 round the same corner with room. */
+test('stepping past while her window carries the corner across a seam between monitors, no snap', () => {
+  const c: Corner = { way: 'top-side', side: 'right', size: 120, shape: 'square', art: 'main', gap: 428, above: 300, below: 120 };
+  const r = run(c, { easing: seen, monitors: () => [{ x: 0, y: 0, w: 1600, h: 900 }, { x: 1600, y: 0, w: 1600, h: 900 }], move: { by: { x: 8, y: 0 }, after: 0, ticks: 40 } });
+  const t = twins().get(key(c))!;
+  assert.ok(r.went && r.done >= 0 && r.tip, 'stepped past');
+  assert.ok(r.rel.mid <= t.mid && r.turn <= t.turn, `moved her middle ${r.rel.mid.toFixed(1)} px and turned ${r.turn.toFixed(2)} degrees in a tick, against ${t.mid.toFixed(1)} and ${t.turn.toFixed(2)} round the same corner with room`);
+  assert.ok(r.past <= ENVELOPE.past, `${r.past.toFixed(1)} px further off the monitors than her ends`);
+}, 120000);
+
+/* Carbon's offset: two monitors side by side, the second 360 px lower, a window's top-right corner
+   108 px from the first one's edge at the height of the step. The way had room on the first
+   monitor past her ends' reach, which there is no monitor at all: she was drawn 6.9 px off both
+   with her ends on them. The swing refused that path, and now stepping past does too. */
+test('a window by an offset between two monitors: she\'s never drawn off them with her ends on them', () => {
+  const c: Corner = { way: 'top-side', side: 'right', size: 120, shape: 'square', art: 'main', gap: 1920 - 1812, above: 360, below: 240 };
+  const r = run(c, { easing: seen, monitors: () => [{ x: 0, y: 0, w: 1920, h: 1080 }, { x: 1920, y: 360, w: 1920, h: 1080 }] });
+  assert.ok(r.went && r.done >= 0, 'went round');
+  assert.ok(r.furthest <= .5 && r.past <= ENVELOPE.past, `${r.furthest.toFixed(1)} px off the monitors, ${r.past.toFixed(1)} past her ends, which are ${r.ends.off.toFixed(1)} off`);
+}, 120000);
 
 /* The worst snap the sweep found with her window still: a 512 px buddy climbing down a window's
    side onto its underside, with less room than her size beside and below it. Her crawling swayed
@@ -282,3 +370,21 @@ test('Carbon\'s case: stepping past while her window moves toward the edge and w
   }
   assert.deepStrictEqual(out, []);
 }, 120000);
+
+/* The trial's F04: a 512 px buddy over a window's top-right corner, a twentieth more than her size
+   below the screen's top, her far end climbing on 2 px a tick while she steps past. What her far
+   end does on its own comes in as she goes, so for a while it carries her into the window: 44.7 px
+   at its deepest, where the way worked out again each tick went 0.8. Her climbing is 0.85 px a tick
+   times her speed (0.9 to 1.12) and her monitor's scale, so in the world it's at most about half
+   that: 0.68 px a tick round this corner, 0.6 px deeper than her ends, and 13.9 px at most over
+   every corner in the sweeps. Held to the bound for a moving window, a sixth of her size. */
+test('her far end climbing on 2 px a tick as a 512 px buddy steps past: into the window no deeper than a sixth of her size', () => {
+  const px = 512, size: Size = { w: px, h: px, k: 1 }, pivot = { x: 4000, y: 538 }, win = { x: 1952, y: 538, w: 2048, h: 2048 };
+  const k = { pivot: { ...pivot }, wind: 1, na: { x: 0, y: -1 }, nb: { x: 1, y: 0 }, inner: false };
+  const e: Easing = { from: 0, n: 56.8689, rot: 0, c: { x: pivot.x - px / 2, y: pivot.y - px / 2 }, d: { x: 0, y: 0 }, corner: k, on: 'w', room: [{ x: 0, y: 0, w: 7000, h: 7000 }], size0: size };
+  const seq = drive(e, { x: pivot.x + px / 2, y: pivot.y + px / 2 }, size, { on: { x: 0, y: 2 } });
+  assert.ok(e.tip, 'stepped past');
+  const box = (c: Pt, rot: number) => { const r = rot * Math.PI / 180, u = { x: Math.sin(r) * px / 2, y: -Math.cos(r) * px / 2 }, v = { x: Math.cos(r) * px / 2, y: Math.sin(r) * px / 2 }; return [[-1, -1], [-1, 1], [1, 1], [1, -1]].map(([i, j]) => ({ x: c.x + i! * u.x + j! * v.x, y: c.y + i! * u.y + j! * v.y })); };
+  const deepest = Math.max(...seq.map(s => depthInto(box(s.c, s.rot), win)));
+  assert.ok(deepest <= px / 6, `${deepest.toFixed(1)} px into the window`);
+});
