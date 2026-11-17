@@ -24,6 +24,9 @@ The downloads aren't signed. Windows may say "Windows protected your PC": click 
 - **Sharing:** a buddy is one `.buddy` file. Export her from the Manager, and Import adds one. Turn on Open .buddy files with Desktop Buddies in Settings, and a double-click on one adds her too.
 - **Shimeji:** drag a Shimeji folder onto the Manager, or use Import, Shimeji images, and pick every image in its `img` folder. Either way it's a new buddy.
 
+## Known issues
+- **More than one monitor:** where two monitors meet, most of all where one sits higher or lower than the other, a buddy turning over a window's corner can now and then jump, or show partly off the screen or over the window for a moment. It's most likely while you drag the window. One monitor isn't affected.
+
 ## Community
 Ask questions, report bugs and show off your buddies on the Milliways Discord server: [discord.gg/HNhFu4bDNj](https://discord.gg/HNhFu4bDNj). Desktop Buddies has its own channel there, #desktop-buddies. Report bugs in #orders, tagged desktop-buddies. [GitHub issues](https://github.com/exvanitas/desktop-buddies/issues) work too.
 
