@@ -101,15 +101,14 @@ test('boxed into a screen\'s corner with no room to tip, she still goes round on
 const SNUG = [.9, .95, 1, 1.02];
 /* The swing's own envelope, which the corner tip had to keep. Before it (eb20dfc), round tight
    corners, the swing moved her up to 1.27 times and turned her up to 1.08 times the most round any
-   corner with room at her size, relative to her window, and drew her at most 2.9 px further off the
-   screen than her ends reached with her window still, 11.8 px with it moving. */
-const ENVELOPE = { step: 1.3, turn: 1.1, still: 2.92, moving: 11.83 };
+   corner with room at her size, relative to her window, and drew her at most 0.25 px further off
+   the screen than her ends reached that same tick, her window still or moving: half a pixel. */
+const ENVELOPE = { step: 1.3, turn: 1.1, past: .5 };
 /* Codex and Carbon found snaps with ends that reach the screen's edge and windows that move: a
    window carried her toward the edge, or her animation swayed her far end past it, and the way,
    worked out again each tick against the screen, jumped. Planned once in the window's frame, she
-   keeps the swing's envelope. Disclosed: against the same corner and window on eb20dfc, 27 of the
-   13,824 runs of the full sweep go 0.3 to 4.3 px further off the screen past her ends, all with a
-   room of 1.02 or less (or 240 px at 1.00), none further than eb20dfc's worst. */
+   keeps the swing's envelope. Over the full sweep (13,824 runs) she's at most 0.25 px further off
+   the screen than her ends that tick, as on eb20dfc, and never further than the same run there. */
 test('round snug corners and under moving windows, stepping past keeps the swing\'s envelope: no snap, and no further off the screen', () => {
   const draw = mulberry32(17), out: string[] = [], runs: { r: Run; moving: boolean }[] = [];
   /* still, every snug room at every size */
@@ -129,7 +128,7 @@ test('round snug corners and under moving windows, stepping past keeps the swing
   for (const { r, moving } of runs) {
     const name = `${label(r.corner)}${moving ? ', her window moving' : ''}`;
     if (!r.went || r.done < 0) { out.push(`${name}: didn't go round`); continue; }
-    if (r.past > (moving ? ENVELOPE.moving : ENVELOPE.still)) out.push(`${name}: ${r.past.toFixed(1)} px further off the screen than her ends`);
+    if (r.past > ENVELOPE.past) out.push(`${name}: ${r.past.toFixed(1)} px further off the screen than her ends`);
     if (!r.tip) continue;
     tips++;
     const b = bar(r.corner.size);
@@ -148,7 +147,7 @@ test('a 512 px buddy round a snug corner by the screen\'s bottom steps past with
   const r = run({ way: 'side-under', side: 'left', size: 512, shape: 'tall', art: 'main', gap: 486, above: 2560, below: 486 }, { easing: seen }), b = bar(512);
   assert.ok(r.went && r.done >= 0 && r.tip, 'stepped past');
   assert.ok(r.rel.mid <= ENVELOPE.step * b.mid && r.turn <= ENVELOPE.turn * b.turn, `moved her middle ${r.rel.mid.toFixed(1)} px and turned ${r.turn.toFixed(2)} degrees in a tick, against ${b.mid.toFixed(1)} and ${b.turn.toFixed(2)} with room`);
-  assert.ok(r.past <= ENVELOPE.still, `${r.past.toFixed(1)} px further off the screen than her ends`);
+  assert.ok(r.past <= ENVELOPE.past, `${r.past.toFixed(1)} px further off the screen than her ends`);
 }, 120000);
 
 /* ---------- one corner, frame by frame ---------- */
@@ -262,16 +261,20 @@ test('Carbon\'s case: stepping past while her window moves toward the edge and w
   for (const px of [120, 512]) for (const on of [true, false]) {
     const k = px / 120, W = 1600 * k, H = 1000 * k, b = bar(px), name = `${px} px, ${on ? 'climbing on' : 'stopping'}`;
     const { e, size } = corner({ x: 1459 * k, y: 300 * k }, { w: W, h: H }, px), pivot = e.corner!.pivot;
-    let was: { c: { x: number; y: number }; rot: number } | null = null, step = 0, turn = 0, off = 0, top = Infinity;
+    let was: { c: { x: number; y: number }; rot: number } | null = null, step = 0, turn = 0, off = 0, top = Infinity, ended = false, bad = 0;
     for (let now = 0; now < 600; now++) {
       const dx = now && now <= 10 ? 2 * k : 0, t = Math.min(now, 10);
       pivot.x += dx; e.c = { x: e.c.x + dx, y: e.c.y };
       const to = { x: (1529 + t) * k, y: (360 + 2 * (on ? now : t)) * k }, rot = 80 + t;
       const at = eased(e, now, to, rot, size), drawn = at ?? { c: to, rot };
+      /* a NaN would pass every comparison below */
+      if (![drawn.c.x, drawn.c.y, drawn.rot].every(Number.isFinite)) { bad++; break; }
       if (was) { step = Math.max(step, Math.hypot(drawn.c.x - was.c.x - dx, drawn.c.y - was.c.y)); turn = Math.max(turn, Math.abs(drawn.rot - was.rot)); }
       off = Math.max(off, offScreen(drawn.c, drawn.rot, size, W, H)); top = Math.min(top, drawn.c.y); was = drawn;
-      if (!at) break;
+      if (!at) { ended = true; break; }
     }
+    if (bad) out.push(`${name}: drawn at a position or turn that isn't a number`);
+    if (!ended) out.push(`${name}: the turn never ended`);
     if (!e.tip) out.push(`${name}: swung rather than stepping past`);
     if (off > .5) out.push(`${name}: drawn ${off.toFixed(2)} px off the screen`);
     if (top < pivot.y - px) out.push(`${name}: her middle went ${(pivot.y - top).toFixed(0)} px above the window's top`);

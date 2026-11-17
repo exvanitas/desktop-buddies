@@ -162,7 +162,9 @@ export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easin
     out.rel.move = Math.max(out.rel.move, Math.abs(b.x0 - a.x0 - f.dx), Math.abs(b.x1 - a.x1 - f.dx), Math.abs(b.y0 - a.y0 - f.dy), Math.abs(b.y1 - a.y1 - f.dy));
     out.rel.mid = Math.max(out.rel.mid, Math.hypot(m1.x - m0.x - f.dx, m1.y - m0.y - f.dy));
   }
-  out.past = Math.max(...span.map(f => f.off - Math.max(f.ends ?? 0, out.ends.off)));
+  /* Each tick against how far her ends reach off the screen that same tick. A tick not drawn going
+     round a corner is drawn where she is, which is its own end. */
+  out.past = Math.max(...span.map(f => f.ends === null ? 0 : f.off - Math.max(0, f.ends)));
   return out;
 }
 
