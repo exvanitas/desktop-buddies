@@ -44,6 +44,11 @@ export function createVoice(world: WorldState, me: Character, P: PetState, { pic
       if (!world.bubbles || !t) return;
       /* Muted, she keeps her own lines to herself. One another app sent is the person's choice for that app. */
       if (!from && (!world.talk || world.quiet.has(me.data.id))) return;
+      /* An app's line keeps her bubble for its time: the person allowed that app, so its line wins
+         for its few seconds. One of her own meanwhile (a hello as a wave starts, a line as she lands)
+         is skipped, not kept for later, and doesn't touch its time. A newer app's line still takes
+         its place. */
+      if (!from && bubble.from && !bubble.hidden) return;
       bubble.text = t; bubble.from = from; bubble.hidden = false; bubble.pop++;
       /* A line from an app can be long, so it stays long enough to read. */
       const ms = from ? Math.max(world.pace.bubbleMs, APP_LINE_MS + t.length * 40) : world.pace.bubbleMs;

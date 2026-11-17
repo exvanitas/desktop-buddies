@@ -95,6 +95,8 @@ test('a muted buddy keeps her own lines to herself, and an app\'s line still sho
   assert.notStrictEqual(said(w, w.sim.pets.get('b')!, 'Hello again').text, 'Hello again', 'nobody talks');
   assert.strictEqual(said(w, w.sim.pets.get('b')!, 'Mine', 'An app').text, 'Mine');
   set({});
+  /* the app's line is hers for its time first */
+  w.run(160);
   assert.strictEqual(said(w, pet, 'Back again').text, 'Back again', 'talking is the default');
 });
 
@@ -106,4 +108,94 @@ test('muted, she never chats on her own', () => {
   assert.strictEqual(shown, 0);
   w.sim.sync({ pets: [BUDDY('a', { name: '' })] });
   assert.ok(w.until(() => !pet.frame({ x: 0, y: 0, scale: 1 }).bubble.hidden, 20000), 'and does once she talks again');
+});
+
+/* An app's line keeps her bubble for its time, as one a muted buddy still shows: the person allowed
+   that app. A line of her own meanwhile is skipped, never kept for later, and leaves its time as it
+   was. In run 44011961141 a wave asked for while she was in the air started as she landed, and its
+   hello took the place of the app's line before anyone could read it. */
+const bubbleOf = (pet: Pet) => pet.frame({ x: 0, y: 0, scale: 1 }).bubble;
+const APP = { text: 'Hello from the MCP check', from: 'E2E MCP' };
+/* the app's line, from the hub, for as long as it shows: how many ticks, and what showed after */
+function lasts(w: ReturnType<typeof world>, pet: Pet, most = 600, each = () => {}) {
+  let n = 0;
+  for (; n < most; n++) { const b = bubbleOf(pet); if (b.hidden || b.text !== APP.text || b.from !== APP.from) break; w.frame(); each(); }
+  return { ticks: n, then: bubbleOf(pet) };
+}
+/* ticks an app line of this length shows for, at 60 a second: 2.6 s, or 2 s and 40 ms a letter */
+const appTicks = (text: string) => Math.max(2600, 2000 + text.length * 40) / 16.667;
+
+test('a wave asked for in the air, then an app\'s line: her hello as she lands and waves doesn\'t cut the line off', () => {
+  const w = world([screen('s', 0, 0, 1280, 720)]), pet = w.add(BUDDY('a', { name: '' }));
+  w.run(5);
+  pet.go('air'); Object.assign(pet.P, { y: 200, vy: 0 }); w.frame();
+  w.sim.act('a', 'wave');
+  assert.strictEqual(pet.P.next, 'wave', 'the wave waits for the floor');
+  w.sim.say('a', APP.text, APP.from); w.frame();
+  let waved = false;
+  for (let i = 0; i < 120 && !waved; i++) { w.frame(); waved = pet.P.state === 'wave'; }
+  assert.ok(waved, 'she landed and waved');
+  const b = bubbleOf(pet);
+  assert.deepStrictEqual([b.text, b.from, b.hidden], [APP.text, APP.from, false], 'the app\'s line, still');
+  assert.ok(lasts(w, pet).ticks >= appTicks(APP.text) - 120 - 2, 'for its time');
+});
+
+test('her line as she drops off a wall to come down for a wave, then her hello as she lands and waves, don\'t cut off an app\'s line', () => {
+  /* every line's chance taken (under .6), and none of her rarer moves (well over .0012 a tick) */
+  const w = world([screen('s', 0, 0, 1280, 720)], { random: () => .05 }), pet = w.add(BUDDY('a', { name: '' }));
+  assert.ok(w.until(() => pet.P.surf === 'floor' && pet.P.state !== 'land', 2000));
+  const wall = w.terrain.surfaces().find(s => s.kind === 'wall')!;
+  pet.P.on = { surface: wall, t: (wall.to - wall.from) / 2 }; const at = w.terrain.pointOn(wall, pet.P.on.t); pet.P.x = at.x; pet.P.y = at.y;
+  pet.go('climb'); pet.P.dur = 1e9; w.frame();
+  assert.strictEqual(pet.here()?.kind, 'wall');
+  w.sim.say('a', APP.text, APP.from); w.frame();
+  w.sim.act('a', 'wave');
+  assert.strictEqual(pet.P.next, 'wave', 'she drops for the wave');
+  let waved = false;
+  const { ticks, then } = lasts(w, pet, 600, () => { waved ||= pet.P.state === 'wave'; });
+  assert.ok(ticks >= appTicks(APP.text) - 4, `shown ${ticks} ticks, then ${JSON.stringify(then.text)}`);
+  assert.ok(waved, 'she came down and waved meanwhile');
+});
+
+test('a pair\'s greeting or bump doesn\'t cut off an app\'s line', () => {
+  const out: string[] = [];
+  for (const r of [.1, .9]) {
+    /* .1: they wave and greet; .9: they bump and say so. The other comes along once the line shows. */
+    const w = world([screen('s', 0, 0, 1280, 720)], { random: () => r }), a = w.add(BUDDY('a', { name: '' }));
+    assert.ok(w.until(() => a.P.surf === 'floor' && a.P.state !== 'land', 2000));
+    a.go('sit'); a.P.dur = 1e9; a.P.chatT = 1e9;
+    w.sim.say('a', APP.text, APP.from); w.frame();
+    const b = w.add(BUDDY('b', { name: '' })), on = a.P.on!;
+    b.P.on = { surface: on.surface, t: on.t + 20 }; const at = w.terrain.pointOn(on.surface, on.t + 20); b.P.x = at.x; b.P.y = at.y; b.P.vx = b.P.vy = 0;
+    b.go('sit'); b.P.dur = 1e9; b.P.chatT = 1e9;
+    let met = false;
+    const { ticks, then } = lasts(w, a, 600, () => { met ||= !bubbleOf(b).hidden; });
+    if (ticks < appTicks(APP.text) - 4) out.push(`${r}: shown ${ticks} ticks, then ${JSON.stringify(then.text)}`);
+    else if (!met) out.push(`${r}: they never met`);
+  }
+  assert.deepStrictEqual(out, []);
+});
+
+test('her goodbye as she\'s dismissed during an app\'s line is skipped: the app\'s line stays', () => {
+  const { w, pet } = standing(720);
+  w.sim.say('a', APP.text, APP.from); w.frame();
+  pet.farewell();
+  assert.strictEqual(pet.P.state, 'wave', 'she waves goodbye');
+  const b = bubbleOf(pet);
+  assert.deepStrictEqual([b.text, b.from, b.hidden], [APP.text, APP.from, false], 'no bye over it');
+});
+
+test('a newer app\'s line still takes an older one\'s place, and her own lines come back once it\'s over', () => {
+  const { w, pet } = standing(720);
+  assert.strictEqual(said(w, pet, 'Build passed', 'An app').text, 'Build passed');
+  const newer = said(w, pet, 'Deploy done', 'Other app');
+  assert.deepStrictEqual([newer.text, newer.from], ['Deploy done', 'Other app']);
+  assert.strictEqual(said(w, pet, 'Mine meanwhile').text, 'Deploy done', 'skipped');
+  /* the skipped line left its time alone: it hides when the newer line's time is up */
+  w.run(Math.ceil(appTicks('Deploy done')) - 2);
+  assert.strictEqual(bubbleOf(pet).text, 'Deploy done');
+  w.run(4);
+  assert.strictEqual(bubbleOf(pet).hidden, true);
+  const mine = said(w, pet, 'Mine again');
+  assert.deepStrictEqual([mine.text, mine.from, mine.hidden], ['Mine again', undefined, false]);
 });

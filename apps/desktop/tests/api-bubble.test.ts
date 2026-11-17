@@ -38,8 +38,14 @@ test('the host says an app\'s line with its name, and her own lines carry none',
   assert.strictEqual(b.text, 'Build passed!');
   assert.strictEqual(b.from, 'Claude Code');
   assert.strictEqual(b.hidden, false);
+  /* her own line meanwhile is skipped: the app's line keeps her bubble for its time */
   d.host.sim!.pets.get('b0')!.say('hello');
   d.tick(2);
+  assert.strictEqual(d.last().bubble.text, 'Build passed!');
+  d.tick(Math.ceil(2600 / 16));
+  d.host.sim!.pets.get('b0')!.say('hello');
+  d.tick(2);
+  assert.strictEqual(d.last().bubble.text, 'hello');
   assert.ok(!('from' in d.last().bubble), 'her own line next shows no badge');
   d.host.message(d.hub, { k: 'say', id: 'nobody', text: 'x', from: 'A' });
   d.tick(1);
