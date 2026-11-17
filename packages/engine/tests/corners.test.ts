@@ -162,8 +162,11 @@ test('round snug corners and under moving windows, stepping past keeps the swing
    Measured over every tight corner at every size with every layout (14,336 runs), against eb20dfc's
    swing on the same runs:
    - stepping past keeps the envelope everywhere, still and moving;
-   - still, she's no further off the monitors past her ends than eb20dfc's swing went: 0.95 px, its
-     worst, in swing runs the same on both; no run stepping past goes further than its eb20dfc run;
+   - still, over these sampled rows, she's no further off the monitors past her ends than eb20dfc's
+     swing went: 0.95 px, its worst, in swing runs the same on both; no run stepping past goes
+     further than its eb20dfc run. The bound holds for these rows only: by an offset between
+     monitors, stepping past can reach 9.6 px past her ends (the named test below), where
+     eb20dfc's swing isn't drawn at all and she jumps;
    - moving, a window carried 6 px a tick into a step or onto a smaller monitor takes her off the
      monitors, the swing and stepping past both: within() knows one monitor. Off past her ends, as a
      share of her size at 64 / 120 / 240 / 512 px, eb20dfc's swing went 0.419 / 0.229 / 0.234 / 0.13
@@ -173,7 +176,10 @@ test('round snug corners and under moving windows, stepping past keeps the swing
      than her ends do, and a window carried into a gap with no monitor takes that part off first,
      with nothing to draw her in from the step. The fix for both is an edge rule over all the
      monitors, its own round (led item 2610). The bound is stepping past's measured worst at her
-     size, so it can't get worse. */
+     size, so it can't get worse.
+   The swing's own, and the same round's: a window carrying a corner across a seam flips the swing's
+   monitor and she jumps (92 to 110 px in a tick 48 to 68 px from the seam, the same on eb20dfc);
+   her far end climbing on by an offset takes stepping past 4.95 px past her ends, the swing 9.45. */
 const MULTI = { still: .95, moving: { 64: .56, 120: .34, 240: .28, 512: .13 } as Record<number, number> };
 test('on two monitors, stepping past keeps the envelope, and still she\'s no further off them than the swing', () => {
   const draw = mulberry32(23), out: string[] = [], tight = corners({ rooms: [1.05, 1.3] }).filter(c => !roomy(c));
@@ -216,6 +222,21 @@ test('stepping past while her window carries the corner across a seam between mo
   assert.ok(r.went && r.done >= 0 && r.tip, 'stepped past');
   assert.ok(r.rel.mid <= t.mid && r.turn <= t.turn, `moved her middle ${r.rel.mid.toFixed(1)} px and turned ${r.turn.toFixed(2)} degrees in a tick, against ${t.mid.toFixed(1)} and ${t.turn.toFixed(2)} round the same corner with room`);
   assert.ok(r.past <= ENVELOPE.past, `${r.past.toFixed(1)} px further off the monitors than her ends`);
+}, 120000);
+
+/* The trial's offset, at 240 px: two monitors side by side, the second 360 px lower, a window's
+   top-right corner 234 px from the first one's edge and 46 px below the step. The way between two
+   of its points runs through the gap past the step, where there's no monitor, so she's drawn 9.55 px
+   past her ends for part of the turn. eb20dfc's swing would go there too, so it isn't drawn at all:
+   she jumps 342.5 px in a tick. A jump is worse to see, so stepping past stays, smooth, and this
+   is held at what it measures. off() and within() check one monitor, and her box's corners only;
+   an edge rule over all the monitors (led item 2610) fixes both. */
+test('a 240 px buddy by an offset between two monitors steps past smoothly, at most 10 px past her ends', () => {
+  const c: Corner = { way: 'top-side', side: 'right', size: 240, shape: 'square', art: 'main', gap: 3840 - 1686, above: 406, below: 240 };
+  const r = run(c, { easing: seen, monitors: () => [{ x: 0, y: 0, w: 1920, h: 1080 }, { x: 1920, y: 360, w: 1920, h: 1080 }] }), b = bar(240);
+  assert.ok(r.went && r.done >= 0 && r.tip, 'stepped past');
+  assert.ok(r.rel.mid <= ENVELOPE.step * b.mid && r.rel.move <= ENVELOPE.step * b.move && r.turn <= ENVELOPE.turn * b.turn, `moved ${r.rel.move.toFixed(1)} px, her middle ${r.rel.mid.toFixed(1)}, turned ${r.turn.toFixed(2)} degrees in a tick`);
+  assert.ok(r.past <= 10, `${r.past.toFixed(1)} px further off the monitors than her ends`);
 }, 120000);
 
 /* Carbon's offset: two monitors side by side, the second 360 px lower, a window's top-right corner
@@ -389,4 +410,26 @@ test('her far end climbing on 2 px a tick as a 512 px buddy steps past: into the
   const box = (c: Pt, rot: number) => { const r = rot * Math.PI / 180, u = { x: Math.sin(r) * px / 2, y: -Math.cos(r) * px / 2 }, v = { x: Math.cos(r) * px / 2, y: Math.sin(r) * px / 2 }; return [[-1, -1], [-1, 1], [1, 1], [1, -1]].map(([i, j]) => ({ x: c.x + i! * u.x + j! * v.x, y: c.y + i! * u.y + j! * v.y })); };
   const deepest = Math.max(...seq.map(s => depthInto(box(s.c, s.rot), win)));
   assert.ok(deepest <= px / 6, `${deepest.toFixed(1)} px into the window`);
+});
+
+/* The trial's F09: one monitor, a 512 px buddy over a window's top-right corner, the screen's left
+   edge flush with her as the turn starts, and her animation making her box 1% wider and lower from
+   that tick to the next (it does in about one turn in thirty). The check that the way stays on the
+   monitors measured its first point, where she was drawn at her old size, at her new one: 2.56 px off
+   the screen's edge, so she didn't step past and swung 65 px into the window. Now the first point is
+   measured at the size she was drawn at, the rest at her size now, as the way is planned. Measuring
+   each point at a size drawn between the two would be wrong: the way is planned at her size now, so
+   a point measured at a bigger one can be refused for room the plan never claimed. */
+test('her box a little different as the turn starts by a screen\'s edge: she still steps past, not into the window', () => {
+  const size0: Size = { w: 512, h: 512, k: 1 }, size: Size = { w: 517.12, h: 506.88, k: 1 }, win = { x: 0, y: 538, w: 512, h: 2048 };
+  const e: Easing = { from: 0, n: 57, rot: 0, c: { x: 256, y: 282 }, d: { x: 0, y: 0 }, corner: { pivot: { x: 512, y: 538 }, wind: 1, na: { x: 0, y: -1 }, nb: { x: 1, y: 0 }, inner: false }, on: 'w', room: [{ x: 0, y: 0, w: 1600, h: 3000 }], size0 };
+  let deepest = 0;
+  for (let now = 0; now < 400; now++) {
+    const at = eased(e, now, { x: 765.44, y: 796 }, 90, size);
+    if (!at) break;
+    const r = at.rot * Math.PI / 180, u = { x: Math.sin(r) * size.h / 2, y: -Math.cos(r) * size.h / 2 }, v = { x: Math.cos(r) * size.w / 2, y: Math.sin(r) * size.w / 2 };
+    deepest = Math.max(deepest, depthInto([[-1, -1], [-1, 1], [1, 1], [1, -1]].map(([i, j]) => ({ x: at.c.x + i! * u.x + j! * v.x, y: at.c.y + i! * u.y + j! * v.y })), win));
+  }
+  assert.ok(e.tip, 'stepped past');
+  assert.ok(deepest <= 1, `${deepest.toFixed(1)} px into the window`);
 });

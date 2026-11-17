@@ -278,8 +278,11 @@ export function eased(e: Easing, now: number, c: Point, rot: number, size: Size)
       /* Its room is worked out on one monitor, so it's kept to all of them as the swing is: no
          further off them than she is at either end. Where monitors meet at a step, the room past
          one's edge can have no monitor at all. The swing's within() knows one monitor too, so a
-         window carried into such a step can take either of them off the screen. */
-      if (way && way.every(w => w.fits && off(w.c, w.rot, size, room) <= far)) {
+         window carried into such a step can take either of them off the screen. Its first point is
+         where she was drawn as the turn started, at that size, as far measures it; the rest is
+         planned at her size now. Her animation can change her box by a pixel or so from one tick to
+         the next, and at a screen's edge that alone would refuse the way. */
+      if (way && way.every((w, j) => w.fits && off(w.c, w.rot, j ? size : size0, room) <= far)) {
         const from = (w: { c: Point; rot: number; n: number }) => ({ c: { x: w.c.x - p.x, y: w.c.y - p.y }, rot: w.rot, n: w.n }), last = way[way.length - 1]!;
         e.tip = { way: way.map(from), end: { c: { x: last.c.x - p.x, y: last.c.y - p.y }, rot: last.rot }, all: way.reduce((a, w) => a + w.n, 0), a: Math.min(.5, 4 / n), at: 0, v: 0, now, on: screen! };
         return eased(e, now, c, rot, size);
