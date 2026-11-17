@@ -3,6 +3,7 @@
    drawn box is worked out from the frame a view gets, turned, as the DOM places it. */
 import type { Rectangle, Surface } from '@buddies/terrain';
 import type { BuddyData, Pet, PetFrame } from '../src/index';
+import { offAll } from './off';
 import { BUDDY, screen, windowRect, world, type TestWorld } from './support';
 
 type M = [number, number, number, number, number, number];
@@ -43,8 +44,8 @@ export function depthInto(pts: Pt[], r: Rect) {
 }
 /* how far past a rectangle's edges a turned box reaches, 0 when it's all inside */
 export const outOf = (pts: Pt[], r: Rect) => Math.max(0, ...pts.map(p => Math.max(r.x - p.x, p.x - r.x - r.w, r.y - p.y, p.y - r.y - r.h)));
-/* how far off the monitors a turned box reaches: each corner of it from the nearest of them */
-export const outOfAll = (pts: Pt[], rs: Rect[]) => Math.max(0, ...pts.map(p => Math.min(...rs.map(r => Math.max(0, r.x - p.x, p.x - r.x - r.w, r.y - p.y, p.y - r.y - r.h)))));
+/* how far off the monitors a turned box reaches, any point of it (off.ts) */
+export const outOfAll = offAll;
 
 /* The ways round a window's outer corner, by where she starts and which way she goes. */
 export type Way = 'top-side' | 'side-top' | 'side-under' | 'under-side';

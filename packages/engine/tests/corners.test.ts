@@ -12,11 +12,9 @@ import { mulberry32 } from './support';
 const seen = vi.hoisted(() => ({ corner: false, tip: false, ends: null as number | null }));
 vi.mock('../src/ease', async real => {
   const ease = await real<typeof import('../src/ease')>();
-  /* how far a turned box reaches off the monitors, each corner from the nearest: 0 or less on them */
-  const off = (m: { x: number; y: number }, rot: number, z: { w: number; h: number }, room: { x: number; y: number; w: number; h: number }[]) => {
-    const r = rot * Math.PI / 180, u = { x: Math.sin(r) * z.h / 2, y: -Math.cos(r) * z.h / 2 }, v = { x: Math.cos(r) * z.w / 2, y: Math.sin(r) * z.w / 2 };
-    return Math.max(...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([i, j]) => { const x = m.x + i! * u.x + j! * v.x, y = m.y + i! * u.y + j! * v.y; return Math.min(...room.map(b => Math.max(b.x - x, x - b.x - b.w, b.y - y, y - b.y - b.h))); }));
-  };
+  /* how far a turned box reaches off the monitors, any point of it, as corners.ts measures her */
+  const { offAll, boxAt } = await import('./off');
+  const off = (m: { x: number; y: number }, rot: number, z: { w: number; h: number }, room: { x: number; y: number; w: number; h: number }[]) => offAll(boxAt(m, rot, z), room);
   return { ...ease, eased: (...a: Parameters<typeof ease.eased>) => {
     const e = a[0], room = e.room ?? [];
     if (e.corner && room.length) seen.ends = Math.max(off(e.c, e.rot, e.size0 || a[4], room), off(a[2], a[3], a[4], room));
@@ -160,27 +158,31 @@ test('round snug corners and under moving windows, stepping past keeps the swing
 /* Two monitors, as people set them up (layouts in corners.ts): one screen split at the corner, a
    second one past the tight edge that steps at the corner, or a smaller one there. The way is
    planned on one monitor and kept to all of them as the swing is, and drawn in from the edges of
-   the monitor it was planned on. Measured over every tight corner at every size with every layout
-   (14,336 runs), against eb20dfc's swing on the same runs:
+   the monitor it was planned on. Off the monitors is measured at any point of her turned box (off.ts).
+   Measured over every tight corner at every size with every layout (14,336 runs), against eb20dfc's
+   swing on the same runs:
    - stepping past keeps the envelope everywhere, still and moving;
-   - still, she's no further off the screen past her ends than eb20dfc's swing went: 0.9 px;
+   - still, she's no further off the monitors past her ends than eb20dfc's swing went: 0.95 px, its
+     worst, in swing runs the same on both; no run stepping past goes further than its eb20dfc run;
    - moving, a window carried 6 px a tick into a step or onto a smaller monitor takes her off the
-     monitors, the swing and stepping past both: within() knows one monitor. Off past her ends, as
-     a share of her size at 64 / 120 / 240 / 512 px, eb20dfc's swing went 0.47 / 0.23 / 0.23 / 0.13
-     and stepping past goes 0.594 / 0.343 / 0.299 / 0.13 (the 512 worst is the swing's, the same on
-     both). Disclosed: 127 runs stepping past go further off than the same run on eb20dfc; the worst,
-     a 240 px buddy down a window's side onto its underside with a step below it, 71.7 px against
-     30.9. The way pokes out past the window's corner more than her ends do, and a window carried
-     into a gap with no monitor takes that part off first, with nothing to draw her in from the
-     step. The fix for both is an edge rule over all the monitors, its own round (led item 2610).
-     The bound is stepping past's measured worst at her size, so it can't get worse. */
-const MULTI = { still: .92, moving: { 64: .6, 120: .35, 240: .3, 512: .13 } as Record<number, number> };
+     monitors, the swing and stepping past both: within() knows one monitor. Off past her ends, as a
+     share of her size at 64 / 120 / 240 / 512 px, eb20dfc's swing went 0.419 / 0.229 / 0.234 / 0.13
+     and stepping past goes 0.557 / 0.332 / 0.272 / 0.13 (the 512 worst is the swing's, the same on
+     both). Disclosed: 113 runs stepping past go further off than the same run on eb20dfc, the worst
+     by 55.3 px, 8 of them by only 0.5 to 1.6 px. The way pokes out past the window's corner more
+     than her ends do, and a window carried into a gap with no monitor takes that part off first,
+     with nothing to draw her in from the step. The fix for both is an edge rule over all the
+     monitors, its own round (led item 2610). The bound is stepping past's measured worst at her
+     size, so it can't get worse. */
+const MULTI = { still: .95, moving: { 64: .56, 120: .34, 240: .28, 512: .13 } as Record<number, number> };
 test('on two monitors, stepping past keeps the envelope, and still she\'s no further off them than the swing', () => {
   const draw = mulberry32(23), out: string[] = [], tight = corners({ rooms: [1.05, 1.3] }).filter(c => !roomy(c));
   const pick = <T,>(xs: T[]) => xs[Math.floor(draw() * xs.length)]!;
   let tips = 0, moved = 0;
   const check = (c: Corner, name: string, r: Run, moving: boolean) => {
     if (!r.went || r.done < 0) return out.push(`${name}: didn't go round`);
+    /* a NaN would pass every comparison below */
+    if (!r.frames.every(f => Number.isFinite(f.rot) && f.pts.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)))) return out.push(`${name}: drawn at a position or turn that isn't a number`);
     const bound = moving ? MULTI.moving[c.size]! * c.size : MULTI.still;
     if (r.past > bound) out.push(`${name}: ${r.past.toFixed(1)} px further off the monitors than her ends`);
     if (!r.tip) return;
