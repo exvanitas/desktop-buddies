@@ -570,9 +570,10 @@ for (const ms of [16.667, 33.334, 50]) test(`let go of a wall low down, she land
 
 /* How much deeper her turned box may go into the window whose corner she rounds near the screen's
    edge than she's drawn just before the turn and in the 40 ticks once it's over: her climbing tips her
-   into the wall a little anyway. With no room to swing she steps past the corner and tips over it. Measured 0.008
-   of her size at most, from 64 to 512 px; the swing she had went 0.06 to 0.11 of her size deeper. */
-const CORNER_OVERLAP = 1 / 80;
+   into the wall a little anyway. With no room to swing she steps past the corner and tips over it,
+   drawn in from the screen's edge as the swing is. Measured 0.028 of her size at most, from 64 to
+   512 px; the swing she had went 0.06 to 0.11 of her size deeper. */
+const CORNER_OVERLAP = 1 / 25;
 
 test('over a window\'s corner near the screen\'s edge, any size of buddy stays on the screen and goes round, stepping past it and tipping over, not into it', () => {
   const seen: string[] = [];

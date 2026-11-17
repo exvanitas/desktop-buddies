@@ -68,7 +68,9 @@ export function scene(c: Corner) {
 }
 const where = (s: Surface) => s.kind === 'wall' ? (s.normal.x > 0 ? 'left' : 'right') : s.kind;
 
-export interface Seen { frame: number; pts: Pt[]; rot: number; win: number; off: number; surf: string }
+/* a tick as drawn; `dx`, `dy`: how far her window moved before it; `ends`: how far her ends reached
+   off the screen as that tick's turn was drawn, when `easing.ends` says so */
+export interface Seen { frame: number; pts: Pt[]; rot: number; win: number; off: number; surf: string; dx: number; dy: number; ends: number | null }
 export interface Run {
   corner: Corner; went: boolean; frames: Seen[]; at: number; n: number;
   /* the first tick after the turn that no corner was drawn going round, and whether she stepped
@@ -83,16 +85,20 @@ export interface Run {
   ends: { win: number; off: number };
   /* over the turn, frame by frame: how deep into the window and how far off the screen */
   wins: number[]; offs: number[];
+  /* over the turn, relative to her window as it moves: the biggest step of any edge and of her middle
+     (px); and the furthest she's drawn off the screen past where her ends reach that tick */
+  rel: { move: number; mid: number }; past: number;
 }
 
 /* Stands her by the corner, sends her round it, and watches until the turn is well over. */
 /* `easing.corner`: set when a tick draws her going round a corner, so the turn is watched until it's
-   verifiably over, and `easing.tip` when it steps past. Without it, a turn is taken to be over a set
-   time after it starts. */
-export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easing?: { corner: boolean; tip: boolean } } = {}): Run {
+   verifiably over, and `easing.tip` when it steps past; `easing.ends`, how far off the screen her
+   ends reach as it's drawn. Without it, a turn is taken to be over a set time after it starts.
+   `move`: her window moves `by` a tick for `ticks` ticks, starting `after` ticks into the turn. */
+export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easing?: { corner: boolean; tip: boolean; ends?: number | null }; move?: { by: Pt; after: number; ticks: number } } = {}): Run {
   const S = c.size;
   const { screen: sr, win: wr } = scene(c), { data, bbs } = buddy(c);
-  const rects = [screen('s', sr.x, sr.y, sr.w, sr.h), windowRect('w', wr.x, wr.y, wr.w, wr.h, 1)];
+  let rects = [screen('s', sr.x, sr.y, sr.w, sr.h), windowRect('w', wr.x, wr.y, wr.w, wr.h, 1)];
   const w = o.w ? o.w(rects) : world(rects), pet = w.add(data);
   w.run(5);
   const find = (kind: string, n?: number) => w.terrain.surfaces().find(s => s.owner === 'w' && s.kind === kind && (n === undefined || s.normal.x === n))!;
@@ -109,19 +115,25 @@ export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easin
   const look = () => { const f = pet.frame({ x: 0, y: 0, scale: 1 }), d = outline(f, bbs.get(f.src!)!); return { ...d, win: depthInto(d.pts, wr), off: outOf(d.pts, sr), surf: pet.P.surf as string }; };
   const frames: Seen[] = [];
   let at = -1;
-  let done = -1, tip = false;
+  let done = -1, tip = false, began = -1;
   for (let i = 0; i < 2000 && (at < 0 || (o.easing ? done < 0 || i < done + 45 : i < at + Math.max(30, Math.ceil(.15 * S) + 20) + 15)); i++) {
     if (pet.P.state === 'climb' || pet.P.state === 'crawl' || pet.P.state === 'climbGo') pet.P.dur = 1e9;
     /* toward the corner till she's round it, so a turn back at the end doesn't keep her off it */
     if (at < 0 && (pet.P.state === 'climb' || pet.P.state === 'crawl')) pet.P.dir = dir;
-    if (o.easing) o.easing.corner = o.easing.tip = false;
+    let dx = 0, dy = 0;
+    if (o.move && began >= 0 && i - began > o.move.after && i - began <= o.move.after + o.move.ticks) {
+      ({ x: dx, y: dy } = o.move.by); wr.x += dx; wr.y += dy;
+      rects = rects.map(r => r.kind === 'window' ? { ...r, rect: { ...wr } } : r); w.sim.setRects(rects);
+    }
+    if (o.easing) { o.easing.corner = o.easing.tip = false; o.easing.ends = null; }
     w.frame();
-    const now = look(); frames.push({ frame: i, ...now });
+    const now = look(); frames.push({ frame: i, ...now, dx, dy, ends: o.easing?.ends ?? null });
+    if (began < 0 && o.easing?.corner) began = i;
     if (at < 0 && now.surf === to) at = frames.length - 1;
     if (o.easing && at >= 0 && done < 0 && frames.length - 1 > at && !o.easing.corner) done = frames.length - 1;
     if (o.easing?.tip) tip = true;
   }
-  const out: Run = { corner: c, went: at >= 0, frames, at, n: 0, overlap: 0, deepest: 0, offFrames: 0, furthest: 0, move: 0, mid: 0, turn: 0, ends: { win: 0, off: 0 }, wins: [], offs: [], done, tip, own: { mid: 0, turn: 0 } };
+  const out: Run = { corner: c, went: at >= 0, frames, at, n: 0, overlap: 0, deepest: 0, offFrames: 0, furthest: 0, move: 0, mid: 0, turn: 0, ends: { win: 0, off: 0 }, wins: [], offs: [], done, tip, own: { mid: 0, turn: 0 }, rel: { move: 0, mid: 0 }, past: 0 };
   if (at < 0) return out;
   /* the turn: from the tick before it starts to well after it's drawn, which takes longer for a bigger buddy */
   const long = o.easing ? done - at + 2 : Math.max(30, Math.ceil(.15 * S) + 20), span = frames.slice(Math.max(0, at - 1), at + long), before = frames[Math.max(0, at - 1)]!, after = frames[Math.min(frames.length - 1, at + long + 10)]!;
@@ -147,7 +159,10 @@ export function run(c: Corner, o: { w?: (rects: Rectangle[]) => TestWorld; easin
     out.move = Math.max(out.move, Math.abs(b.x0 - a.x0), Math.abs(b.x1 - a.x1), Math.abs(b.y0 - a.y0), Math.abs(b.y1 - a.y1));
     out.mid = Math.max(out.mid, Math.hypot(m1.x - m0.x, m1.y - m0.y));
     out.turn = Math.max(out.turn, Math.abs(((f.rot - span[i - 1]!.rot + 540) % 360) - 180));
+    out.rel.move = Math.max(out.rel.move, Math.abs(b.x0 - a.x0 - f.dx), Math.abs(b.x1 - a.x1 - f.dx), Math.abs(b.y0 - a.y0 - f.dy), Math.abs(b.y1 - a.y1 - f.dy));
+    out.rel.mid = Math.max(out.rel.mid, Math.hypot(m1.x - m0.x - f.dx, m1.y - m0.y - f.dy));
   }
+  out.past = Math.max(...span.map(f => f.off - Math.max(f.ends ?? 0, out.ends.off)));
   return out;
 }
 
